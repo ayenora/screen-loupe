@@ -26,3 +26,7 @@ make build   # Debug build
 make test    # unit tests
 make help    # all targets
 ```
+
+## License
+
+[MIT](LICENSE)
