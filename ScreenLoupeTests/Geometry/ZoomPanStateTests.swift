@@ -9,7 +9,7 @@ struct ZoomPanStateTests {
         let start = ZoomPanState(
             zoom: 2, contentSize: CGSize(width: 200, height: 100), viewportSize: CGSize(width: 400, height: 300)
         )
-        .clamped()
+        .centered()
         let before = start.sourcePoint(forViewportPoint: anchor)
         let zoomed = start.zoomed(to: 4, around: anchor)
         let after = zoomed.sourcePoint(forViewportPoint: anchor)
@@ -18,13 +18,59 @@ struct ZoomPanStateTests {
         #expect(abs(after.y - before.y) <= 0.5 / 4)
     }
 
-    @Test func smallImageIsCentred() {
+    @Test func centeringIsExplicit() {
         let state = ZoomPanState(
             zoom: 1, offset: CGPoint(x: -40, y: 999), contentSize: CGSize(width: 100, height: 50),
             viewportSize: CGSize(width: 400, height: 300)
         )
-        .clamped()
-        #expect(state.offset == CGPoint(x: 150, y: 125))
+        #expect(state.centered().offset == CGPoint(x: 150, y: 125))
+    }
+
+    @Test(arguments: [
+        // Already inside: stays exactly where it is.
+        (CGPoint(x: 40, y: 20), CGPoint(x: 40, y: 20)),
+        // Partly outside: moved only as far as needed to be wholly visible.
+        (CGPoint(x: 390, y: -5), CGPoint(x: 300, y: 0)),
+    ])
+    func clampingKeepsASmallImageWhereItIs(offset: CGPoint, expected: CGPoint) {
+        let state = ZoomPanState(
+            zoom: 1, offset: offset, contentSize: CGSize(width: 100, height: 50),
+            viewportSize: CGSize(width: 400, height: 300))
+        #expect(state.clamped().offset == expected)
+    }
+
+    @Test func fitShowsTheWholeImageCentred() {
+        let state = ZoomPanState(
+            zoom: 7, offset: CGPoint(x: -300, y: -300), contentSize: CGSize(width: 400, height: 300),
+            viewportSize: CGSize(width: 800, height: 450)
+        )
+        .fitted()
+        #expect(state.zoom == 1.5)
+        #expect(state.offset == CGPoint(x: 100, y: 0))
+        #expect(state.isFit)
+    }
+
+    @Test func resizingByTheRightEdgeKeepsTheImageStill() {
+        let state = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: -40, y: -8), contentSize: CGSize(width: 100, height: 60),
+            viewportSize: CGSize(width: 200, height: 100))
+        let resized = state.resizingContent(to: CGSize(width: 120, height: 60), originShift: .zero)
+        #expect(resized.zoom == 4)
+        #expect(resized.offset == state.offset)
+    }
+
+    @Test func resizingByTheLeftEdgeKeepsVisiblePixelsInPlace() {
+        let state = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: -40, y: -8), contentSize: CGSize(width: 100, height: 60),
+            viewportSize: CGSize(width: 200, height: 100))
+        let point = CGPoint(x: 100, y: 50)
+        let before = state.sourcePoint(forViewportPoint: point)
+        // The left edge moved 10 source pixels to the left: the same screen pixel is now 10 further in.
+        let resized = state.resizingContent(to: CGSize(width: 110, height: 60), originShift: CGPoint(x: -10, y: 0))
+        let after = resized.sourcePoint(forViewportPoint: point)
+        #expect(resized.zoom == 4)
+        #expect(after.x == before.x + 10)
+        #expect(after.y == before.y)
     }
 
     @Test func panStopsAtTheImageEdges() {

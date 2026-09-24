@@ -16,9 +16,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     private let permissions: PermissionsManager
     private let settings: SettingsStore
     private let viewerView: ViewerView
+    private let overlay: ViewerOverlayView
+    private let meterPanel: ColorMeterPanel
+    private let inspector: PixelInspector
     private let statusView = CaptureStatusView()
     private let toast = ToastView()
-    private let captureContent = NSView()
+    /// The magnified image with everything drawn over it; left of the Color Meter.
+    private let imageArea = NSView()
+    private let captureContent = NSStackView()
     private let toolbar: ViewerToolbar
     private var showsPermissionView: Bool?
     /// ScreenCaptureKit refused for lack of permission although the preflight said yes. The
@@ -26,10 +31,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     private var permissionDeniedByCapture = false
     private let hasSavedFrame: Bool
 
-    init(permissions: PermissionsManager, settings: SettingsStore, frameStore: FrameStore, zoomPan: ZoomPanController) {
+    init(
+        permissions: PermissionsManager, settings: SettingsStore, frameStore: FrameStore, zoomPan: ZoomPanController,
+        inspector: PixelInspector
+    ) {
         self.permissions = permissions
         self.settings = settings
-        viewerView = ViewerView(frameStore: frameStore, zoomPan: zoomPan)
+        self.inspector = inspector
+        viewerView = ViewerView(frameStore: frameStore, zoomPan: zoomPan, inspector: inspector)
+        overlay = ViewerOverlayView(zoomPan: zoomPan, inspector: inspector)
+        meterPanel = ColorMeterPanel(inspector: inspector)
         toolbar = ViewerToolbar(zoomPan: zoomPan)
 
         let window = NSWindow(
@@ -55,8 +66,17 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         buildCaptureContent()
         zoomPan.onChange = { [weak self] in
             self?.viewerView.requestDraw()
+            self?.overlay.needsDisplay = true
             self?.toolbar.refresh()
         }
+        inspector.onChange = { [weak self] in
+            self?.overlay.needsDisplay = true
+            self?.meterPanel.refresh()
+        }
+        toolbar.onToggle = { [weak self] toggle in self?.toggle(toggle) }
+        viewerView.onPick = { [weak self] in self?.pickColor() }
+        meterPanel.onCopy = { [weak self] text, what in self?.copyText(text, what: what) }
+        applyToggles()
         toolbar.onToggleAlwaysOnTop = { [weak self] in self?.toggleAlwaysOnTop() }
         toolbar.onCopy = { [weak self] in self?.onCopyView?() }
         toolbar.onSave = { [weak self] in self?.onSaveView?() }
@@ -69,22 +89,74 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    /// The magnified image, with the failure message centred over it when capturing failed.
+    /// The magnified image with the crosshair, status panel and toast over it, and the Color Meter
+    /// at its right.
     private func buildCaptureContent() {
-        viewerView.frame = captureContent.bounds
-        viewerView.autoresizingMask = [.width, .height]
-        captureContent.addSubview(viewerView)
+        for view in [viewerView, overlay] as [NSView] {
+            view.frame = imageArea.bounds
+            view.autoresizingMask = [.width, .height]
+            imageArea.addSubview(view)
+        }
         statusView.isHidden = true
         statusView.translatesAutoresizingMaskIntoConstraints = false
-        captureContent.addSubview(statusView)
+        imageArea.addSubview(statusView)
         toast.translatesAutoresizingMaskIntoConstraints = false
-        captureContent.addSubview(toast)
+        imageArea.addSubview(toast)
         NSLayoutConstraint.activate([
-            statusView.centerXAnchor.constraint(equalTo: captureContent.centerXAnchor),
-            statusView.centerYAnchor.constraint(equalTo: captureContent.centerYAnchor),
-            toast.centerXAnchor.constraint(equalTo: captureContent.centerXAnchor),
-            toast.bottomAnchor.constraint(equalTo: captureContent.bottomAnchor, constant: -16),
+            statusView.centerXAnchor.constraint(equalTo: imageArea.centerXAnchor),
+            statusView.centerYAnchor.constraint(equalTo: imageArea.centerYAnchor),
+            toast.centerXAnchor.constraint(equalTo: imageArea.centerXAnchor),
+            toast.bottomAnchor.constraint(equalTo: imageArea.bottomAnchor, constant: -16),
         ])
+        imageArea.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        captureContent.orientation = .horizontal
+        captureContent.spacing = 0
+        captureContent.alignment = .height
+        captureContent.distribution = .fill
+        captureContent.addArrangedSubview(imageArea)
+        captureContent.addArrangedSubview(meterPanel)
+    }
+
+    // MARK: Grid, crosshair, Color Meter
+
+    private func toggle(_ toggle: ViewerToolbar.Toggle) {
+        settings.update {
+            switch toggle {
+            case .grid: $0.gridEnabled.toggle()
+            case .crosshair: $0.crosshairEnabled.toggle()
+            case .meter: $0.meterVisible.toggle()
+            }
+        }
+        applyToggles()
+    }
+
+    private func applyToggles() {
+        let current = settings.settings
+        viewerView.showsGrid = current.gridEnabled
+        overlay.showsCrosshair = current.crosshairEnabled
+        meterPanel.isHidden = !current.meterVisible
+        viewerView.isPicking = current.meterVisible
+        toolbar.setToggle(.grid, isOn: current.gridEnabled)
+        toolbar.setToggle(.crosshair, isOn: current.crosshairEnabled)
+        toolbar.setToggle(.meter, isOn: current.meterVisible)
+    }
+
+    /// Whether the inspector is needed at all: for the crosshair or the Color Meter.
+    var isInspecting: Bool {
+        let current = settings.settings
+        return current.crosshairEnabled || current.meterVisible
+    }
+
+    private func pickColor() {
+        guard let pin = inspector.pinProbe() else { return }
+        showToast("Pinned \(pin.hex)")
+    }
+
+    private func copyText(_ text: String, what: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        showToast("Copied \(what)")
     }
 
     /// A short confirmation at the bottom of the Viewer, such as "View copied".

@@ -9,6 +9,11 @@ struct Settings: Codable, Equatable {
     var viewerAlwaysOnTop = false
     /// Where Save View / Save Source last saved.
     var screenshotDirectory: String?
+    /// Viewer overlays and the Color Meter panel.
+    var gridEnabled = false
+    var crosshairEnabled = true
+    var meterVisible = false
+    var pinnedColors: [PinnedColor] = []
 
     init() {}
 
@@ -19,6 +24,10 @@ struct Settings: Codable, Equatable {
         captureArea = try container.decodeIfPresent(CGRect.self, forKey: .captureArea)
         viewerAlwaysOnTop = try container.decodeIfPresent(Bool.self, forKey: .viewerAlwaysOnTop) ?? false
         screenshotDirectory = try container.decodeIfPresent(String.self, forKey: .screenshotDirectory)
+        gridEnabled = try container.decodeIfPresent(Bool.self, forKey: .gridEnabled) ?? false
+        crosshairEnabled = try container.decodeIfPresent(Bool.self, forKey: .crosshairEnabled) ?? true
+        meterVisible = try container.decodeIfPresent(Bool.self, forKey: .meterVisible) ?? false
+        pinnedColors = try container.decodeIfPresent([PinnedColor].self, forKey: .pinnedColors) ?? []
     }
 }
 

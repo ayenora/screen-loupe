@@ -2,7 +2,7 @@
 
 **A zoomed monitor exactly where you need it.** Pin a frame over any part of the screen, keep working there with your normal mouse and keyboard, and watch that spot magnified — live, pixel-true and perfectly still — in a window next to it.
 
-Status: the positioning and principles below are the owner's direction. Everything under [Proposed features](#proposed-features) is **proposed, not settled**; the owner picks what goes in and in which order.
+Status: the positioning and principles below are the owner's direction. Tier 1 is being built in this order: cursor in the Viewer → Color Meter → pixel grid → Viewer that fits the area; the first three are in (docs/design.md §4). Tiers 2 and 3 are **proposed, not settled**.
 
 ## Who it is for
 
@@ -15,7 +15,7 @@ Status: the positioning and principles below are the owner's direction. Everythi
 What makes Screen Loupe different is one workflow: **you work in place, and the magnified view sits beside you.** Four principles protect it.
 
 1. **Work in place, watch nearby.** The Capture Area stays where you put it. Clicks inside it go to the app underneath, so you keep working there with your ordinary cursor while the Viewer shows it big — on the same display or another one.
-2. **Nothing moves unless you move it.** The Viewer never re-centres, re-fits or jumps on its own. Its zoom and position change only when you change them. Frames arrive at up to 60 fps with no visible lag.
+2. **Nothing moves unless you move it.** The Viewer never re-centres, re-fits or jumps on its own. Its zoom and position change only when you change them. Resizing the Capture Area keeps the zoom and keeps every pixel already on screen where it is: dragging the right or bottom edge reveals more to the right or below, dragging the left or top edge reveals more to the left or above. Moving the area keeps the Viewer's framing and shows the new place. Fit is a command, applied once to the first frame and then only when asked for. Frames arrive at up to 60 fps with no visible lag.
 3. **Pixel-true.** At integer zoom every screen pixel is an exact square; nothing is smoothed. What you copy is exactly what you see, and colours are the real values from the screen.
 4. **Out of the way.** At rest the frame is a hairline with a small size label; handles appear only when the cursor comes near. The Viewer can float above other apps.
 
@@ -40,10 +40,9 @@ Rows marked with sources describe the vendors' documentation; the table should b
 
 Proposed, not settled. Ordered by how much each strengthens the core experience. TASK.md §22 stays in force: no OCR, annotations, drawing, image editing, accounts, telemetry or AI features.
 
-### Tier 1 — makes "a zoomed monitor where you need it" real
+### Tier 1 — makes "a zoomed monitor where you need it" real (decided, in this order)
 
 - **Cursor in the Viewer.** The capture hides the real cursor so it doesn't cover pixels. Draw a thin crosshair (or the pointer's hotspot) in the Viewer where the real cursor is inside the Capture Area, so you see exactly what you point at, magnified. This is the single most important piece for working in place.
-- **Stable framing when the area changes.** Today Fit re-fits when the area is resized, so the zoom changes while you drag. Proposed: resizing keeps the zoom and keeps the top-left of the area anchored in the Viewer; Fit becomes a one-off command, not a mode that keeps re-fitting.
 - **Viewer that fits the area exactly.** A command (and an optional link) that sizes the Viewer window to *area × zoom*, so the whole magnified area is visible without panning — "zoom this spot of my monitor 4×".
 - **Built-in Color Meter** (the Pixel Inspector of TASK.md §8, extended):
   - reads the pixel under the cursor in the Viewer **or under the real cursor inside the Capture Area**;
@@ -52,7 +51,7 @@ Proposed, not settled. Ordered by how much each strengthens the core experience.
   - pin two colours to compare them and show their WCAG contrast ratio.
 - **Pixel grid** (TASK.md §9).
 
-### Tier 2 — the designer's daily loop
+### Tier 2 — the designer's daily loop (proposed, not settled)
 
 - **Freeze frame.** Pause the live view (Space) to study a transient state — a hover, a pressed button, a frame of an animation — then resume.
 - **Measure in the Viewer.** Drag between two points to get the distance in px and pt, snapping to colour edges, at full magnification.
@@ -67,9 +66,7 @@ Proposed, not settled. Ordered by how much each strengthens the core experience.
 
 ## Open
 
-1. Which Tier 1 features go in right after the MVP, and in which order. Proposed: cursor in the Viewer → stable framing → Color Meter → pixel grid → Viewer that fits the area.
-2. Whether Fit should stop re-fitting automatically (changes current behaviour).
-3. Distribution: direct download (as now, no sandbox) or the Mac App Store (needs the sandbox; docs/design.md §4).
+1. Distribution: direct download (as now, no sandbox) or the Mac App Store (needs the sandbox; docs/design.md §4).
 
 ## Sources
 

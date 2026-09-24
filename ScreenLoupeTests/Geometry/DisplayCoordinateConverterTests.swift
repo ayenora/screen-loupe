@@ -113,6 +113,27 @@ struct DisplayCoordinateConverterTests {
         }
     }
 
+    @Test(arguments: [
+        // 1×: the top-left point is pixel (0, 0); y grows downwards from the top edge.
+        (CGPoint(x: 100, y: 199.5), CGFloat(1), 0, 0),
+        (CGPoint(x: 150.2, y: 150), CGFloat(1), 50, 50),
+        // 2×: every point is two pixels.
+        (CGPoint(x: 100.75, y: 199.9), CGFloat(2), 1, 0),
+        (CGPoint(x: 299.9, y: 100.1), CGFloat(2), 399, 199),
+    ])
+    func areaPixelUnderAGlobalPoint(point: CGPoint, scale: CGFloat, x: Int, y: Int) throws {
+        let area = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let pixel = try #require(DisplayCoordinateConverter.areaPixel(at: point, inArea: area, scale: scale))
+        #expect(pixel.x == x)
+        #expect(pixel.y == y)
+    }
+
+    @Test func noAreaPixelOutsideTheArea() {
+        let area = CGRect(x: 100, y: 100, width: 200, height: 100)
+        #expect(DisplayCoordinateConverter.areaPixel(at: CGPoint(x: 99, y: 150), inArea: area, scale: 2) == nil)
+        #expect(DisplayCoordinateConverter.areaPixel(at: CGPoint(x: 150, y: 200.5), inArea: area, scale: 2) == nil)
+    }
+
     @Test func retinaCaptureOutputsBackingPixels() throws {
         let area = GlobalRect(rect: CGRect(x: 100.5, y: 200, width: 300, height: 150))
         let geometry = try #require(converter.captureGeometry(for: area))

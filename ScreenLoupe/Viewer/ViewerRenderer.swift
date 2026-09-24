@@ -10,6 +10,11 @@ import OSLog
 @MainActor
 final class ViewerRenderer: NSObject, MTKViewDelegate {
     static let backgroundColor = MTLClearColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+    /// The pixel grid appears from this zoom on (TASK.md §9: 800%).
+    static let gridMinimumZoom: CGFloat = 8
+
+    /// Whether the user turned the pixel grid on.
+    var showsGrid = false
 
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
@@ -72,8 +77,13 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             texture = makeTexture(frame.pixelBuffer)
             if let texture, let metalTexture = CVMetalTextureGetTexture(texture) {
                 var uniforms = quad
+                let zoom = zoomPan.state.zoom
+                var fragment = SIMD4<Float>(
+                    Float(frame.pixelSize.width), Float(frame.pixelSize.height), Float(zoom),
+                    showsGrid && zoom >= Self.gridMinimumZoom ? 1 : 0)
                 encoder.setRenderPipelineState(pipeline)
                 encoder.setVertexBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                encoder.setFragmentBytes(&fragment, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
                 encoder.setFragmentTexture(metalTexture, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }

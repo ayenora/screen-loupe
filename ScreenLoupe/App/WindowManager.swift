@@ -9,23 +9,29 @@ final class WindowManager {
     private let capture = ScreenCaptureManager()
     private let zoomPan = ZoomPanController()
     private let settings: SettingsStore
+    private let inspector: PixelInspector
+    private var mouseMonitors: [Any] = []
     /// Tracked here: during `windowWillClose` the window still reports itself visible.
     private var isViewerOpen = false
 
     init(settings: SettingsStore, permissions: PermissionsManager) {
         self.settings = settings
+        inspector = PixelInspector(frameStore: capture.frameStore, settings: settings)
         captureArea = CaptureAreaController(settings: settings)
         viewer = ViewerWindowController(
-            permissions: permissions, settings: settings, frameStore: capture.frameStore, zoomPan: zoomPan)
+            permissions: permissions, settings: settings, frameStore: capture.frameStore, zoomPan: zoomPan,
+            inspector: inspector)
 
-        capture.onFrame = { [weak self] in self?.viewer.frameArrived() }
+        capture.onFrame = { [weak self] in
+            self?.viewer.frameArrived()
+            self?.inspector.frameArrived()
+        }
         // Stop Sharing in the system menu acts like closing the Viewer: both windows go away.
         capture.onUserStopped = { [weak self] in self?.viewer.close() }
         capture.onProblem = { [weak self] problem in self?.viewer.setCaptureProblem(problem) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
         viewer.onCopyView = { [weak self] in self?.copyView() }
         viewer.onSaveView = { [weak self] in self?.saveView() }
-        captureArea.onChange = { [weak self] _ in self?.updateCapture() }
         viewer.onPermissionChange = { [weak self] in self?.updateCapture() }
         // Closing the Viewer hides the Capture Area too; the app stays in the menu bar.
         viewer.onClose = { [weak self] in
@@ -33,8 +39,57 @@ final class WindowManager {
             isViewerOpen = false
             captureArea.hide()
             updateCapture()
+            stopTrackingCursor()
+        }
+        captureArea.onChange = { [weak self] _ in
+            self?.updateCapture()
+            self?.trackCursor()
         }
         viewer.placeOnFirstLaunch(beside: captureArea.captureRect)
+    }
+
+    // MARK: The real cursor over the Capture Area
+
+    /// Follows the real cursor while the Viewer is open, so the crosshair and the Color Meter show
+    /// the pixel it points at inside the Capture Area (docs/product.md, "Cursor in the Viewer").
+    private func startTrackingCursor() {
+        guard mouseMonitors.isEmpty else { return }
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
+        if let monitor = NSEvent.addGlobalMonitorForEvents(
+            matching: mask,
+            handler: { [weak self] _ in
+                MainActor.assumeIsolated { self?.trackCursor() }
+            })
+        {
+            mouseMonitors.append(monitor)
+        }
+        if let monitor = NSEvent.addLocalMonitorForEvents(
+            matching: mask,
+            handler: { [weak self] event in
+                MainActor.assumeIsolated { self?.trackCursor() }
+                return event
+            })
+        {
+            mouseMonitors.append(monitor)
+        }
+        trackCursor()
+    }
+
+    private func stopTrackingCursor() {
+        mouseMonitors.forEach(NSEvent.removeMonitor)
+        mouseMonitors.removeAll()
+        inspector.setAreaPixel(nil)
+    }
+
+    private func trackCursor() {
+        guard viewer.isInspecting, captureArea.isVisible, let scale = captureArea.captureGeometry?.display.scale
+        else {
+            inspector.setAreaPixel(nil)
+            return
+        }
+        inspector.setAreaPixel(
+            DisplayCoordinateConverter.areaPixel(
+                at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale))
     }
 
     /// Brings the Viewer forward. A Viewer that was closed comes back together with its Capture Area.
@@ -43,6 +98,7 @@ final class WindowManager {
             captureArea.show()
         }
         isViewerOpen = true
+        startTrackingCursor()
         viewer.showWindow(nil)
         viewer.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
