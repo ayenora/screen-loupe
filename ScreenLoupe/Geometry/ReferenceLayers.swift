@@ -42,20 +42,20 @@ struct ReferenceLayer: Codable, Equatable, Identifiable, Sendable {
         self.origin = origin
     }
 
-    /// A layer saved by an older version keeps the defaults for what it doesn't have, rather than
-    /// failing the whole project.
+    /// A setting that is missing or unreadable (saved by an older or a newer version) keeps its
+    /// default, rather than failing the whole project. The image itself is required.
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        fileName = try container.decode(String.self, forKey: .fileName)
-        imageSize = try container.decode(CGSize.self, forKey: .imageSize)
-        origin = try container.decodeIfPresent(CGPoint.self, forKey: .origin) ?? .zero
-        scale = try container.decodeIfPresent(CGFloat.self, forKey: .scale) ?? 1
-        opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 0.5
-        blend = try container.decodeIfPresent(ReferenceBlend.self, forKey: .blend) ?? .normal
-        isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
-        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try c.decode(UUID.self, forKey: .id), name: try c.decode(String.self, forKey: .name),
+            fileName: try c.decode(String.self, forKey: .fileName),
+            imageSize: try c.decode(CGSize.self, forKey: .imageSize))
+        origin = c.value(.origin, or: origin)
+        scale = c.value(.scale, or: scale)
+        opacity = c.value(.opacity, or: opacity)
+        blend = c.value(.blend, or: blend)
+        isVisible = c.value(.isVisible, or: isVisible)
+        isPinned = c.value(.isPinned, or: isPinned)
     }
 }
 
@@ -95,9 +95,10 @@ struct ReferenceStack: Codable, Equatable, Sendable {
     init() {}
 
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        layers = try container.decodeIfPresent([ReferenceLayer].self, forKey: .layers) ?? []
-        selectedID = try container.decodeIfPresent(UUID.self, forKey: .selectedID)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // An unreadable layer is dropped; the others stay.
+        layers = c.value(.layers, or: [Lenient<ReferenceLayer>]()).compactMap(\.value)
+        selectedID = c.value(.selectedID, or: nil)
     }
 
     var canAdd: Bool { layers.count < Self.limit }

@@ -20,7 +20,7 @@ struct Settings: Codable, Equatable {
     /// With both side panels open, the one that is expanded.
     var expandedSidePanel = SidePanel.colorMeter
     /// The side panel column's width in points; its content scales with it.
-    var sidePanelWidth: Double = 250
+    var sidePanelWidth = Double(SidePanel.widthRange.lowerBound)
     var pinnedColors: [PinnedColor] = []
     /// The Viewer's zoom when the app last quit or the Viewer closed.
     var viewerZoom: Double?
@@ -56,47 +56,38 @@ struct Settings: Codable, Equatable {
 
     init() {}
 
-    /// Keys missing from settings saved by an older version keep their defaults instead of failing
-    /// the whole decode.
+    /// A key that is missing or unreadable (saved by an older or a newer version) keeps its default;
+    /// the other settings load as saved.
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let fallback = Settings()
-        captureArea = try container.decodeIfPresent(CGRect.self, forKey: .captureArea)
-        captureAreaPinned = try container.decodeIfPresent(Bool.self, forKey: .captureAreaPinned) ?? false
-        viewerAlwaysOnTop = try container.decodeIfPresent(Bool.self, forKey: .viewerAlwaysOnTop) ?? false
-        screenshotDirectory = try container.decodeIfPresent(String.self, forKey: .screenshotDirectory)
-        gridEnabled = try container.decodeIfPresent(Bool.self, forKey: .gridEnabled) ?? false
-        crosshairEnabled = try container.decodeIfPresent(Bool.self, forKey: .crosshairEnabled) ?? true
-        meterVisible = try container.decodeIfPresent(Bool.self, forKey: .meterVisible) ?? false
-        referencesVisible = try container.decodeIfPresent(Bool.self, forKey: .referencesVisible) ?? false
-        expandedSidePanel =
-            try container.decodeIfPresent(SidePanel.self, forKey: .expandedSidePanel) ?? fallback.expandedSidePanel
-        sidePanelWidth = try container.decodeIfPresent(Double.self, forKey: .sidePanelWidth) ?? fallback.sidePanelWidth
-        pinnedColors = try container.decodeIfPresent([PinnedColor].self, forKey: .pinnedColors) ?? []
-        viewerZoom = try container.decodeIfPresent(Double.self, forKey: .viewerZoom)
-        showsDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showsDockIcon) ?? fallback.showsDockIcon
-        showsWindowsOnLaunch =
-            try container.decodeIfPresent(Bool.self, forKey: .showsWindowsOnLaunch) ?? fallback.showsWindowsOnLaunch
-        frameColor = try container.decodeIfPresent(SettingsColor.self, forKey: .frameColor) ?? fallback.frameColor
-        frameLineWidth =
-            try container.decodeIfPresent(Double.self, forKey: .frameLineWidth) ?? fallback.frameLineWidth
-        showsSizeAtRest = try container.decodeIfPresent(Bool.self, forKey: .showsSizeAtRest) ?? fallback.showsSizeAtRest
-        sizeUnits = try container.decodeIfPresent(SizeUnits.self, forKey: .sizeUnits) ?? fallback.sizeUnits
-        viewerBackground =
-            try container.decodeIfPresent(ViewerBackground.self, forKey: .viewerBackground) ?? fallback.viewerBackground
-        gridMinimumZoom =
-            try container.decodeIfPresent(Double.self, forKey: .gridMinimumZoom) ?? fallback.gridMinimumZoom
-        gridLines = try container.decodeIfPresent(GridLines.self, forKey: .gridLines) ?? fallback.gridLines
-        crosshairColor =
-            try container.decodeIfPresent(SettingsColor.self, forKey: .crosshairColor) ?? fallback.crosshairColor
-        wheelZoomNeedsCommand =
-            try container.decodeIfPresent(Bool.self, forKey: .wheelZoomNeedsCommand) ?? fallback.wheelZoomNeedsCommand
-        gridInCopyView = try container.decodeIfPresent(Bool.self, forKey: .gridInCopyView) ?? fallback.gridInCopyView
-        fileNameStyle =
-            try container.decodeIfPresent(FileNameStyle.self, forKey: .fileNameStyle) ?? fallback.fileNameStyle
-        revealsSavedFile =
-            try container.decodeIfPresent(Bool.self, forKey: .revealsSavedFile) ?? fallback.revealsSavedFile
-        shortcuts = try container.decodeIfPresent(Shortcuts.self, forKey: .shortcuts) ?? fallback.shortcuts
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Settings()
+        captureArea = c.value(.captureArea, or: d.captureArea)
+        captureAreaPinned = c.value(.captureAreaPinned, or: d.captureAreaPinned)
+        viewerAlwaysOnTop = c.value(.viewerAlwaysOnTop, or: d.viewerAlwaysOnTop)
+        screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
+        gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
+        crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)
+        meterVisible = c.value(.meterVisible, or: d.meterVisible)
+        referencesVisible = c.value(.referencesVisible, or: d.referencesVisible)
+        expandedSidePanel = c.value(.expandedSidePanel, or: d.expandedSidePanel)
+        sidePanelWidth = c.value(.sidePanelWidth, or: d.sidePanelWidth)
+        pinnedColors = c.value(.pinnedColors, or: d.pinnedColors)
+        viewerZoom = c.value(.viewerZoom, or: d.viewerZoom)
+        showsDockIcon = c.value(.showsDockIcon, or: d.showsDockIcon)
+        showsWindowsOnLaunch = c.value(.showsWindowsOnLaunch, or: d.showsWindowsOnLaunch)
+        frameColor = c.value(.frameColor, or: d.frameColor)
+        frameLineWidth = c.value(.frameLineWidth, or: d.frameLineWidth)
+        showsSizeAtRest = c.value(.showsSizeAtRest, or: d.showsSizeAtRest)
+        sizeUnits = c.value(.sizeUnits, or: d.sizeUnits)
+        viewerBackground = c.value(.viewerBackground, or: d.viewerBackground)
+        gridMinimumZoom = c.value(.gridMinimumZoom, or: d.gridMinimumZoom)
+        gridLines = c.value(.gridLines, or: d.gridLines)
+        crosshairColor = c.value(.crosshairColor, or: d.crosshairColor)
+        wheelZoomNeedsCommand = c.value(.wheelZoomNeedsCommand, or: d.wheelZoomNeedsCommand)
+        gridInCopyView = c.value(.gridInCopyView, or: d.gridInCopyView)
+        fileNameStyle = c.value(.fileNameStyle, or: d.fileNameStyle)
+        revealsSavedFile = c.value(.revealsSavedFile, or: d.revealsSavedFile)
+        shortcuts = c.value(.shortcuts, or: d.shortcuts)
     }
 }
 
@@ -137,11 +128,19 @@ struct SettingsColor: Codable, Hashable, Sendable {
 
     static let blue = SettingsColor(10, 132, 255)
     static let orange = SettingsColor(255, 107, 0)
+    static let amber = SettingsColor(255, 159, 10)
+    static let pink = SettingsColor(255, 55, 95)
+    static let green = SettingsColor(48, 209, 88)
+    static let purple = SettingsColor(191, 90, 242)
+    static let white = SettingsColor(255, 255, 255)
 }
 
 /// A panel at the right of the Viewer.
 enum SidePanel: String, Codable, Sendable {
     case colorMeter, references
+
+    /// The side panel column's width in points. At the narrowest the panels' content has scale 1.
+    static let widthRange: ClosedRange<CGFloat> = 250...320
 }
 
 /// What the Viewer shows around the image and where nothing is captured.

@@ -9,7 +9,6 @@ import SwiftUI
 /// and the blend switch are drawn here rather than taken from AppKit, so they scale too.
 struct ReferencesPanel: View {
     let references: ReferencesController
-    let window: () -> NSWindow?
 
     var body: some View {
         let s = references.scale
@@ -17,14 +16,14 @@ struct ReferencesPanel: View {
             HStack {
                 Text("References").font(.system(size: 13 * s, weight: .bold))
                 Spacer()
-                PanelButton(title: "Add…", scale: s) { references.addFromFiles(in: window()) }
-                    .disabled(references.layers.count >= ReferenceStack.limit)
+                PanelButton(title: "Add…", scale: s) { references.addFromFiles() }
+                    .disabled(references.stack.layers.count >= ReferenceStack.limit)
             }
             .padding(.horizontal, 14 * s)
             .padding(.top, 12 * s)
             .padding(.bottom, 8 * s)
 
-            if references.layers.isEmpty {
+            if references.stack.layers.isEmpty {
                 Text("Add an image — a design export or a screenshot — to lay it over the live pixels.")
                     .font(.system(size: 12 * s))
                     .foregroundStyle(.secondary)
@@ -32,7 +31,7 @@ struct ReferencesPanel: View {
                 Spacer()
             } else {
                 List(selection: selection) {
-                    ForEach(references.layers) { layer in
+                    ForEach(references.stack.layers) { layer in
                         LayerRow(references: references, layer: layer)
                             .tag(layer.id)
                             .listRowInsets(EdgeInsets(top: 0, leading: 6 * s, bottom: 0, trailing: 6 * s))
@@ -46,13 +45,13 @@ struct ReferencesPanel: View {
                 .scrollContentBackground(.hidden)
                 .environment(\.defaultMinListRowHeight, 30 * s)
 
-                if let layer = references.layers.first(where: { $0.id == references.selectedID }) {
+                if let layer = references.stack.layers.first(where: { $0.id == references.stack.selectedID }) {
                     LayerProperties(references: references, layer: layer)
                 }
             }
 
             Divider()
-            Text("\(references.layers.count) of \(ReferenceStack.limit) · drag a row to reorder · top is on top")
+            Text("\(references.stack.layers.count) of \(ReferenceStack.limit) · drag a row to reorder · top is on top")
                 .font(.system(size: 10.5 * s))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14 * s)
@@ -62,7 +61,7 @@ struct ReferencesPanel: View {
     }
 
     private var selection: Binding<UUID?> {
-        Binding(get: { references.selectedID }, set: { references.select($0) })
+        Binding(get: { references.stack.selectedID }, set: { references.select($0) })
     }
 }
 
@@ -73,7 +72,7 @@ private struct LayerRow: View {
     let layer: ReferenceLayer
 
     private var s: CGFloat { references.scale }
-    private var isSelected: Bool { references.selectedID == layer.id }
+    private var isSelected: Bool { references.stack.selectedID == layer.id }
 
     var body: some View {
         HStack(spacing: 6 * s) {
@@ -338,6 +337,9 @@ private struct ScrubLabel: View {
     /// The value when the drag began; the drag sets start + travel, so rounding in the binding
     /// never eats small steps.
     @State private var start: Double?
+    /// The ↔ cursor is pushed while the pointer is over the caption, and popped when it leaves or
+    /// the caption goes away under it (another layer selected, this one deleted).
+    @State private var pushedCursor = false
 
     var body: some View {
         Text(title)
@@ -350,7 +352,8 @@ private struct ScrubLabel: View {
             }
             .padding(.vertical, 2 * scale)
             .contentShape(Rectangle())
-            .onHover { inside in inside ? NSCursor.resizeLeftRight.push() : NSCursor.pop() }
+            .onHover { inside in setCursorPushed(inside) }
+            .onDisappear { setCursorPushed(false) }
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { drag in
@@ -363,6 +366,12 @@ private struct ScrubLabel: View {
                     .onEnded { _ in start = nil }
             )
             .help("Drag left or right to change; Shift for ×10, Option for ×0.1")
+    }
+
+    private func setCursorPushed(_ pushed: Bool) {
+        guard pushed != pushedCursor else { return }
+        pushedCursor = pushed
+        pushed ? NSCursor.resizeLeftRight.push() : NSCursor.pop()
     }
 }
 

@@ -63,9 +63,8 @@ struct CaptureAreaSettingsView: View {
             SettingsRow("Frame color", note: "Line, handles and band. White reads on dark UIs.") {
                 ColorSwatches(
                     presets: [
-                        ("Blue", .blue), ("Orange", SettingsColor(255, 159, 10)), ("Pink", SettingsColor(255, 55, 95)),
-                        ("Green", SettingsColor(48, 209, 88)), ("Purple", SettingsColor(191, 90, 242)),
-                        ("White", SettingsColor(255, 255, 255)),
+                        ("Blue", .blue), ("Orange", .amber), ("Pink", .pink), ("Green", .green), ("Purple", .purple),
+                        ("White", .white),
                     ], selection: store.binding(\.frameColor))
             }
             SettingsRow("Line") {
@@ -125,9 +124,9 @@ struct ViewerSettingsView: View {
             SettingsRow("Crosshair color") {
                 ColorSwatches(
                     presets: [
-                        ("Orange", .orange), ("Blue", .blue), ("Pink", SettingsColor(255, 55, 95)),
-                        ("Green", SettingsColor(48, 209, 88)), ("White", SettingsColor(255, 255, 255)),
-                    ], selection: store.binding(\.crosshairColor))
+                        ("Orange", .orange), ("Blue", .blue), ("Pink", .pink), ("Green", .green), ("White", .white),
+                    ],
+                    selection: store.binding(\.crosshairColor))
             }
             SettingsRow("Zoom with the wheel", note: "Without ⌘ the wheel pans. Trackpad scrolling always pans.") {
                 Picker("Zoom with the wheel", selection: store.binding(\.wheelZoomNeedsCommand)) {

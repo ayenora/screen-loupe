@@ -4,18 +4,17 @@ import AppKit
 /// (docs/product.md, References). With both open only one is expanded and fills the height; the
 /// other is a strip in its place that expands it when clicked.
 ///
-/// Dragging the left edge widens the column from 250 to 320 pt, and everything in it grows in
-/// proportion: each panel multiplies its own fonts, sizes and spacings by `scale`. No drawing
+/// Dragging the left edge widens the column within `SidePanel.widthRange`, and everything in it grows
+/// in proportion: each panel multiplies its own fonts, sizes and spacings by `scale`. No drawing
 /// transform is involved, so clicks land where things are drawn. The Color Meter scrolls when the
 /// column is short.
 final class SidePanelStack: NSView {
     var onExpand: ((SidePanel) -> Void)?
     /// Called with the new width when a drag of the left edge ends.
     var onResize: ((CGFloat) -> Void)?
-    /// Called with the content scale, 1 at 250 pt, whenever the width changes.
+    /// Called with the content scale, 1 at the narrowest, whenever the width changes.
     var onScale: ((CGFloat) -> Void)?
 
-    static let widthRange: ClosedRange<CGFloat> = ColorMeterPanel.width...320
     /// How far into the column the left edge can be grabbed, in points.
     private static let edgeGrab: CGFloat = 5
     private static let stripHeight: CGFloat = 32
@@ -39,7 +38,7 @@ final class SidePanelStack: NSView {
             view.translatesAutoresizingMaskIntoConstraints = true
             addSubview(view)
         }
-        widthConstraint = widthAnchor.constraint(equalToConstant: ColorMeterPanel.width)
+        widthConstraint = widthAnchor.constraint(equalToConstant: SidePanel.widthRange.lowerBound)
         widthConstraint.isActive = true
         meterStrip.onClick = { [weak self] in self?.onExpand?(.colorMeter) }
         referencesStrip.onClick = { [weak self] in self?.onExpand?(.references) }
@@ -97,7 +96,8 @@ final class SidePanelStack: NSView {
     var width: CGFloat {
         get { widthConstraint.constant }
         set {
-            widthConstraint.constant = min(max(newValue, Self.widthRange.lowerBound), Self.widthRange.upperBound)
+            widthConstraint.constant = min(
+                max(newValue, SidePanel.widthRange.lowerBound), SidePanel.widthRange.upperBound)
             let scale = self.scale
             meterPanel.scale = scale
             meterStrip.scale = scale
@@ -107,7 +107,7 @@ final class SidePanelStack: NSView {
         }
     }
 
-    var scale: CGFloat { width / ColorMeterPanel.width }
+    var scale: CGFloat { width / SidePanel.widthRange.lowerBound }
 
     override func layout() {
         super.layout()

@@ -1,6 +1,7 @@
 import AppKit
 import ImageIO
 import OSLog
+import Observation
 
 /// The working project (docs/product.md, Project): the reference layers, with copies of their
 /// images, and the ruler. There is one, saved as you work and restored at launch.
@@ -8,6 +9,7 @@ import OSLog
 /// It lives in Application Support: `project.json` and the images beside it, so a reference keeps
 /// working when its original file moves or goes away.
 @MainActor
+@Observable
 final class ProjectStore {
     struct Project: Codable, Equatable {
         var references = ReferenceStack()
@@ -15,18 +17,19 @@ final class ProjectStore {
 
         init() {}
 
-        /// Keys a later version adds are missing from an older file; they keep their defaults.
+        /// A key that is missing or unreadable keeps its default; the rest loads as saved.
         init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            references = try container.decodeIfPresent(ReferenceStack.self, forKey: .references) ?? ReferenceStack()
-            ruler = try container.decodeIfPresent(CornerRuler.self, forKey: .ruler)
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let d = Project()
+            references = c.value(.references, or: d.references)
+            ruler = c.value(.ruler, or: d.ruler)
         }
     }
 
     private(set) var project: Project
-    let folder: URL
-    private var saveTask: Task<Void, Never>?
-    private let log = Logger(subsystem: "com.ayenora.screenloupe", category: "project")
+    @ObservationIgnored let folder: URL
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private let log = Logger(category: "project")
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

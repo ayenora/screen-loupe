@@ -95,6 +95,30 @@ struct ReferenceLayersCodingTests {
         #expect(!layer.isPinned)
     }
 
+    @Test func anUnknownValueCostsOnlyItsOwnSetting() throws {
+        let json = """
+            {"id":"8C1F5C4E-8A57-4E61-9F2E-1B2B3C4D5E6F","name":"a.png","fileName":"a.png","imageSize":[100,50],
+             "blend":"multiply","opacity":"half","scale":2,"isPinned":true}
+            """
+        let layer = try JSONDecoder().decode(ReferenceLayer.self, from: Data(json.utf8))
+        #expect(layer.blend == .normal)
+        #expect(layer.opacity == 0.5)
+        #expect(layer.scale == 2)
+        #expect(layer.isPinned)
+    }
+
+    @Test func anUnreadableLayerIsDroppedAndTheOthersStay() throws {
+        let json = """
+            {"layers":[
+              {"id":"8C1F5C4E-8A57-4E61-9F2E-1B2B3C4D5E6F","name":"a.png","fileName":"a.png","imageSize":[10,10]},
+              {"id":"not a uuid","name":"b.png","fileName":"b.png","imageSize":[10,10]}
+            ],"selectedID":"8C1F5C4E-8A57-4E61-9F2E-1B2B3C4D5E6F"}
+            """
+        let stack = try JSONDecoder().decode(ReferenceStack.self, from: Data(json.utf8))
+        #expect(stack.layers.map(\.name) == ["a.png"])
+        #expect(stack.selected?.name == "a.png")
+    }
+
     @Test func aStackRoundTrips() throws {
         var stack = ReferenceStack()
         stack.add(ReferenceLayer(name: "a", fileName: "a.png", imageSize: CGSize(width: 10, height: 10)))

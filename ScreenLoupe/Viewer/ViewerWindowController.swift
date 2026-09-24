@@ -47,8 +47,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         self.settings = settings
         self.inspector = inspector
         self.zoomPan = zoomPan
-        viewerView = ViewerView(frameStore: frameStore, zoomPan: zoomPan, inspector: inspector)
+        let viewerView = ViewerView(frameStore: frameStore, zoomPan: zoomPan, inspector: inspector)
+        self.viewerView = viewerView
         overlay = ViewerOverlayView(zoomPan: zoomPan, inspector: inspector)
+        overlay.drawableScale = { [weak viewerView] in viewerView?.drawableScale ?? 1 }
         meterPanel = ColorMeterPanel(inspector: inspector)
         toolbar = ViewerToolbar(zoomPan: zoomPan)
         ruler = RulerController(zoomPan: zoomPan, project: project)
@@ -57,7 +59,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         references = ReferencesController(project: project, zoomPan: zoomPan)
         viewerView.references = references
         overlay.references = references
-        let referencesPanel = NSHostingView(rootView: ReferencesPanel(references: references, window: { nil }))
+        let referencesPanel = NSHostingView(rootView: ReferencesPanel(references: references))
         // The side panel column sizes it, not its content.
         referencesPanel.sizingOptions = []
         sidePanels = SidePanelStack(meter: meterPanel, references: referencesPanel)
@@ -104,7 +106,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         toolbar.onSave = { [weak self] in self?.onSaveView?() }
         toolbar.onToggleFreeze = { [weak self] in self?.onToggleFreeze?() }
         toolbar.onToggleRuler = { [weak self] in self?.toggleRuler() }
-        referencesPanel.rootView = ReferencesPanel(references: references, window: { [weak self] in self?.window })
+        references.window = window
         references.onChange = { [weak self] in
             self?.viewerView.requestDraw()
             self?.overlay.needsDisplay = true
@@ -123,6 +125,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         viewerView.onToggleFreeze = { [weak self] in self?.onToggleFreeze?() }
         statusView.onRetry = { [weak self] in self?.onRetry?() }
         statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
+        // Any change: what applyToggles sets is left alone when it didn't change.
         settings.observe { [weak self] _, _ in self?.applyToggles() }
         applyAlwaysOnTop()
         refreshContent()
@@ -266,6 +269,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         toolbar.setAlwaysOnTop(isAlwaysOnTop)
     }
 
+    /// The Viewer's drawable pixels per point, for Copy View's checkerboard.
+    var drawableScale: CGFloat { viewerView.drawableScale }
+
     /// The visible reference layers for Copy View, bottom first.
     var referencesForExport: [(layer: ReferenceLayer, image: CGImage)] { references.drawable }
 
@@ -298,13 +304,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     /// never grows beyond its screen; a bigger image still pans (docs/product.md, Viewer).
     func sizeToArea() {
         guard canSizeToArea, let window, let screen = window.screen else { return }
-        let scale = window.backingScaleFactor
         let image = zoomPan.state.scaledContentSize
+        let drawableScale = viewerView.drawableScale
         let chrome = CGSize(
             width: window.frame.width - imageArea.frame.width, height: window.frame.height - imageArea.frame.height)
         let frame = ViewerWindowFit.frame(
-            imageSize: CGSize(width: image.width / scale, height: image.height / scale), chrome: chrome,
-            window: window.frame, visible: screen.visibleFrame, minSize: window.minSize, scale: scale)
+            imageSize: CGSize(width: image.width / drawableScale, height: image.height / drawableScale),
+            chrome: chrome, window: window.frame, visible: screen.visibleFrame, minSize: window.minSize,
+            scale: window.backingScaleFactor)
         window.setFrame(frame, display: true, animate: true)
     }
 

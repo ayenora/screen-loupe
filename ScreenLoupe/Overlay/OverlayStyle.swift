@@ -26,8 +26,8 @@ struct FrameStyle {
         self.showsLabelAtRest = showsLabelAtRest
         let dark = SettingsColor(red: color.red * 0.78, green: color.green * 0.78, blue: color.blue * 0.78)
         tabFill = dark.nsColor
-        onTab = dark.contrastRatio(with: SettingsColor(255, 255, 255)) >= 4.5 ? .white : .black
-        handleFill = color.contrastRatio(with: SettingsColor(255, 255, 255)) >= 1.5 ? .white : .black
+        onTab = dark.contrastRatio(with: .white) >= 4.5 ? .white : .black
+        handleFill = color.contrastRatio(with: .white) >= 1.5 ? .white : .black
     }
 }
 

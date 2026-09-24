@@ -11,7 +11,6 @@ final class WindowManager {
     private let project = ProjectStore()
     private let settings: SettingsStore
     private let inspector: PixelInspector
-    private var mouseMonitors: [Any] = []
     /// Tracked here: during `windowWillClose` the window still reports itself visible.
     private var isViewerOpen = false
 
@@ -44,50 +43,24 @@ final class WindowManager {
             saveViewerState()
             captureArea.hide()
             updateCapture()
-            stopTrackingCursor()
+            trackCursor()
         }
-        captureArea.onChange = { [weak self] _ in
+        captureArea.onChange = { [weak self] in
             self?.updateCapture()
             self?.trackCursor()
         }
+        captureArea.onMouseMoved = { [weak self] in self?.trackCursor() }
         viewer.placeOnFirstLaunch(beside: captureArea.captureRect)
     }
 
     // MARK: The real cursor over the Capture Area
 
     /// Follows the real cursor while the Viewer is open, so the crosshair and the Color Meter show
-    /// the pixel it points at inside the Capture Area (docs/product.md, Crosshair).
-    private func startTrackingCursor() {
-        guard mouseMonitors.isEmpty else { return }
-        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
-        if let monitor = NSEvent.addGlobalMonitorForEvents(
-            matching: mask,
-            handler: { [weak self] _ in
-                MainActor.assumeIsolated { self?.trackCursor() }
-            })
-        {
-            mouseMonitors.append(monitor)
-        }
-        if let monitor = NSEvent.addLocalMonitorForEvents(
-            matching: mask,
-            handler: { [weak self] event in
-                MainActor.assumeIsolated { self?.trackCursor() }
-                return event
-            })
-        {
-            mouseMonitors.append(monitor)
-        }
-        trackCursor()
-    }
-
-    private func stopTrackingCursor() {
-        mouseMonitors.forEach(NSEvent.removeMonitor)
-        mouseMonitors.removeAll()
-        inspector.setAreaPixel(nil)
-    }
-
+    /// the pixel it points at inside the Capture Area (docs/product.md, Crosshair). The Capture Area
+    /// reports mouse moves while it is shown; without it there is nothing to point at.
     private func trackCursor() {
-        guard viewer.isInspecting, captureArea.isVisible, let scale = captureArea.captureGeometry?.display.scale
+        guard isViewerOpen, viewer.isInspecting, captureArea.isVisible,
+            let scale = captureArea.captureGeometry?.display.scale
         else {
             inspector.setAreaPixel(nil)
             return
@@ -103,7 +76,7 @@ final class WindowManager {
             captureArea.show()
         }
         isViewerOpen = true
-        startTrackingCursor()
+        trackCursor()
         viewer.showWindow(nil)
         viewer.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
@@ -112,6 +85,7 @@ final class WindowManager {
 
     func toggleCaptureArea() {
         captureArea.toggle()
+        trackCursor()
     }
 
     /// The global Show / Hide Viewer shortcut. Hiding closes the Viewer, which hides the frame too.
@@ -131,11 +105,7 @@ final class WindowManager {
 
     /// Space in the Viewer, the toolbar's pause button, View › Freeze Frame.
     func toggleFreeze() {
-        guard isFrozen || canExport else {
-            // Nothing to freeze yet; the toolbar button has already flipped itself.
-            viewer.setFrozen(false)
-            return NSSound.beep()
-        }
+        guard isFrozen || canExport else { return NSSound.beep() }
         setFrozen(!isFrozen)
     }
 
@@ -160,8 +130,8 @@ final class WindowManager {
     }
 
     #if DEBUG
-        func simulateCaptureInterruption(failingAttempts: Int) {
-            capture.simulateInterruption(failingAttempts: failingAttempts)
+        func simulateCaptureInterruption(recovers: Bool) {
+            capture.simulateInterruption(recovers: recovers)
         }
     #endif
 
@@ -196,7 +166,7 @@ final class WindowManager {
             current.gridEnabled && current.gridInCopyView && zoomPan.state.zoom >= CGFloat(current.gridMinimumZoom)
         return ScreenshotExporter.viewImage(
             from: frame, state: zoomPan.state, background: current.viewerBackground,
-            checkerSquare: ViewerBackground.checkerSquare * (viewer.window?.backingScaleFactor ?? 1),
+            checkerSquare: ViewerBackground.checkerSquare * viewer.drawableScale,
             grid: showsGrid ? current.gridLines : nil, references: viewer.referencesForExport,
             colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
     }

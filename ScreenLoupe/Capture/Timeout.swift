@@ -13,11 +13,11 @@ struct CaptureTimeoutError: LocalizedError {
 func withTimeout<T>(seconds: Double, _ operation: @escaping @Sendable () async throws -> T) async throws -> T {
     let gate = ResumeGate()
     let box = try await withCheckedThrowingContinuation {
-        (continuation: CheckedContinuation<UncheckedBox<T>, any Error>) in
+        (continuation: CheckedContinuation<UncheckedSendable<T>, any Error>) in
         Task {
             do {
                 let value = try await operation()
-                if gate.claim() { continuation.resume(returning: UncheckedBox(value: value)) }
+                if gate.claim() { continuation.resume(returning: UncheckedSendable(value: value)) }
             } catch {
                 if gate.claim() { continuation.resume(throwing: error) }
             }
@@ -41,10 +41,4 @@ private final class ResumeGate: @unchecked Sendable {
             return !claimed
         }
     }
-}
-
-/// Carries a ScreenCaptureKit result (not `Sendable`) out of the racing task. The value is handed
-/// over once and only read by the caller.
-private struct UncheckedBox<T>: @unchecked Sendable {
-    let value: T
 }

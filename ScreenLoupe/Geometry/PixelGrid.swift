@@ -10,8 +10,14 @@ enum GridLines: String, Codable, CaseIterable, Sendable {
 /// (`ViewerShaders`): the first drawable pixel of every source pixel, on its left and top edge, is
 /// the line, blended over the pixel.
 enum PixelGrid {
-    /// How strongly a line covers the pixel under it.
+    /// How strongly a line covers the pixel under it. The shader takes this and `lumaWeights` from here.
     static let opacity = 0.22
+    /// Auto lines turn dark where the pixel's luma, weighted like this, is above 0.5.
+    static let lumaWeights = (red: 0.2126, green: 0.7152, blue: 0.0722)
+
+    private static func isLight(red: Double, green: Double, blue: Double) -> Bool {
+        lumaWeights.red * red + lumaWeights.green * green + lumaWeights.blue * blue > 0.5
+    }
 
     /// Whether viewport pixel `index` (a column or a row) lies on a line, for an image placed from
     /// `start` at `zoom` drawable pixels per source pixel. Measured at the pixel's centre.
@@ -45,7 +51,7 @@ enum PixelGrid {
         let blue = Double(pixel[2]) / 255
         let line: Double
         switch lines {
-        case .auto: line = 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.5 ? 0 : 1
+        case .auto: line = isLight(red: red, green: green, blue: blue) ? 0 : 1
         case .dark: line = 0
         case .light: line = 1
         }

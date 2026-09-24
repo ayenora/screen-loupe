@@ -9,14 +9,17 @@ import AppKit
 final class ViewerOverlayView: NSView {
     private let zoomPan: ZoomPanController
     private let inspector: PixelInspector
-    var showsCrosshair = true { didSet { needsDisplay = true } }
-    var color = SettingsColor.orange.nsColor { didSet { needsDisplay = true } }
+    var showsCrosshair = true { didSet { if showsCrosshair != oldValue { needsDisplay = true } } }
+    var color = SettingsColor.orange.nsColor { didSet { if color != oldValue { needsDisplay = true } } }
     /// The corner ruler, drawn over everything else.
     var ruler: RulerController?
     /// The selected reference layer gets a frame and corner handles for scaling.
     var references: ReferencesController?
     /// Source pixels per point of the captured display, for the ruler's lengths in points.
     var sourceScale: () -> CGFloat = { 1 }
+    /// The Viewer's drawable pixels per point (`MTKView.drawableScale`): zoom and pan are in drawable
+    /// pixels, this view draws in points.
+    var drawableScale: () -> CGFloat = { 1 }
 
     init(zoomPan: ZoomPanController, inspector: PixelInspector) {
         self.zoomPan = zoomPan
@@ -31,8 +34,7 @@ final class ViewerOverlayView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        // The Viewer's drawable is its size in points times the window's backing scale.
-        let drawableScale = window?.backingScaleFactor ?? 1
+        let drawableScale = drawableScale()
         drawSelectedReference(drawableScale: drawableScale)
         drawCrosshair(drawableScale: drawableScale)
         drawRuler(drawableScale: drawableScale)
@@ -40,11 +42,9 @@ final class ViewerOverlayView: NSView {
 
     private func drawCrosshair(drawableScale: CGFloat) {
         guard showsCrosshair, let probe = inspector.probe, probe.source == .captureArea else { return }
-        let placed = zoomPan.state.imageRect(
-            origin: CGPoint(x: probe.x, y: probe.y), size: CGSize(width: 1, height: 1))
-        let pixel = CGRect(
-            x: placed.minX / drawableScale, y: placed.minY / drawableScale,
-            width: placed.width / drawableScale, height: placed.height / drawableScale)
+        let pixel = Self.points(
+            zoomPan.state.imageRect(origin: CGPoint(x: probe.x, y: probe.y), size: CGSize(width: 1, height: 1)),
+            scale: drawableScale)
         let center = CGPoint(x: pixel.midX, y: pixel.midY)
 
         let lines = NSBezierPath()
@@ -72,17 +72,13 @@ final class ViewerOverlayView: NSView {
         guard let references, let layer = references.stack.selected, references.isActive, layer.isVisible else {
             return
         }
-        let placed = zoomPan.state.imageRect(origin: layer.origin, size: layer.frame.size)
-        let rect = CGRect(
-            x: placed.minX / scale, y: placed.minY / scale, width: placed.width / scale, height: placed.height / scale)
+        let rect = Self.points(zoomPan.state.imageRect(origin: layer.origin, size: layer.frame.size), scale: scale)
         let outline = NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5))
         outline.lineWidth = 1
         NSColor.systemBlue.setStroke()
         outline.stroke()
         for handle in references.handles(scale: scale) {
-            let box = CGRect(
-                x: handle.rect.minX / scale, y: handle.rect.minY / scale, width: handle.rect.width / scale,
-                height: handle.rect.height / scale)
+            let box = Self.points(handle.rect, scale: scale)
             NSColor.white.setFill()
             box.fill()
             NSColor.systemBlue.setStroke()
@@ -90,6 +86,11 @@ final class ViewerOverlayView: NSView {
             border.lineWidth = 1
             border.stroke()
         }
+    }
+
+    /// A rect in drawable pixels as this view's points.
+    private static func points(_ rect: CGRect, scale: CGFloat) -> CGRect {
+        CGRect(x: rect.minX / scale, y: rect.minY / scale, width: rect.width / scale, height: rect.height / scale)
     }
 
     // MARK: Ruler

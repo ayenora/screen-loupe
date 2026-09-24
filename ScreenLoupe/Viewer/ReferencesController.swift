@@ -27,7 +27,7 @@ final class ReferencesController {
         didSet { if takesMouse != oldValue { onChange?() } }
     }
 
-    /// The panel's content scale, 1 at 250 pt wide (docs/product.md, References).
+    /// The panel's content scale, 1 at the side column's narrowest (docs/product.md, References).
     var scale: CGFloat = 1
 
     var stack: ReferenceStack { project.project.references }
@@ -35,10 +35,10 @@ final class ReferencesController {
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored private let project: ProjectStore
     @ObservationIgnored private let zoomPan: ZoomPanController
-    @ObservationIgnored private var images: [UUID: CGImage] = [:]
+    /// Decoded images; observed, so thumbnails show once theirs has loaded.
+    private var images: [UUID: CGImage] = [:]
+    @ObservationIgnored private var loading: Set<UUID> = []
     @ObservationIgnored private var drag: (part: Part, startPoint: CGPoint, startLayer: ReferenceLayer)?
-    /// Bumped on every change, so SwiftUI redraws what reads `stack` through the project.
-    private var revision = 0
 
     init(project: ProjectStore, zoomPan: ZoomPanController) {
         self.project = project
@@ -56,30 +56,33 @@ final class ReferencesController {
         }
     }
 
+    /// The layer's image, or `nil` while it loads. A design image can be large, so it is decoded off
+    /// the main thread; the Viewer draws it and the panel shows it once it is there.
     func image(for layer: ReferenceLayer) -> CGImage? {
         if let image = images[layer.id] { return image }
+        guard loading.insert(layer.id).inserted else { return nil }
         let url = project.imageURL(for: layer.fileName)
+        Task {
+            let image = await Self.decodeImage(at: url)
+            loading.remove(layer.id)
+            guard let image, stack.layers.contains(where: { $0.id == layer.id }) else { return }
+            images[layer.id] = image.value
+            onChange?()
+        }
+        return nil
+    }
+
+    @concurrent
+    nonisolated private static func decodeImage(at url: URL) async -> UncheckedSendable<CGImage>? {
+        let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            let image = CGImageSourceCreateImageAtIndex(source, 0, options)
         else { return nil }
-        images[layer.id] = image
-        return image
-    }
-
-    /// Reads `revision` so SwiftUI views that call this update on every change.
-    var layers: [ReferenceLayer] {
-        _ = revision
-        return stack.layers
-    }
-
-    var selectedID: UUID? {
-        _ = revision
-        return stack.selectedID
+        return UncheckedSendable(value: image)
     }
 
     func update(_ change: (inout ReferenceStack) -> Void) {
         project.update { change(&$0.references) }
-        revision += 1
         onChange?()
     }
 
@@ -98,8 +101,11 @@ final class ReferencesController {
         project.deleteImage(layer.fileName)
     }
 
+    /// The Viewer window, for the open panel's sheet.
+    @ObservationIgnored weak var window: NSWindow?
+
     /// Asks for images and adds each as a layer on top, as many as the limit allows.
-    func addFromFiles(in window: NSWindow?) {
+    func addFromFiles() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg, .tiff, .heic, .bmp, .gif]
         panel.allowsMultipleSelection = true
