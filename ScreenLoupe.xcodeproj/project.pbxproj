@@ -22,7 +22,6 @@
 				Geometry/DisplayLayout.swift,
 				Geometry/LenientDecoding.swift,
 				Geometry/OverlayLayout.swift,
-				Geometry/PixelGrid.swift,
 				Geometry/ReferenceLayers.swift,
 				Geometry/SizeText.swift,
 				Geometry/ViewerWindowFit.swift,

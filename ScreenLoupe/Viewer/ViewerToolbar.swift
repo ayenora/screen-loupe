@@ -5,6 +5,10 @@ import AppKit
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
 /// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the pin a checkmark.
+///
+/// Freeze, Ruler, Copy, Save and Keep on Top are app commands: they go up the responder chain to
+/// `AppController`, as the menus' do. The toggles are settings and change them directly. Every
+/// button shows the state of its model, never just its own click.
 @MainActor
 final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let presetsID = NSToolbarItem.Identifier("zoomPresets")
@@ -19,13 +23,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let saveID = NSToolbarItem.Identifier("saveView")
     private static let onTopID = NSToolbarItem.Identifier("alwaysOnTop")
 
-    var onToggleAlwaysOnTop: (() -> Void)?
-    var onCopy: (() -> Void)?
-    var onSave: (() -> Void)?
-    var onToggleFreeze: (() -> Void)?
-    var onToggleRuler: (() -> Void)?
-
-    enum Toggle: CaseIterable {
+    private enum Toggle: CaseIterable {
         case grid, crosshair, meter, references
 
         var title: String {
@@ -47,7 +45,6 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         }
     }
 
-    var onToggle: ((Toggle) -> Void)?
     private var toggleButtons: [Toggle: NSButton] = [:]
     private var toggleMenuItems: [Toggle: NSMenuItem] = [:]
 
@@ -60,7 +57,6 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private let zoomLabel = NSTextField(string: "")
     /// The zoom the label last showed, to tell a zoom change from a pan.
     private var shownZoom: CGFloat?
-    var onZoomEntered: ((CGFloat) -> Void)?
     private let freezeButton = NSButton()
     private let rulerButton = NSButton()
     private let rulerMenuItem = NSMenuItem(title: "Ruler", action: nil, keyEquivalent: "")
@@ -75,10 +71,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private let onTopMenuItem = NSMenuItem(title: "Keep on Top", action: nil, keyEquivalent: "")
 
     private let zoomPan: ZoomPanController
+    private let settings: SettingsStore
+    private let ruler: RulerController
+    /// The frame store's freeze, as `setFrozen` last reported it.
+    private var isFrozen = false
     let toolbar = NSToolbar(identifier: "Viewer")
 
-    init(zoomPan: ZoomPanController) {
+    init(zoomPan: ZoomPanController, settings: SettingsStore, ruler: RulerController) {
         self.zoomPan = zoomPan
+        self.settings = settings
+        self.ruler = ruler
         super.init()
         presets.target = self
         presets.action = #selector(presetChosen(_:))
@@ -97,18 +99,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         zoomLabel.delegate = self
         zoomLabel.widthAnchor.constraint(equalToConstant: 64).isActive = true
 
-        configure(copyButton, symbol: "doc.on.doc", title: "Copy View", action: #selector(copyClicked))
-        configure(saveButton, symbol: "square.and.arrow.down", title: "Save View…", action: #selector(saveClicked))
-        configure(onTopButton, symbol: "pin", title: "Keep on Top", action: #selector(onTopClicked))
+        configure(copyButton, symbol: "doc.on.doc", title: "Copy View", action: #selector(copyClicked(_:)))
+        configure(saveButton, symbol: "square.and.arrow.down", title: "Save View…", action: #selector(saveClicked(_:)))
+        configure(onTopButton, symbol: "pin", title: "Keep on Top", action: #selector(onTopClicked(_:)))
         onTopButton.setButtonType(.pushOnPushOff)
-        configure(freezeButton, symbol: "pause", title: "Freeze Frame (Space)", action: #selector(freezeClicked))
+        configure(freezeButton, symbol: "pause", title: "Freeze Frame (Space)", action: #selector(freezeClicked(_:)))
         freezeButton.setButtonType(.pushOnPushOff)
-        freezeMenuItem.target = self
-        freezeMenuItem.action = #selector(freezeClicked)
-        configure(rulerButton, symbol: "ruler", title: "Ruler", action: #selector(rulerClicked))
+        freezeMenuItem.action = #selector(AppController.toggleFreeze(_:))
+        configure(rulerButton, symbol: "ruler", title: "Ruler", action: #selector(rulerClicked(_:)))
         rulerButton.setButtonType(.pushOnPushOff)
-        rulerMenuItem.target = self
-        rulerMenuItem.action = #selector(rulerClicked)
+        rulerMenuItem.action = #selector(AppController.toggleMeasuringRuler(_:))
         for toggle in Toggle.allCases {
             let button = NSButton()
             configure(button, symbol: toggle.symbol, title: toggle.title, action: #selector(toggleClicked(_:)))
@@ -130,13 +130,20 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         }
         presetsMenuItem.submenu = presetsMenu
         zoomLabelMenuItem.isEnabled = false
-        onTopMenuItem.target = self
-        onTopMenuItem.action = #selector(onTopClicked)
+        onTopMenuItem.action = #selector(AppController.toggleViewerAlwaysOnTop(_:))
 
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
+        zoomPan.observe { [weak self] in self?.refresh() }
         refresh()
+        ruler.observe { [weak self] in self?.showRuler() }
+        showRuler()
+        settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.show($0, on: self?.onTopButton) }
+        settings.observe(\.gridEnabled) { [weak self] in self?.showToggle(.grid, isOn: $0) }
+        settings.observe(\.crosshairEnabled) { [weak self] in self?.showToggle(.crosshair, isOn: $0) }
+        settings.observe(\.meterVisible) { [weak self] in self?.showToggle(.meter, isOn: $0) }
+        settings.observe(\.referencesVisible) { [weak self] in self?.showToggle(.references, isOn: $0) }
     }
 
     private func configure(_ button: NSButton, symbol: String, title: String, action: Selector) {
@@ -148,7 +155,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     }
 
     /// Reflects the current zoom: the matching preset is selected, and the label shows the percentage.
-    func refresh() {
+    private func refresh() {
         let state = zoomPan.state
         let percent = "\(Int((state.zoom * 100).rounded()))%"
         // A zoom set another way (Fit, a preset, a pinch) replaces a half-typed value.
@@ -178,7 +185,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         let digits = sender.stringValue.filter { $0.isNumber || $0 == "." || $0 == "," }
             .replacingOccurrences(of: ",", with: ".")
         if let percent = Double(digits), percent > 0 {
-            onZoomEntered?(CGFloat(percent / 100))
+            zoomPan.setZoom(CGFloat(percent / 100))
         }
         sender.window?.makeFirstResponder(nil)
         refresh()
@@ -193,43 +200,71 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         }
     }
 
-    func setToggle(_ toggle: Toggle, isOn: Bool) {
-        toggleButtons[toggle]?.state = isOn ? .on : .off
+    private func show(_ isOn: Bool, on button: NSButton?) {
+        button?.state = isOn ? .on : .off
+    }
+
+    private func showToggle(_ toggle: Toggle, isOn: Bool) {
+        show(isOn, on: toggleButtons[toggle])
         toggleMenuItems[toggle]?.state = isOn ? .on : .off
     }
 
-    @objc private func toggleClicked(_ sender: Any) {
-        let tag = (sender as? NSButton)?.tag ?? (sender as? NSMenuItem)?.tag ?? 0
-        onToggle?(Toggle.allCases[tag])
-    }
-
-    func setRuler(_ isOn: Bool) {
-        rulerButton.state = isOn ? .on : .off
-        rulerMenuItem.state = isOn ? .on : .off
+    private func showRuler() {
+        show(ruler.isOn, on: rulerButton)
     }
 
     func setFrozen(_ isOn: Bool) {
-        freezeButton.state = isOn ? .on : .off
-        freezeMenuItem.state = isOn ? .on : .off
-    }
-
-    func setAlwaysOnTop(_ isOn: Bool) {
-        onTopButton.state = isOn ? .on : .off
-        onTopMenuItem.state = isOn ? .on : .off
+        isFrozen = isOn
+        show(isOn, on: freezeButton)
     }
 
     // MARK: Actions
 
-    @objc private func onTopClicked() { onToggleAlwaysOnTop?() }
-    /// The push-on-push-off button flips itself on click; it shows the frozen state only from
-    /// `setFrozen`, since there may be nothing to freeze yet.
-    @objc private func freezeClicked() {
-        freezeButton.state = freezeMenuItem.state
-        onToggleFreeze?()
+    @objc private func toggleClicked(_ sender: Any) {
+        let tag = (sender as? NSButton)?.tag ?? (sender as? NSMenuItem)?.tag ?? 0
+        settings.update {
+            switch Toggle.allCases[tag] {
+            case .grid: $0.gridEnabled.toggle()
+            case .crosshair: $0.crosshairEnabled.toggle()
+            case .meter:
+                $0.meterVisible.toggle()
+                if $0.meterVisible { $0.expandedSidePanel = .colorMeter }
+            case .references:
+                $0.referencesVisible.toggle()
+                if $0.referencesVisible { $0.expandedSidePanel = .references }
+            }
+        }
     }
-    @objc private func rulerClicked() { onToggleRuler?() }
-    @objc private func copyClicked() { onCopy?() }
-    @objc private func saveClicked() { onSave?() }
+
+    /// A push-on-push-off button flips itself when clicked; it goes back to its model's state
+    /// (`isOn`) before the command runs, since the command may not change it (nothing to freeze
+    /// yet). The model then reports the new state.
+    private func send(_ action: Selector, from button: NSButton, isOn: Bool) {
+        show(isOn, on: button)
+        NSApp.sendAction(action, to: nil, from: button)
+    }
+
+    @objc private func freezeClicked(_ sender: NSButton) {
+        send(#selector(AppController.toggleFreeze(_:)), from: sender, isOn: isFrozen)
+    }
+
+    @objc private func rulerClicked(_ sender: NSButton) {
+        send(#selector(AppController.toggleMeasuringRuler(_:)), from: sender, isOn: ruler.isOn)
+    }
+
+    @objc private func onTopClicked(_ sender: NSButton) {
+        send(
+            #selector(AppController.toggleViewerAlwaysOnTop(_:)), from: sender,
+            isOn: settings.settings.viewerAlwaysOnTop)
+    }
+
+    @objc private func copyClicked(_ sender: NSButton) {
+        NSApp.sendAction(#selector(AppController.copyView(_:)), to: nil, from: sender)
+    }
+
+    @objc private func saveClicked(_ sender: NSButton) {
+        NSApp.sendAction(#selector(AppController.saveView(_:)), to: nil, from: sender)
+    }
 
     @objc private func presetChosen(_ sender: NSSegmentedControl) {
         choosePreset(sender.selectedSegment)
@@ -294,11 +329,14 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         case Self.copyID:
             item.view = copyButton
             item.label = "Copy View"
-            item.menuFormRepresentation = commandItem("Copy View", #selector(copyClicked))
+            // An `AppController` command, which also enables it.
+            item.menuFormRepresentation = NSMenuItem(
+                title: "Copy View", action: #selector(AppController.copyView(_:)), keyEquivalent: "")
         case Self.saveID:
             item.view = saveButton
             item.label = "Save View…"
-            item.menuFormRepresentation = commandItem("Save View…", #selector(saveClicked))
+            item.menuFormRepresentation = NSMenuItem(
+                title: "Save View…", action: #selector(AppController.saveView(_:)), keyEquivalent: "")
         case Self.onTopID:
             item.view = onTopButton
             item.label = "Keep on Top"
@@ -309,9 +347,4 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         return item
     }
 
-    private func commandItem(_ title: String, _ action: Selector) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.target = self
-        return item
-    }
 }

@@ -86,9 +86,9 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 ### 2.4 Screenshots
 
 - **Capture Source:** the latest frame's `CVPixelBuffer` is converted to a `CGImage` tagged with the frame's color space, then written as PNG or placed on the pasteboard. It is exactly the source pixels the Viewer shows, at native resolution. A new `SCScreenshotManager` capture isn't needed, and it could differ from what's on screen.
-- **Capture View:** CoreGraphics draws the frame into an image of the drawable's size with the placement the renderer uses (`ZoomPanState.imageRect`), the Viewer's background, and no interpolation when magnifying. At integer zoom every source pixel is an exact N×N block (checked pixel by pixel). The pixel grid is included only when the Settings option for it is on. Visible reference layers are drawn over the frame as the renderer draws them (§4, References); the crosshair and the ruler are tools and stay out.
+- **Capture View:** the Viewer renders it: the renderer encodes the same scene it draws on screen (background, frame, grid, reference layers) with the same pipelines into an offscreen texture of the drawable's size, waits for the GPU and reads the pixels back, tagged with the colour space the Viewer's layer shows them in. So Copy View is the screen at any zoom, including below 100%, the grid and Difference, and no second renderer has to be kept in step with the shaders. The texture is `.managed` (Intel GPUs don't take shared textures). The pixel grid is included only when the Settings option for it is on. The crosshair and the ruler are tools and stay out. Copy View works while the Viewer is hidden or on another Space: it needs no drawable.
 - **Output:** the clipboard gets PNG and TIFF; Save writes a PNG with the source display's color profile embedded, named like macOS screenshots (`Screen Loupe View 2026-09-24 at 14.20.05.png`), into the folder used last (Desktop at first). A short confirmation ("View copied") appears at the bottom of the Viewer.
-- **Commands:** Edit > Copy View `⌘C`, Copy Source `⇧⌘C`; ⌘C is the standard `copy:` sent to the first responder, so a focused text field copies its text and the app delegate turns it into Copy View otherwise (the item reads Copy then); the Edit menu has the standard Undo, Cut, Paste and Select All for the text fields; File > Save View… `⌘S`, Save Source… `⇧⌘S`; the Viewer toolbar's Copy and Save buttons; Copy View and Copy Source in the menu bar item. They are enabled while there is a frame.
+- **Commands:** Edit > Copy View `⌘C`, Copy Source `⇧⌘C`; ⌘C is the standard `copy:` sent to the first responder, so a focused text field copies its text and `AppController`, the app delegate, turns it into Copy View otherwise (the item reads Copy then); the Edit menu has the standard Undo, Cut, Paste and Select All for the text fields; File > Save View… `⌘S`, Save Source… `⇧⌘S`; the Viewer toolbar's Copy and Save buttons; Copy View and Copy Source in the menu bar item. They are enabled while there is a frame.
 
 ## 3. Coordinate-system strategy
 
@@ -148,9 +148,11 @@ The Capture Area frame is drawn **outside** the captured rect: the window is the
 - **Clipping:** the image area clips its subviews (`clipsToBounds`, off by default since macOS 14), so the overlay's reference frame and ruler never draw over the side panels.
 - **Freeze frame:** `FrameStore.isFrozen` drops incoming frames and keeps the frozen one when the stream stops or restarts (a move to another display), so the renderer, the Color Meter and Copy/Save all keep the frame that was showing without any other code knowing about it. The stream keeps running and follows the Capture Area; closing the Viewer unfreezes.
 - **Ruler:** `CornerRuler` (pure, tested) keeps the ruler either in drawable pixels, fixed in the Viewer, or pinned in source pixels with the arm lengths the user set; its placement is always whole source pixels. An arm never looks shorter than 32 pt: the shortest arm in source pixels is recomputed from the zoom, and a pinned ruler keeps its set lengths to return to. `RulerController` hit-tests and drags it; the overlay draws it. An unpinned ruler is fixed in the Viewer but snapped to source pixels, so under a moving image it would jump from cell to cell: it hides on every zoom/pan change and fades back in (ease-out, 0.12 s) 0.12 s after the last one. The pin button and move band stay 0.6 s after the pointer leaves. Its corner is clamped into the viewport, since the drawable-pixel position saved on one display can lie beyond the Viewer on another. Presses go to the ruler first, then to reference layers, then to panning.
-- **References:** `ReferenceStack` (pure, tested) holds the layers top first, with place and scale in source pixels from the Capture Area's top-left, so a layer stays on the pixels it was aligned with. The renderer draws each layer as a quad after the frame, from a texture made by drawing the image into the Viewer's colour space (premultiplied BGRA, remade when either changes), so a matching colour has the same values as the capture. Normal is premultiplied source-over at the layer's opacity. Difference is computed in the fragment shader against the live frame texture, not against the layers below: what it answers is "does the screen match the design". Copy View reproduces both with CoreGraphics (`.difference` in a scratch context holding only the live frame). The panel is SwiftUI in an `NSHostingView`, observing `ReferencesController`; `SidePanelStack` lays the column out by hand, top down, and the hosting view takes the size it is given (`sizingOptions = []`). The Color Meter sits in a scroll view, so a short column scrolls it rather than squeezing it. Widening the column (250–320 pt) scales everything in it by each panel multiplying its own fonts, sizes and spacings (`ColorMeterPanel.scale`, `PanelStrip.scale`, `ReferencesController.scale`); not a drawing transform, because SwiftUI hit-tests without an ancestor's bounds transform, and Auto Layout and scroll views inside a view with scaled bounds lay out and draw wrongly. The References panel draws its slider and blend switch itself, so they scale too. Rows reorder with the list's own move (`onMove`); a row holds only icon buttons, and the settings live apart in the Layer section, so no control starts a drag. Images beyond the GPU's 16384 px texture limit are scaled down for the texture only. A layer's image is decoded, and its texture made, off the main thread; the layer shows once they are ready, so a large design export doesn't stall the Viewer.
+- **References:** `ReferenceStack` (pure, tested) holds the layers top first, with place and scale in source pixels from the Capture Area's top-left, so a layer stays on the pixels it was aligned with. The renderer draws each layer as a quad after the frame, from a texture made by drawing the image into the Viewer's colour space (premultiplied BGRA, remade when either changes), so a matching colour has the same values as the capture. Normal is premultiplied source-over at the layer's opacity. Difference is computed in the fragment shader against the live frame texture, not against the layers below: what it answers is "does the screen match the design". The panel is SwiftUI in an `NSHostingView`, observing `ReferencesController`; `SidePanelStack` lays the column out by hand, top down, and the hosting view takes the size it is given (`sizingOptions = []`). The Color Meter sits in a scroll view, so a short column scrolls it rather than squeezing it. Widening the column (250–320 pt) scales everything in it by each panel multiplying its own fonts, sizes and spacings (`ColorMeterPanel.scale`, `PanelStrip.scale`, `ReferencesController.scale`); not a drawing transform, because SwiftUI hit-tests without an ancestor's bounds transform, and Auto Layout and scroll views inside a view with scaled bounds lay out and draw wrongly. The References panel draws its slider and blend switch itself, so they scale too. Rows reorder with the list's own move (`onMove`); a row holds only icon buttons, and the settings live apart in the Layer section, so no control starts a drag. Images beyond the GPU's 16384 px texture limit are scaled down for the texture only. A layer's image is decoded, and its texture made, off the main thread; the layer shows once they are ready, so a large design export doesn't stall the Viewer.
 - **Project:** `ProjectStore` keeps `project.json` (the reference stack and the ruler) and copies of the reference images in Application Support, written 0.4 s after the last change and on quit, read at launch. Everything else that persists stays in `Settings`.
 - **Global shortcuts:** Carbon `RegisterEventHotKey`. It works from any app and needs no Accessibility permission, unlike an `NSEvent` global key monitor.
+- **Commands:** `AppController` is the app delegate, so it ends the responder chain. The menus target it; the Viewer's toolbar commands (Freeze, Ruler, Copy, Save, Keep on Top) and Space in the Viewer send their command with no target (the toolbar's toggles are settings and change them directly), which reaches it from any window, and its `validateMenuItem` enables and checks the menu forms. Command selectors avoid AppKit's own actions (the ruler's is `toggleMeasuringRuler:`, since `toggleRuler:` belongs to `NSText` and a field being edited would take it). A toolbar toggle shows its model's state, not its own click: it is reset before the command and set by the model after.
+- **Settings to views:** a component subscribes to the settings it depends on with `SettingsStore.observe(\.keyPath)`: called at once and after every change of that value, synchronously. Several settings used together are one computed `Equatable` property (`Settings.viewerStyle`, `sidePanelLayout`, `frameStyleSettings`). Observation (`withObservationTracking`) can't do this: the store has one stored property, the whole `Settings` struct, so every reader would be told about every change. The SwiftUI Settings window observes the store as usual.
 
 ## 5. Components and project structure
 
@@ -158,19 +160,20 @@ The app is split into components with one job each; none of them is a catch-all 
 
 | Component | Responsibility |
 |---|---|
-| `AppController` | App lifecycle, menu actions, wiring the components together |
+| `AppController` | The app delegate: lifecycle, the app's commands (end of the responder chain), wiring |
 | `WindowManager` | The Capture Area and Viewer windows and how they relate |
 | `CaptureAreaController`, `CaptureOverlayWindow`, `CaptureOverlayView` | The frame above the screen: drawing, drag/resize, size labels, arrow keys |
 | `ScreenCaptureManager`, `FrameStore` | The ScreenCaptureKit stream, filter, display switching, recovery; the latest frame |
-| `ViewerWindowController`, `ViewerToolbar` | The Viewer window and its toolbar |
-| `ViewerView`, `ViewerRenderer`, `ViewerOverlayView` | Rendering the magnified image and the crosshair |
+| `ViewerWindowController`, `ViewerToolbar` | The Viewer window, the permission view swap, and its toolbar |
+| `ViewerContentView` | The Viewer's content: image, overlays, status, toast, side column, and their wiring |
+| `ViewerView`, `ViewerRenderer`, `ViewerOverlayView` | Rendering the magnified image (on screen and offscreen for Copy View) and the crosshair |
 | `ZoomPanController` | Zoom/pan state and gestures |
 | `PixelInspector`, `ColorMeterPanel` | The inspected pixel, its colour and the pinned colours |
 | `RulerController`, `CornerRuler` | The corner ruler: state, dragging, pinning |
 | `ReferencesController`, `ReferencesPanel`, `ReferenceStack` | Reference layers: the stack, images, the mouse in the Viewer, the panel |
 | `SidePanelStack` | The Color Meter and References column, one expanded |
 | `ProjectStore` | The working project: references, their images and the ruler |
-| `ScreenshotExporter` | Capture Source / Capture View → clipboard / PNG |
+| `ExportController`, `ScreenshotExporter` | Copy and Save: the commands, the save panel, confirmations; Capture Source images, clipboard and PNG |
 | `DisplayCoordinateConverter` | All coordinate conversions |
 | `PermissionsManager` | Screen Recording permission |
 | `GlobalShortcuts`, `Settings` | System-wide shortcuts; persisted state and preferences |
@@ -178,19 +181,19 @@ The app is split into components with one job each; none of them is a catch-all 
 ```
 ScreenLoupe.xcodeproj           file-system-synchronized groups; the app and test targets
 ScreenLoupe/
-  App/          AppController, AppDelegate/main, WindowManager, StatusItemController, Settings,
-                GlobalShortcuts, MainMenu, ProjectStore
+  App/          AppController (app delegate), ScreenLoupeApp (main), WindowManager,
+                StatusItemController, Settings, GlobalShortcuts, MainMenu, ProjectStore
   Capture/      ScreenCaptureManager, FrameStore, PermissionsManager
   Overlay/      CaptureAreaController, CaptureOverlayWindow, CaptureOverlayView, OverlayStyle
-  Viewer/       ViewerWindowController, ViewerView (MTKView), ViewerRenderer, ViewerShaders,
+  Viewer/       ViewerWindowController, ViewerContentView, ViewerView (MTKView), ViewerRenderer, ViewerShaders,
                 ViewerToolbar, ViewerOverlayView, ColorMeterPanel, CaptureStatusView,
                 PermissionView, ZoomPanController, PixelInspector, RulerController,
                 ReferencesController, ReferencesPanel (SwiftUI), SidePanelStack
-  Export/       ScreenshotExporter
+  Export/       ExportController, ScreenshotExporter
   Settings/     SettingsWindowController, SettingsViews (SwiftUI), ShortcutRecorder
   Geometry/     DisplayCoordinateConverter, DisplayLayout, coordinate types, ZoomPanMath,
-                OverlayLayout (frame layout, hit zones, position box, pin), ColorMath, PixelGrid,
-                SizeText, ViewerWindowFit, CornerRuler, ReferenceLayers
+                OverlayLayout (frame layout, hit zones, position box, pin), ColorMath,
+                LenientDecoding, SizeText, ViewerWindowFit, CornerRuler, ReferenceLayers
   Resources/    Assets.xcassets (the app icon, drawn by scripts/make_icon.swift); Info.plist is generated from build settings, no entitlements file
 ScreenLoupeTests/
   Geometry/     converter, snapping, display layouts, zoom/pan math, overlay layout, colour math,
@@ -240,7 +243,7 @@ There are no UI or timing-based tests. Window behaviour, live capture, permissio
 8. Resize the Capture Area: the Viewer updates immediately, and pixels already visible stay where they are.
 9. Point at something inside the Capture Area with the real cursor: the crosshair marks that pixel in the Viewer.
 10. Hover over a pixel in the Viewer: the Color Meter shows its position and HEX; a click pins it.
-11. Copy View and paste: exactly the magnified viewport. Copy Source and paste: the source area at native resolution, unmagnified.
+11. Copy View and paste: exactly the magnified viewport, also at 50% zoom, with the grid (when included) and a Difference layer. Copy Source and paste: the source area at native resolution, unmagnified.
 12. Move the Viewer over the Capture Area: the Viewer does not capture itself.
 13. Drag the Capture Area to a second display: capture keeps working correctly.
 14. Hover the frame: the L T R B box sits beside it and flips sides at a screen edge. Pin the frame: it neither moves, resizes nor nudges; unpin it.

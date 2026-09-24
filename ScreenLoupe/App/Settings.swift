@@ -148,6 +148,12 @@ enum ViewerBackground: String, Codable, CaseIterable, Sendable {
     case dark, light, checkerboard
 }
 
+/// The pixel grid's line colour (Settings › Viewer). Auto draws dark lines over light pixels and
+/// light lines over dark ones.
+enum GridLines: String, Codable, CaseIterable, Sendable {
+    case auto, dark, light
+}
+
 /// How saved screenshots are named.
 enum FileNameStyle: String, Codable, CaseIterable, Sendable {
     /// `Screen Loupe View 2026-09-24 at 14.20.05`, like macOS screenshots.
@@ -188,8 +194,15 @@ final class SettingsStore {
         }
     }
 
-    /// Calls `observer` after every change, with the settings before and after it.
-    func observe(_ observer: @escaping (_ old: Settings, _ new: Settings) -> Void) {
-        observers.append(observer)
+    /// Calls `apply` with the value at `keyPath` now, and again after every change that changes it.
+    /// A subscriber that depends on several settings together observes a computed property that
+    /// returns them as one `Equatable` value.
+    func observe<Value: Equatable>(_ keyPath: KeyPath<Settings, Value>, _ apply: @escaping (Value) -> Void) {
+        apply(settings[keyPath: keyPath])
+        observers.append { [weak self] old, new in
+            guard let self, old[keyPath: keyPath] != new[keyPath: keyPath] else { return }
+            // The current value: an observer before this one may have changed the settings again.
+            apply(settings[keyPath: keyPath])
+        }
     }
 }

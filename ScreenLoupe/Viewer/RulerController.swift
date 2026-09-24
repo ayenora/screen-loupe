@@ -35,7 +35,16 @@ final class RulerController {
     /// The pointer is over the ruler or its pin button, or was a moment ago: the pin button and the
     /// move band show.
     private(set) var isHovered = false
-    var onChange: (() -> Void)?
+    private var observers: [() -> Void] = []
+
+    /// Calls `observer` after every change of the ruler or how it shows.
+    func observe(_ observer: @escaping () -> Void) {
+        observers.append(observer)
+    }
+
+    private func changed() {
+        observers.forEach { $0() }
+    }
 
     /// 0…1. An unpinned ruler stays put while the image pans or zooms under it, so it would jitter
     /// from pixel to pixel; it hides meanwhile and eases back in once the image settles.
@@ -70,7 +79,7 @@ final class RulerController {
         unhoverTimer?.invalidate()
         fadeTask?.cancel()
         visibility = 1
-        onChange?()
+        changed()
     }
 
     func drawn(scale: CGFloat) -> Drawn? {
@@ -131,7 +140,7 @@ final class RulerController {
     private func setHovered(_ hovered: Bool) {
         guard hovered != isHovered else { return }
         isHovered = hovered
-        onChange?()
+        changed()
     }
 
     /// The image panned or zoomed: an unpinned ruler hides until it settles, then eases back in.
@@ -141,7 +150,7 @@ final class RulerController {
         fadeTask = nil
         if visibility != 0 {
             visibility = 0
-            onChange?()
+            changed()
         }
         settleTimer?.invalidate()
         settleTimer = Timer.scheduledTimer(withTimeInterval: Self.settleDelay, repeats: false) { [weak self] _ in
@@ -157,7 +166,7 @@ final class RulerController {
         fadeTask = nil
         guard visibility != 1 else { return }
         visibility = 1
-        onChange?()
+        changed()
     }
 
     private func fadeIn() {
@@ -170,7 +179,7 @@ final class RulerController {
                 guard let self else { return }
                 // Ease out: most of the way at once, settling softly.
                 visibility = 1 - (1 - t) * (1 - t)
-                onChange?()
+                changed()
                 if t >= 1 { return }
                 try? await Task.sleep(for: .milliseconds(16))
             }
@@ -185,7 +194,7 @@ final class RulerController {
         switch part {
         case .pin:
             ruler?.togglePin(in: zoomPan.state, minimum: Self.minimumLength * scale)
-            onChange?()
+            changed()
         case .line where ruler?.isPinned == true:
             return false
         default:
@@ -208,7 +217,7 @@ final class RulerController {
             break
         }
         drag = (current.part, point)
-        onChange?()
+        changed()
     }
 
     func endDrag() {

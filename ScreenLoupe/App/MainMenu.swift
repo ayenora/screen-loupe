@@ -55,8 +55,8 @@ enum MainMenu {
 
     /// ⌘C copies what the Viewer shows; ⇧⌘C the Capture Area without zoom (docs/product.md, Screenshots).
     /// The standard items go to the first responder, so text fields cut, copy and paste as usual:
-    /// ⌘C is `copy(_:)`, which a text field with the focus takes, and the app delegate turns into
-    /// Copy View otherwise.
+    /// ⌘C is `copy(_:)`, which a text field with the focus takes, and `AppController`, the app
+    /// delegate, turns into Copy View otherwise.
     private static func editMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "Edit")
         menu.delegate = target
@@ -89,7 +89,7 @@ enum MainMenu {
             withTitle: "Freeze Frame", action: #selector(AppController.toggleFreeze(_:)), keyEquivalent: "")
         freeze.target = target
         let ruler = menu.addItem(
-            withTitle: "Ruler", action: #selector(AppController.toggleRuler(_:)), keyEquivalent: "r")
+            withTitle: "Ruler", action: #selector(AppController.toggleMeasuringRuler(_:)), keyEquivalent: "r")
         ruler.target = target
         menu.addItem(.separator())
         // AppKit retitles this item "Exit Full Screen" on its own while the window is full screen.

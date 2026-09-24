@@ -1,5 +1,18 @@
 import AppKit
 
+/// The settings the frame is drawn with (Settings › Capture Area).
+struct FrameStyleSettings: Equatable {
+    var color: SettingsColor
+    var lineWidth: Double
+    var showsLabelAtRest: Bool
+}
+
+extension Settings {
+    var frameStyleSettings: FrameStyleSettings {
+        FrameStyleSettings(color: frameColor, lineWidth: frameLineWidth, showsLabelAtRest: showsSizeAtRest)
+    }
+}
+
 /// The frame's colours and line, from Settings › Capture Area.
 struct FrameStyle {
     var accent: NSColor
@@ -20,10 +33,11 @@ struct FrameStyle {
     /// White, or black when the accent itself is too light to outline a white handle.
     var handleFill: NSColor
 
-    init(color: SettingsColor, lineWidth: Double, showsLabelAtRest: Bool) {
+    init(_ settings: FrameStyleSettings) {
+        let color = settings.color
         accent = color.nsColor
-        self.lineWidth = CGFloat(lineWidth)
-        self.showsLabelAtRest = showsLabelAtRest
+        lineWidth = CGFloat(settings.lineWidth)
+        showsLabelAtRest = settings.showsLabelAtRest
         let dark = SettingsColor(red: color.red * 0.78, green: color.green * 0.78, blue: color.blue * 0.78)
         tabFill = dark.nsColor
         onTab = dark.contrastRatio(with: .white) >= 4.5 ? .white : .black

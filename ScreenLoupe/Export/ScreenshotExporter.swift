@@ -3,7 +3,8 @@ import CoreVideo
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Capture Source and Capture View images, the clipboard and PNG files (docs/product.md, Screenshots).
+/// Capture Source images, the clipboard and PNG files (docs/product.md, Screenshots). Capture View is
+/// rendered by the Viewer itself (`ViewerView.renderViewImage`).
 enum ScreenshotExporter {
     // MARK: Images
 
@@ -23,109 +24,6 @@ enum ScreenshotExporter {
         }
         context.draw(image, in: geometry.imageRectInAreaImage)
         return context.makeImage()
-    }
-
-    /// Capture View: exactly the Viewer's viewport — its zoom, pan and background, the pixel grid
-    /// when `grid` is given (docs/product.md, Pixel grid), and the visible reference layers, bottom
-    /// first (docs/product.md, References).
-    ///
-    /// Drawn with the placement the renderer uses (`ZoomPanState.imageRect`), without interpolation
-    /// when magnifying, so every source pixel is an exact N×N block at integer zoom.
-    /// `checkerSquare` is in viewport pixels.
-    static func viewImage(
-        from frame: CapturedFrame, state: ZoomPanState, background: ViewerBackground, checkerSquare: CGFloat,
-        grid: GridLines?, references: [(layer: ReferenceLayer, image: CGImage)] = [], colorSpace: CGColorSpace
-    ) -> CGImage? {
-        let width = Int(state.viewportSize.width.rounded())
-        let height = Int(state.viewportSize.height.rounded())
-        guard width > 0, height > 0,
-            let image = frameImage(frame.pixelBuffer, colorSpace: colorSpace),
-            let context = bitmapContext(width: width, height: height, colorSpace: colorSpace),
-            fill(context, background: background, checkerSquare: checkerSquare, colorSpace: colorSpace)
-        else { return nil }
-        context.interpolationQuality = state.zoom >= 1 ? .none : .high
-        let placed = state.imageRect(
-            origin: frame.geometry.imageOrigin, size: CGSize(width: image.width, height: image.height))
-        // The viewport is y down; CGContext is y up.
-        let rect = CGRect(x: placed.minX, y: CGFloat(height) - placed.maxY, width: placed.width, height: placed.height)
-        context.draw(image, in: rect)
-        // The grid belongs to the frame: the renderer draws it in the frame's pass, under the layers.
-        if let grid, let data = context.data {
-            // The context's rows run top to bottom in memory, like the viewport.
-            PixelGrid.draw(
-                into: data.assumingMemoryBound(to: UInt8.self), width: width, height: height,
-                bytesPerRow: context.bytesPerRow, imageRect: placed, zoom: state.zoom, lines: grid)
-        }
-        for (layer, reference) in references {
-            drawReference(reference, layer: layer, live: image, frame: frame, state: state, into: context)
-        }
-        return context.makeImage()
-    }
-
-    /// One layer as the renderer draws it: over what is below, or as its difference from the live
-    /// frame, at the layer's opacity.
-    private static func drawReference(
-        _ reference: CGImage, layer: ReferenceLayer, live: CGImage, frame: CapturedFrame, state: ZoomPanState,
-        into context: CGContext
-    ) {
-        let height = CGFloat(context.height)
-        func flipped(_ rect: CGRect) -> CGRect {
-            CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
-        }
-        let placed = state.imageRect(origin: layer.origin, size: layer.frame.size)
-        context.saveGState()
-        defer { context.restoreGState() }
-        context.setAlpha(CGFloat(layer.opacity))
-        guard layer.blend == .difference else {
-            context.draw(reference, in: flipped(placed))
-            return
-        }
-        // The difference is taken against the live frame alone, only where the layer is on screen.
-        let visible = placed.intersection(CGRect(origin: .zero, size: state.viewportSize)).integral
-        guard !visible.isEmpty, let space = context.colorSpace,
-            let scratch = bitmapContext(width: Int(visible.width), height: Int(visible.height), colorSpace: space)
-        else { return }
-        scratch.interpolationQuality = context.interpolationQuality
-        func local(_ rect: CGRect) -> CGRect {
-            CGRect(x: rect.minX - visible.minX, y: visible.maxY - rect.maxY, width: rect.width, height: rect.height)
-        }
-        let livePlaced = state.imageRect(
-            origin: frame.geometry.imageOrigin, size: CGSize(width: live.width, height: live.height))
-        scratch.draw(live, in: local(livePlaced))
-        scratch.setBlendMode(.difference)
-        scratch.draw(reference, in: local(placed))
-        // Where the reference is transparent the shader adds nothing; keep only its opaque part.
-        scratch.setBlendMode(.destinationIn)
-        scratch.draw(reference, in: local(placed))
-        guard let difference = scratch.makeImage() else { return }
-        context.clip(to: flipped(placed))
-        context.draw(difference, in: flipped(visible))
-    }
-
-    /// The Viewer's background, squares counted from the top-left corner as the shader does.
-    private static func fill(
-        _ context: CGContext, background: ViewerBackground, checkerSquare: CGFloat, colorSpace: CGColorSpace
-    ) -> Bool {
-        func color(_ c: SIMD3<Double>) -> CGColor? {
-            CGColor(colorSpace: colorSpace, components: [CGFloat(c.x), CGFloat(c.y), CGFloat(c.z), 1])
-        }
-        guard let first = color(background.components), let second = color(ViewerBackground.checkerDarkComponents)
-        else { return false }
-        let width = CGFloat(context.width)
-        let height = CGFloat(context.height)
-        context.setFillColor(first)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        guard background == .checkerboard, checkerSquare > 0 else { return true }
-        context.setFillColor(second)
-        for row in 0..<Int((height / checkerSquare).rounded(.up)) {
-            for column in 0..<Int((width / checkerSquare).rounded(.up)) where (row + column) % 2 == 1 {
-                context.fill(
-                    CGRect(
-                        x: CGFloat(column) * checkerSquare, y: height - CGFloat(row + 1) * checkerSquare,
-                        width: checkerSquare, height: checkerSquare))
-            }
-        }
-        return true
     }
 
     /// The frame's BGRA bytes as a `CGImage`, copied so the capture buffer can be reused.
