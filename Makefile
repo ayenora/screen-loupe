@@ -43,13 +43,13 @@ run: build
 	open "$(APP)"
 
 test:
-	@$(XCODEBUILD) test || { python3 scripts/test_failures.py; exit 1; }
+	@since=$$(date +%s); $(XCODEBUILD) test || { python3 scripts/test_failures.py $$since; exit 1; }
 
 test-one:
 ifndef T
 	$(error Pass the test id: make test-one T=ScreenLoupeTests/SomeTests[/testSomething])
 endif
-	@$(XCODEBUILD) test '-only-testing:$(T)' || { python3 scripts/test_failures.py; exit 1; }
+	@since=$$(date +%s); $(XCODEBUILD) test '-only-testing:$(T)' || { python3 scripts/test_failures.py $$since; exit 1; }
 
 format:
 ifeq ($(SWIFT_DIRS),)

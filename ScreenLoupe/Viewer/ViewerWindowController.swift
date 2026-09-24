@@ -7,12 +7,20 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     var onClose: (() -> Void)?
     /// Called when the content switches between the permission explanation and the capture.
     var onPermissionChange: (() -> Void)?
+    /// Called when the user asks to try capturing again after a failure.
+    var onRetry: (() -> Void)?
 
     private let permissions: PermissionsManager
     private let settings: SettingsStore
     private let viewerView: ViewerView
+    private let statusView = CaptureStatusView()
+    private let captureContent = NSView()
     private let toolbar: ViewerToolbar
     private var showsPermissionView: Bool?
+    /// ScreenCaptureKit refused for lack of permission although the preflight said yes. The
+    /// preflight can stay stale until relaunch, so this holds until then.
+    private var permissionDeniedByCapture = false
+    private let hasSavedFrame: Bool
 
     init(permissions: PermissionsManager, settings: SettingsStore, frameStore: FrameStore, zoomPan: ZoomPanController) {
         self.permissions = permissions
@@ -32,20 +40,66 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.toolbarStyle = .unified
+        hasSavedFrame = window.setFrameUsingName("Viewer")
         super.init(window: window)
         window.delegate = self
-        if !window.setFrameUsingName("Viewer") {
+        if !hasSavedFrame {
             window.center()
         }
         window.setFrameAutosaveName("Viewer")
 
+        buildCaptureContent()
         zoomPan.onChange = { [weak self] in
             self?.viewerView.requestDraw()
             self?.toolbar.refresh()
         }
         toolbar.onToggleAlwaysOnTop = { [weak self] in self?.toggleAlwaysOnTop() }
+        statusView.onRetry = { [weak self] in self?.onRetry?() }
         applyAlwaysOnTop()
         refreshContent()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// The magnified image, with the failure message centred over it when capturing failed.
+    private func buildCaptureContent() {
+        viewerView.frame = captureContent.bounds
+        viewerView.autoresizingMask = [.width, .height]
+        captureContent.addSubview(viewerView)
+        statusView.isHidden = true
+        statusView.translatesAutoresizingMaskIntoConstraints = false
+        captureContent.addSubview(statusView)
+        NSLayoutConstraint.activate([
+            statusView.centerXAnchor.constraint(equalTo: captureContent.centerXAnchor),
+            statusView.centerYAnchor.constraint(equalTo: captureContent.centerYAnchor),
+        ])
+    }
+
+    // MARK: First launch
+
+    /// Puts a Viewer that has no saved frame beside the Capture Area rather than over it
+    /// (TASK.md §25.3): right of it, else left, else below, else above; clamped to the screen.
+    func placeOnFirstLaunch(beside area: CGRect) {
+        guard !hasSavedFrame, let window else { return }
+        let screen =
+            NSScreen.screens.first { $0.frame.contains(CGPoint(x: area.midX, y: area.midY)) } ?? NSScreen.main
+        guard let visible = screen?.visibleFrame else { return }
+        let size = window.frame.size
+        let gap: CGFloat = 40
+        let candidates = [
+            CGPoint(x: area.maxX + gap, y: area.midY - size.height / 2),
+            CGPoint(x: area.minX - gap - size.width, y: area.midY - size.height / 2),
+            CGPoint(x: area.midX - size.width / 2, y: area.minY - gap - size.height),
+            CGPoint(x: area.midX - size.width / 2, y: area.maxY + gap),
+        ]
+        let fits = candidates.first { visible.contains(CGRect(origin: $0, size: size)) }
+        let origin = fits ?? candidates[0]
+        let clamped = CGPoint(
+            x: min(max(origin.x, visible.minX), visible.maxX - size.width),
+            y: min(max(origin.y, visible.minY), visible.maxY - size.height)
+        )
+        window.setFrameOrigin(clamped)
     }
 
     // MARK: Keep on top
@@ -64,14 +118,28 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         toolbar.setAlwaysOnTop(isAlwaysOnTop)
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    // MARK: Content
 
     /// Whether the Viewer shows the capture rather than the permission explanation.
     var showsCapture: Bool { showsPermissionView == false }
 
     func frameArrived() {
         viewerView.frameArrived()
+    }
+
+    /// Shows or clears a capture failure.
+    func setCaptureProblem(_ problem: CaptureProblem?) {
+        switch problem {
+        case .permissionDenied?:
+            permissionDeniedByCapture = true
+            statusView.isHidden = true
+            refreshContent()
+        case .failed(let message)?:
+            statusView.show(message: message)
+            statusView.isHidden = false
+        case nil:
+            statusView.isHidden = true
+        }
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -84,11 +152,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     /// Swaps between the permission explanation and the capture when the permission state changes.
     func refreshContent() {
-        let needsPermission = !permissions.hasScreenRecordingAccess
+        let needsPermission = !permissions.hasScreenRecordingAccess || permissionDeniedByCapture
         guard needsPermission != showsPermissionView else { return }
         showsPermissionView = needsPermission
         window?.toolbar = needsPermission ? nil : toolbar.toolbar
-        window?.contentView = needsPermission ? PermissionView(permissions: permissions) : viewerView
+        window?.contentView = needsPermission ? PermissionView(permissions: permissions) : captureContent
         if !needsPermission {
             window?.makeFirstResponder(viewerView)
         }

@@ -18,34 +18,9 @@ struct CapturedFrame: @unchecked Sendable {
 /// The capture queue writes, the renderer and the exporters read. The lock guards both properties;
 /// nothing else is shared (docs/design.md §2.2).
 final class FrameStore: @unchecked Sendable {
-    /// Counters for the debug log: where frames go between ScreenCaptureKit and the screen.
-    struct Stats: Equatable {
-        var callbacks = 0
-        var complete = 0
-        var stored = 0
-        var rejected = 0
-        /// `draw(in:)` calls, including those that got no drawable.
-        var drawCalls = 0
-        var draws = 0
-        var drawsWithFrame = 0
-    }
-
     private let lock = NSLock()
     private var frame: CapturedFrame?
     private var geometry: CaptureGeometry?
-    private var stats = Stats()
-
-    /// Returns the counters since the last call and resets them.
-    func takeStats() -> Stats {
-        lock.withLock {
-            defer { stats = Stats() }
-            return stats
-        }
-    }
-
-    func count(_ update: (inout Stats) -> Void) {
-        lock.withLock { update(&stats) }
-    }
 
     var latestFrame: CapturedFrame? {
         lock.withLock { frame }
@@ -65,12 +40,43 @@ final class FrameStore: @unchecked Sendable {
         lock.withLock {
             let size = PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
             guard let geometry, size == geometry.outputSize else {
-                stats.rejected += 1
+                #if DEBUG
+                    stats.rejected += 1
+                #endif
                 return false
             }
             frame = CapturedFrame(pixelBuffer: pixelBuffer, geometry: geometry)
-            stats.stored += 1
+            #if DEBUG
+                stats.stored += 1
+            #endif
             return true
         }
     }
+
+    #if DEBUG
+        /// Counters for the debug log: where frames go between ScreenCaptureKit and the screen.
+        struct Stats: Equatable {
+            var callbacks = 0
+            var complete = 0
+            var stored = 0
+            var rejected = 0
+            /// `draw(in:)` calls, including those that got no drawable.
+            var drawCalls = 0
+            var draws = 0
+        }
+
+        private var stats = Stats()
+
+        /// Returns the counters since the last call and resets them.
+        func takeStats() -> Stats {
+            lock.withLock {
+                defer { stats = Stats() }
+                return stats
+            }
+        }
+
+        func count(_ update: (inout Stats) -> Void) {
+            lock.withLock { update(&stats) }
+        }
+    #endif
 }

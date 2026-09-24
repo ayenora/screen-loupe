@@ -10,20 +10,19 @@ API facts below come from the macOS 26.2 SDK headers (`ScreenCaptureKit.framewor
 |---|---|---|
 | `SCShareableContent.current` | 12.3 | Displays (`SCDisplay.displayID`, `frame`), windows, running applications. Needs Screen Recording permission. |
 | `SCContentFilter(display:excludingApplications:exceptingWindows:)` | 12.3 | Captures one display with every window of the listed apps removed. **This is the self-exclusion mechanism**: we exclude our own app, which removes both the Capture Area overlay and the Viewer. |
-| `SCContentFilter.pointPixelScale`, `.contentRect` | 14.0 | The display's pixel-to-point scale and its rect as ScreenCaptureKit sees it. Used to cross-check our own scale math. |
 | `SCStreamConfiguration.sourceRect` | 12.3 | The captured sub-rect. **Points, in the display's logical coordinate system (top-left origin, relative to the display).** |
 | `SCStreamConfiguration.width` / `.height` | 12.3 | Output size **in pixels** (default 1920×1080). Must be set to `sourceRect.size × scale`, or the output is resampled. |
 | `SCStreamConfiguration.captureResolution = .best` | 14.0 | Captures at the display's backing resolution instead of letting the system pick. |
 | `SCStreamConfiguration.minimumFrameInterval` | 12.3 | Default `1/60`; `kCMTimeZero` = native refresh rate. |
 | `SCStreamConfiguration.queueDepth` | 12.3 | Surfaces kept in flight (default 8). |
 | `SCStreamConfiguration.showsCursor` | 12.3 | On by default. We turn it **off**: the cursor would sit over the pixels being inspected. |
-| `SCStream.updateConfiguration(_:)` / `updateContentFilter(_:)` | 12.3 | Change the source rect or the display **without restarting** the stream. |
+| `SCStream.updateConfiguration(_:)` | 12.3 | Changes the source rect and output size **without restarting** the stream. |
 | Sample buffer attachments | 12.3 | `SCStreamFrameInfo.status` (`complete` / `idle` / `blank` / …), `.contentRect`, `.scaleFactor`, `.dirtyRects`. Idle frames carry no image — the last frame stays on screen. |
 | `SCScreenshotManager.captureImage(contentFilter:configuration:)` | 14.0 | One-shot capture with the same filter; not needed for the MVP (see §2.4). |
 | `CGPreflightScreenCaptureAccess()` / `CGRequestScreenCaptureAccess()` | 10.15 | Check and request the Screen Recording permission. |
 | `NSScreen.deviceDescription["NSScreenNumber"]` | — | `CGDirectDisplayID` of an `NSScreen`. (`NSScreen.CGDirectDisplayID` exists only from macOS 26, so we don't rely on it.) |
 
-**Deployment target: macOS 14.0.** Everything above is available on 14.0; `captureResolution` and `pointPixelScale` are the newest APIs we depend on. Nothing in the design needs 15.x or 26.x. Only macOS 27 is available on this machine for testing.
+**Deployment target: macOS 14.0.** Everything above is available on 14.0; `captureResolution` is the newest API we depend on. Nothing in the design needs 15.x or 26.x. Only macOS 27 is available on this machine for testing.
 
 ## 2. Capture and render pipeline
 
@@ -47,26 +46,28 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 ### 2.1 Stream
 
 - **One stream for one display at a time.** It captures the display that holds the larger part of the Capture Area.
-- **Pixel format:** BGRA, SDR, with the display's own color space. The Pixel Inspector converts to sRGB for display (§4).
+- **Pixel format:** BGRA, SDR, in the source display's own color space (ScreenCaptureKit's default). The Viewer's layer is tagged with that color space, so the system color-matches when the Viewer sits on a display with another profile; on the same display the values pass through unchanged. The Pixel Inspector converts to sRGB for display (§4).
 - **Self-exclusion:** `excludingApplications: [our SCRunningApplication]`, found in `SCShareableContent.applications` by `processID`. This removes every window we own, including any we add later (Preferences, alerts), with no window bookkeeping.
 - **Moving or resizing the Capture Area** calls `updateConfiguration` with the new `sourceRect`, `width` and `height`. The calls are coalesced so that at most one update is in flight, and the newest rect wins when it completes.
-- **Moving the Capture Area to another display** calls `updateContentFilter` with a filter for the new display, and then `updateConfiguration`.
-- **Frame bookkeeping:** every frame carries its `contentRect`/`scaleFactor` attachments. The renderer trusts the frame's own geometry, not the latest requested rect, so a frame produced for an old rect is never stretched into the new one.
+- **Moving the Capture Area to another display** replaces the stream with a new one for that display. Swapping the filter of a running stream would apply the old display's source rect to the new display until the configuration update follows.
+- **Frame bookkeeping:** `FrameStore` tags each frame with the geometry the stream is configured for and drops frames whose pixel size doesn't match it (frames from before a resize). While the area moves without resizing, a frame produced just before a reconfiguration can carry the new geometry for one frame; that is invisible in the Viewer and settled by the time anything is copied.
+- **Update bookkeeping:** when the system stops the stream or the displays change while an update is in flight, a generation counter makes that update's result void, so the next pass rebuilds the stream instead of believing it is running. A display AppKit knows but ScreenCaptureKit doesn't list yet is retried after a second, not in a loop.
+- **Failures** are shown, never left as an empty Viewer: `SCStreamError.userDeclined` switches the Viewer to the permission explanation (until relaunch, because the preflight check can stay stale); any other error shows "Capture stopped" with the reason and Try Again.
 - **Display changes:** `SCShareableContent` is cached and refreshed on `NSApplication.didChangeScreenParametersNotification`. If the system stops the stream (for example, the display was unplugged), it is rebuilt from the current display list.
 - **Stop Sharing** in the system's screen-sharing menu stops the stream with `SCStreamError.userStopped`. That is the user's choice, so the stream is not restarted: the Viewer closes together with the Capture Area, exactly like its close button, and Show Viewer starts capturing again.
 
 ### 2.2 Threading (Swift 6 strict concurrency)
 
-- `SCStreamOutput` callbacks arrive on a private serial queue. The handler does nothing but put the `CVPixelBuffer` and its frame info into `FrameStore` — a `Sendable` final class guarded by `OSAllocatedUnfairLock` — and then asks the view to redraw on the main actor.
+- `SCStreamOutput` callbacks arrive on a private serial queue. The handler does nothing but put the `CVPixelBuffer` and its frame info into `FrameStore` — a `Sendable` final class guarded by an `NSLock` — and then asks the view to redraw on the main actor.
 - Everything that touches AppKit, window state or the `MTKView` is `@MainActor`.
 - `CVMetalTextureCache` lookups happen in the draw call on the main actor. Creating a texture from an IOSurface is cheap and involves no copy.
 
 ### 2.3 Rendering
 
-- `MTKView` with `isPaused = true` and `enableSetNeedsDisplay = true`. It redraws only when a new frame arrives or the zoom/pan changes, so an idle screen costs nothing.
+- `MTKView` with `isPaused = true` and `enableSetNeedsDisplay = false`: the view calls `draw()` itself, at most once per main run-loop turn, when a new frame arrives, the zoom/pan changes or the window is shown again. An idle screen costs nothing. (With `setNeedsDisplay` nothing was drawn any more after the window had been closed and reopened.)
 - One vertex/fragment shader pair draws the frame texture as a quad. The quad's placement in the viewport comes from `ZoomPanController`.
 - The shaders are compiled at launch from source (`ViewerShaders.swift`, `makeLibrary(source:)`), not from a `.metal` file: Xcode 26 ships the Metal compiler as a separate download, and runtime compilation keeps the project buildable without it.
-- **Sampler:** `magFilter = .nearest`, `minFilter = .linear`. Magnification is always nearest-neighbor, so pixels are crisp squares; zooming out below 1:1 (for example Fit on a large area) is filtered and doesn't shimmer.
+- **Sampler:** `magFilter = .nearest`, `minFilter = .linear`. Magnification is always nearest-neighbor, so pixels are crisp squares; zooming out below 1:1 (for example Fit on a large area) is linearly filtered. Without mipmaps that still aliases below 50%; acceptable for a loupe, whose point is magnification.
 - **Pixel-exact placement:** the pan offset is snapped to whole drawable pixels. At an integer zoom every source pixel then covers exactly N×N drawable pixels, so there are no uneven columns and the pixel grid lines up.
 - **The pixel grid (post-MVP)** is drawn in the same shader from the source-pixel coordinate. It stays aligned by construction.
 
@@ -142,12 +143,13 @@ ScreenLoupe.xcodeproj           file-system-synchronized groups; the app and tes
 ScreenLoupe/
   App/          AppController, AppDelegate/main, WindowManager, StatusItemController, Settings
   Capture/      ScreenCaptureManager, FrameStore, PermissionsManager
-  Overlay/      CaptureOverlayWindow, CaptureOverlayView
+  Overlay/      CaptureAreaController, CaptureOverlayWindow, CaptureOverlayView, OverlayStyle
   Viewer/       ViewerWindowController, ViewerView (MTKView), ViewerRenderer, ViewerShaders,
-                ZoomPanController, PixelInspector
+                ViewerToolbar, CaptureStatusView, PermissionView, ZoomPanController, PixelInspector
   Export/       ScreenshotExporter
-  Geometry/     DisplayCoordinateConverter, DisplayLayout, coordinate types, ZoomPanMath
-  Resources/    Assets.xcassets, Info.plist, ScreenLoupe.entitlements
+  Geometry/     DisplayCoordinateConverter, DisplayLayout, coordinate types, ZoomPanMath,
+                OverlayLayout (frame layout, hit zones, editing), SizeText
+  Resources/    Assets.xcassets (the app icon, drawn by scripts/make_icon.swift); Info.plist is generated from build settings, no entitlements file
 ScreenLoupeTests/
   Geometry/     converter, snapping, display layouts
   Viewer/       zoom/pan math, zoom around cursor, viewer ↔ source mapping
@@ -163,7 +165,7 @@ ScreenLoupeTests/
 | 2 | **Blurry capture from sub-pixel rects.** | Rects are snapped to the display's backing grid, with `width`/`height` equal to the pixel size and `captureResolution = .best`. Checked by comparing Capture Source against a `screencapture -R` crop. |
 | 3 | **Mixed displays:** different scales, negative coordinates, a rect straddling two displays, hot-plugging. | A pure converter with table-driven tests; the stream follows the display with the larger intersection; the stream is rebuilt on screen-parameter changes and stream errors. |
 | 4 | **Self-exclusion.** Our app might be missing from `SCShareableContent.applications`. | Check at startup. Fallback: `excludingWindows` with our windows matched by `windowNumber`. |
-| 5 | **Screen Recording permission (TCC).** An ad-hoc signature can drop the grant on every rebuild; recent macOS versions may ask the user to reconfirm the permission from time to time (to be verified on macOS 27); `CGPreflightScreenCaptureAccess` may report a stale result until relaunch. | Sign with the existing Apple Development identity; show a restart hint in the permission panel; handle the stream-start error as "no permission". |
+| 5 | **Screen Recording permission (TCC).** An ad-hoc signature can drop the grant on every rebuild; recent macOS versions may ask the user to reconfirm the permission from time to time (to be verified on macOS 27); `CGPreflightScreenCaptureAccess` may report a stale result until relaunch. | Sign with the existing Apple Development identity; show a restart hint in the permission panel; a `userDeclined` stream error switches the Viewer to the permission panel (§2.1). |
 | 6 | **Color accuracy of HEX/RGB.** The frames are in the display's color space (for example Display P3), so HEX values differ from sRGB design tokens. HDR/EDR content complicates this further. | Capture SDR. The Inspector converts the pixel to sRGB with ColorSync/`CGColor` conversion and shows the native value next to it. |
 | 7 | **Fractional zoom** (for example 250%) with nearest-neighbor gives alternating 2- and 3-pixel columns. | Accepted: the integer presets are exact, and TASK.md requires crispness at integer zoom. |
 | 8 | **Swift 6 concurrency** around ScreenCaptureKit callbacks and `CVPixelBuffer` (not `Sendable`). | Confine the buffers to `FrameStore` behind a lock; mark it `@unchecked Sendable` with a written invariant; everything else is `@MainActor`. |

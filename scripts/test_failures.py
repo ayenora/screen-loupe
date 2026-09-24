@@ -3,6 +3,11 @@
 
 xcodebuild -quiet shows which Swift Testing tests failed but not why; the messages
 ("Expectation failed: (a → 1) == (b → 2)") are only in the .xcresult bundle.
+
+    test_failures.py [SINCE]
+
+SINCE (Unix time) skips result bundles older than that, so a run that failed to build
+doesn't reprint the failures of an earlier run.
 """
 import glob
 import json
@@ -10,9 +15,11 @@ import os
 import subprocess
 import sys
 
-bundles = sorted(glob.glob("build/DerivedData/Logs/Test/*.xcresult"), key=os.path.getmtime)
+since = float(sys.argv[1]) if len(sys.argv) > 1 else 0
+bundles = [b for b in sorted(glob.glob("build/DerivedData/Logs/Test/*.xcresult"), key=os.path.getmtime)
+           if os.path.getmtime(b) >= since]
 if not bundles:
-    sys.exit("No test results in build/DerivedData/Logs/Test.")
+    sys.exit("No test results from this run: the build failed before any test ran (see the errors above).")
 path = bundles[-1]
 
 

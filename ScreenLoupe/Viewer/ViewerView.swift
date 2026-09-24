@@ -54,8 +54,21 @@ final class ViewerView: MTKView {
         if let frame = frameStore.latestFrame {
             let area = frame.geometry.areaSize
             zoomPan.setContent(CGSize(width: area.width, height: area.height))
+            matchColorSpace(ofDisplay: frame.geometry.display.id)
         }
         requestDraw()
+    }
+
+    private var colorSpaceDisplayID: CGDirectDisplayID?
+
+    /// Frames come in the source display's color space (ScreenCaptureKit's default). Tagging the layer
+    /// with it lets the system color-match when the Viewer sits on a display with another profile;
+    /// on the same display the values pass through unchanged.
+    private func matchColorSpace(ofDisplay displayID: CGDirectDisplayID) {
+        guard displayID != colorSpaceDisplayID else { return }
+        colorSpaceDisplayID = displayID
+        let screen = NSScreen.screens.first { DisplayInfo(screen: $0)?.id == displayID }
+        colorspace = screen?.colorSpace?.cgColorSpace
     }
 
     // MARK: Coordinates
@@ -63,6 +76,15 @@ final class ViewerView: MTKView {
     /// A window location as a drawable pixel, y down: the space `ZoomPanState` works in.
     private func drawablePoint(_ event: NSEvent) -> CGPoint {
         let point = convert(event.locationInWindow, from: nil)
+        let scale = drawableScale
+        return CGPoint(x: point.x * scale, y: (bounds.height - point.y) * scale)
+    }
+
+    /// The cursor as a drawable pixel when it is over the view, for keyboard zoom around it.
+    private var cursorPoint: CGPoint? {
+        guard let window else { return nil }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard bounds.contains(point) else { return nil }
         let scale = drawableScale
         return CGPoint(x: point.x * scale, y: (bounds.height - point.y) * scale)
     }
@@ -112,8 +134,8 @@ final class ViewerView: MTKView {
 
     override func keyDown(with event: NSEvent) {
         switch event.charactersIgnoringModifiers {
-        case "+", "=": zoomPan.stepZoom(1)
-        case "-", "_": zoomPan.stepZoom(-1)
+        case "+", "=": zoomPan.stepZoom(1, around: cursorPoint)
+        case "-", "_": zoomPan.stepZoom(-1, around: cursorPoint)
         case "0": zoomPan.fit()
         default: super.keyDown(with: event)
         }
