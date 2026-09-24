@@ -5,6 +5,18 @@ import Foundation
 struct Settings: Codable, Equatable {
     /// Capture Area in AppKit global coordinates.
     var captureArea: CGRect?
+    /// Keep the Viewer above the windows of other apps.
+    var viewerAlwaysOnTop = false
+
+    init() {}
+
+    /// Keys missing from settings saved by an older version keep their defaults instead of failing
+    /// the whole decode.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        captureArea = try container.decodeIfPresent(CGRect.self, forKey: .captureArea)
+        viewerAlwaysOnTop = try container.decodeIfPresent(Bool.self, forKey: .viewerAlwaysOnTop) ?? false
+    }
 }
 
 @MainActor
