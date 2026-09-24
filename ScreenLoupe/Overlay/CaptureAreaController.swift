@@ -14,7 +14,7 @@ final class CaptureAreaController {
     }
 
     private let window = CaptureOverlayWindow()
-    private let view = CaptureOverlayView()
+    private let view: CaptureOverlayView
     private let settings: SettingsStore
     private var converter: DisplayCoordinateConverter?
     private var layout: OverlayLayout?
@@ -35,6 +35,7 @@ final class CaptureAreaController {
 
     init(settings: SettingsStore) {
         self.settings = settings
+        view = CaptureOverlayView(style: Self.style(settings.settings))
         window.contentView = view
         view.delegate = self
         refreshDisplays()
@@ -46,6 +47,25 @@ final class CaptureAreaController {
                 center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated { self?.updateReveal() }
                 })
+        }
+        settings.observe { [weak self] old, new in self?.settingsChanged(from: old, to: new) }
+    }
+
+    // MARK: Settings › Capture Area
+
+    private static func style(_ settings: Settings) -> FrameStyle {
+        FrameStyle(
+            color: settings.frameColor, lineWidth: settings.frameLineWidth, showsLabelAtRest: settings.showsSizeAtRest)
+    }
+
+    private func settingsChanged(from old: Settings, to new: Settings) {
+        if old.frameColor != new.frameColor || old.frameLineWidth != new.frameLineWidth
+            || old.showsSizeAtRest != new.showsSizeAtRest
+        {
+            view.style = Self.style(new)
+        }
+        if old.sizeUnits != new.sizeUnits {
+            apply(captureRect, persist: false)
         }
     }
 
@@ -96,7 +116,7 @@ final class CaptureAreaController {
         let screen =
             (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
         let size = Self.defaultSize
-        // Left of centre, so the Viewer fits beside it on first launch (TASK.md §25.3).
+        // Left of centre, so the Viewer fits beside it on first launch (docs/design.md §7, acceptance step 3).
         let centerX = screen.minX + screen.width * 0.3
         return CGRect(
             x: centerX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height)
@@ -121,8 +141,9 @@ final class CaptureAreaController {
         let screenFrame = display?.globalFrame ?? NSScreen.main?.frame ?? rect
         let scale = display?.scale ?? 1
 
-        let tabText = SizeText.pointsAndPixels(rect.size, scale: scale)
-        let labelText = SizeText.points(rect.size)
+        let units = settings.settings.sizeUnits
+        let tabText = SizeText.tab(rect.size, scale: scale, units: units)
+        let labelText = SizeText.label(rect.size, scale: scale, units: units)
         let layout = OverlayLayout(
             captureRect: rect,
             screenFrame: screenFrame,
@@ -212,7 +233,7 @@ final class CaptureAreaController {
 
 extension CaptureAreaController: CaptureOverlayViewDelegate {
     func overlayView(_ view: CaptureOverlayView, hitTargetAt point: CGPoint) -> OverlayHitTarget? {
-        layout?.hitTarget(at: point)
+        layout?.hitTarget(at: point, metrics: view.style.metrics)
     }
 
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint) {

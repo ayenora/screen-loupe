@@ -19,6 +19,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     private let overlay: ViewerOverlayView
     private let meterPanel: ColorMeterPanel
     private let inspector: PixelInspector
+    private let zoomPan: ZoomPanController
     private let statusView = CaptureStatusView()
     private let toast = ToastView()
     /// The magnified image with everything drawn over it; left of the Color Meter.
@@ -38,6 +39,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         self.permissions = permissions
         self.settings = settings
         self.inspector = inspector
+        self.zoomPan = zoomPan
         viewerView = ViewerView(frameStore: frameStore, zoomPan: zoomPan, inspector: inspector)
         overlay = ViewerOverlayView(zoomPan: zoomPan, inspector: inspector)
         meterPanel = ColorMeterPanel(inspector: inspector)
@@ -69,6 +71,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
             self?.overlay.needsDisplay = true
             self?.toolbar.refresh()
         }
+        toolbar.onZoomEntered = { zoomPan.setZoom($0) }
         inspector.onChange = { [weak self] in
             self?.overlay.needsDisplay = true
             self?.meterPanel.refresh()
@@ -82,6 +85,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         toolbar.onSave = { [weak self] in self?.onSaveView?() }
         statusView.onRetry = { [weak self] in self?.onRetry?() }
         statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
+        settings.observe { [weak self] _, _ in self?.applyToggles() }
         applyAlwaysOnTop()
         refreshContent()
     }
@@ -117,7 +121,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         captureContent.addArrangedSubview(meterPanel)
     }
 
-    // MARK: Grid, crosshair, Color Meter
+    // MARK: Grid, crosshair, Color Meter and Settings › Viewer
 
     private func toggle(_ toggle: ViewerToolbar.Toggle) {
         settings.update {
@@ -127,13 +131,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
             case .meter: $0.meterVisible.toggle()
             }
         }
-        applyToggles()
     }
 
     private func applyToggles() {
         let current = settings.settings
-        viewerView.showsGrid = current.gridEnabled
+        viewerView.style = ViewerStyle(
+            showsGrid: current.gridEnabled, gridMinimumZoom: CGFloat(current.gridMinimumZoom),
+            gridLines: current.gridLines, background: current.viewerBackground)
+        viewerView.wheelZoomNeedsCommand = current.wheelZoomNeedsCommand
         overlay.showsCrosshair = current.crosshairEnabled
+        overlay.color = current.crosshairColor.nsColor
         meterPanel.isHidden = !current.meterVisible
         viewerView.isPicking = current.meterVisible
         toolbar.setToggle(.grid, isOn: current.gridEnabled)
@@ -167,7 +174,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     // MARK: First launch
 
     /// Puts a Viewer that has no saved frame beside the Capture Area rather than over it
-    /// (TASK.md §25.3): right of it, else left, else below, else above; clamped to the screen.
+    /// (docs/design.md §7, acceptance step 3): right of it, else left, else below, else above; clamped to the screen.
     func placeOnFirstLaunch(beside area: CGRect) {
         guard !hasSavedFrame, let window else { return }
         let screen =

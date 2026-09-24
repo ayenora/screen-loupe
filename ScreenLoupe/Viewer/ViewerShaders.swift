@@ -35,7 +35,7 @@ enum ViewerShaders {
             float2 imageSize;
             // Drawable pixels per source pixel.
             float zoom;
-            // 1 draws the pixel grid.
+            // The pixel grid: 0 none, 1 auto lines, 2 dark lines, 3 light lines.
             float grid;
         };
 
@@ -52,11 +52,26 @@ enum ViewerShaders {
                 float2 into = fract(in.uv * uniforms.imageSize) * uniforms.zoom;
                 if (into.x < 1.0 || into.y < 1.0) {
                     float luma = dot(color.rgb, float3(0.2126, 0.7152, 0.0722));
-                    float3 line = luma > 0.5 ? float3(0.0) : float3(1.0);
+                    float3 line = uniforms.grid > 2.5 ? float3(1.0)
+                        : uniforms.grid > 1.5 ? float3(0.0)
+                        : (luma > 0.5 ? float3(0.0) : float3(1.0));
                     color.rgb = mix(color.rgb, line, 0.22);
                 }
             }
             return color;
+        }
+
+        struct CheckerUniforms {
+            float4 first;
+            float4 second;
+            // x: the side of a square in drawable pixels.
+            float4 size;
+        };
+
+        // The checkerboard background, drawn over the whole viewport before the frame.
+        fragment float4 checkerFragment(QuadVertex in [[stage_in]], constant CheckerUniforms &uniforms [[buffer(0)]]) {
+            float2 square = floor(in.position.xy / uniforms.size.x);
+            return fmod(square.x + square.y, 2.0) < 0.5 ? uniforms.first : uniforms.second;
         }
         """
 }

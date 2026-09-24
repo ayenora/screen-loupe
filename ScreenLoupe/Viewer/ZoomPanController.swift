@@ -13,13 +13,16 @@ final class ZoomPanController {
     /// Whether the current zoom is the Fit zoom, for the toolbar.
     var isFit: Bool { state.isFit }
 
+    /// The zoom kept from the last session (docs/product.md, Kept between launches), applied to the first frame instead of Fit.
+    var restoredZoom: CGFloat?
+
     private var hasContent: Bool { state.contentSize.width > 0 && state.contentSize.height > 0 }
 
     func setViewport(_ size: CGSize) {
         guard size != state.viewportSize else { return }
         let first = state.viewportSize == .zero
         state.viewportSize = size
-        state = first && hasContent ? state.fitted() : state.clamped()
+        state = first && hasContent ? initialState() : state.clamped()
         onChange?()
     }
 
@@ -31,9 +34,17 @@ final class ZoomPanController {
             state = state.resizingContent(to: size, originShift: originShift)
         } else {
             state.contentSize = size
-            state = state.fitted()
+            state = initialState()
         }
         onChange?()
+    }
+
+    /// The first frame: the restored zoom, centred, or Fit.
+    private func initialState() -> ZoomPanState {
+        guard let restoredZoom, state.viewportSize != .zero else { return state.fitted() }
+        var next = state
+        next.zoom = min(max(restoredZoom, ZoomPanState.zoomRange.lowerBound), ZoomPanState.zoomRange.upperBound)
+        return next.centered()
     }
 
     func fit() {

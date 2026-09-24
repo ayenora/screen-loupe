@@ -13,7 +13,7 @@ struct PinnedColor: Codable, Equatable {
     var sample: ColorSample { ColorSample(srgbHex: hex) }
 }
 
-/// The pixel being inspected and the pinned colours (TASK.md §8; docs/product.md, Color Meter).
+/// The pixel being inspected and the pinned colours (docs/product.md, Color Meter).
 ///
 /// The inspected pixel is the one under the mouse in the Viewer; when the mouse is elsewhere, the
 /// one under the real cursor inside the Capture Area. Its colour is read straight from the latest

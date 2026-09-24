@@ -6,8 +6,8 @@ import MetalKit
 /// nothing was drawn any more after the window had been closed and reopened, while frames kept
 /// arriving.
 ///
-/// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel,
-/// `+`/`-`; `0` fits (TASK.md §4–§6). With the Color Meter open the cursor is an eyedropper and a
+/// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel (or a
+/// bare mouse wheel, per Settings), `+`/`-`; `0` fits (docs/product.md, Zoom and pan). With the Color Meter open the cursor is an eyedropper and a
 /// click (without dragging) pins the colour under it.
 final class ViewerView: MTKView {
     private let frameStore: FrameStore
@@ -23,13 +23,17 @@ final class ViewerView: MTKView {
         didSet { window?.invalidateCursorRects(for: self) }
     }
 
-    var showsGrid: Bool {
-        get { renderer?.showsGrid ?? false }
+    var style: ViewerStyle {
+        get { renderer?.style ?? ViewerStyle() }
         set {
-            renderer?.showsGrid = newValue
+            renderer?.style = newValue
+            clearColor = newValue.background.clearColor
             requestDraw()
         }
     }
+
+    /// Off: a mouse wheel zooms without ⌘. Trackpad scrolling always pans.
+    var wheelZoomNeedsCommand = true
 
     init(frameStore: FrameStore, zoomPan: ZoomPanController, inspector: PixelInspector) {
         self.frameStore = frameStore
@@ -37,10 +41,14 @@ final class ViewerView: MTKView {
         self.inspector = inspector
         super.init(frame: .zero, device: MTLCreateSystemDefaultDevice())
         colorPixelFormat = .bgra8Unorm
-        clearColor = ViewerRenderer.backgroundColor
+        clearColor = ViewerBackground.dark.clearColor
         isPaused = true
         enableSetNeedsDisplay = false
         autoResizeDrawable = true
+        // Until the next draw after a resize (the Color Meter opening, the window resizing), the
+        // layer shows the old frame. Pinned to the top left instead of stretched, it matches the new
+        // one, whose placement is kept from the top left too.
+        layer?.contentsGravity = .topLeft
         renderer = ViewerRenderer(view: self, frameStore: frameStore, zoomPan: zoomPan)
         delegate = renderer
     }
@@ -136,8 +144,11 @@ final class ViewerView: MTKView {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// The eyedropper while the Color Meter is open, otherwise an open hand for panning.
+    private var restingCursor: NSCursor { isPicking ? .eyedropper : .openHand }
+
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: isPicking ? .eyedropper : .openHand)
+        addCursorRect(bounds, cursor: restingCursor)
     }
 
     override func updateTrackingAreas() {
@@ -193,7 +204,10 @@ final class ViewerView: MTKView {
 
     override func mouseUp(with event: NSEvent) {
         if isPanning {
+            // Popping would bring back whatever was on the cursor stack (the arrow), not the cursor
+            // of this view's cursor rect.
             NSCursor.pop()
+            if bounds.contains(convert(event.locationInWindow, from: nil)) { restingCursor.set() }
         } else if isPicking {
             inspectPixel(at: event)
             onPick?()
@@ -204,8 +218,10 @@ final class ViewerView: MTKView {
 
     override func scrollWheel(with event: NSEvent) {
         let precise = event.hasPreciseScrollingDeltas
-        if event.modifierFlags.contains(.command) {
-            // ⌘ + wheel zooms around the cursor.
+        // ⌘ + wheel zooms around the cursor; so does a bare wheel when Settings allows it, but a
+        // horizontal wheel (or Shift + wheel) still pans.
+        let wheelZooms = !wheelZoomNeedsCommand && !precise && event.scrollingDeltaY != 0
+        if event.modifierFlags.contains(.command) || wheelZooms {
             let factor = exp(event.scrollingDeltaY * (precise ? 0.01 : 0.1))
             zoomPan.setZoom(zoomPan.state.zoom * factor, around: drawablePoint(event))
             return

@@ -1,6 +1,6 @@
 import AppKit
 
-/// The menu bar item (TASK.md §16). The app keeps running from here when the Viewer is closed.
+/// The menu bar item (docs/product.md, Menu bar and app mode). The app keeps running from here when the Viewer is closed.
 @MainActor
 final class StatusItemController {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -17,7 +17,7 @@ final class StatusItemController {
         menu.addItem(Self.item("Copy Source", #selector(AppController.copySource(_:)), target))
         menu.addItem(Self.item("Reset Zoom", #selector(AppController.resetZoom(_:)), target))
         menu.addItem(.separator())
-        menu.addItem(Self.item("Preferences…", #selector(AppController.showPreferences(_:)), target))
+        menu.addItem(Self.item("Settings…", #selector(AppController.showSettings(_:)), target))
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Screen Loupe", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         item.menu = menu

@@ -1,12 +1,12 @@
 import AppKit
 
-/// The Viewer's toolbar (TASK.md §15): zoom presets and the current zoom on the left; the Grid,
+/// The Viewer's toolbar (docs/product.md, Viewer): zoom presets and the current zoom on the left; the Grid,
 /// Crosshair and Color Meter toggles, Copy, Save and the keep-on-top pin on the right.
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
 /// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the pin a checkmark.
 @MainActor
-final class ViewerToolbar: NSObject, NSToolbarDelegate {
+final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let presetsID = NSToolbarItem.Identifier("zoomPresets")
     private static let zoomLabelID = NSToolbarItem.Identifier("zoomLabel")
     private static let gridID = NSToolbarItem.Identifier("grid")
@@ -48,7 +48,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     private static let presetTitles = ["Fit"] + ZoomPanState.presets.map { "\(Int($0))×" }
     private let presets = NSSegmentedControl(
         labels: presetTitles, trackingMode: .selectOne, target: nil, action: nil)
-    private let zoomLabel = NSTextField(labelWithString: "")
+    /// The current zoom in percent; typing a number and Return sets it (docs/product.md, Zoom and pan).
+    /// Leaving the field any other way drops what was typed.
+    private let zoomLabel = NSTextField(string: "")
+    /// The zoom the label last showed, to tell a zoom change from a pan.
+    private var shownZoom: CGFloat?
+    var onZoomEntered: ((CGFloat) -> Void)?
     private let onTopButton = NSButton()
     private let copyButton = NSButton()
     private let saveButton = NSButton()
@@ -71,7 +76,15 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
             presets.setWidth(index == 0 ? 40 : 34, forSegment: index)
         }
         zoomLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-        zoomLabel.textColor = .secondaryLabelColor
+        zoomLabel.alignment = .right
+        zoomLabel.bezelStyle = .roundedBezel
+        zoomLabel.controlSize = .small
+        zoomLabel.toolTip = "Zoom — type a percentage and press Return"
+        zoomLabel.target = self
+        zoomLabel.action = #selector(zoomEntered(_:))
+        zoomLabel.cell?.sendsActionOnEndEditing = false
+        zoomLabel.delegate = self
+        zoomLabel.widthAnchor.constraint(equalToConstant: 64).isActive = true
 
         configure(copyButton, symbol: "doc.on.doc", title: "Copy View", action: #selector(copyClicked))
         configure(saveButton, symbol: "square.and.arrow.down", title: "Save View…", action: #selector(saveClicked))
@@ -118,9 +131,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     /// Reflects the current zoom: the matching preset is selected, and the label shows the percentage.
     func refresh() {
         let state = zoomPan.state
-        let percent = "Zoom: \(Int((state.zoom * 100).rounded()))%"
-        zoomLabel.stringValue = percent
-        zoomLabelMenuItem.title = percent
+        let percent = "\(Int((state.zoom * 100).rounded()))%"
+        // A zoom set another way (Fit, a preset, a pinch) replaces a half-typed value.
+        if state.zoom != shownZoom, zoomLabel.currentEditor() != nil {
+            zoomLabel.abortEditing()
+        }
+        shownZoom = state.zoom
+        if zoomLabel.currentEditor() == nil {
+            zoomLabel.stringValue = percent
+        }
+        zoomLabelMenuItem.title = "Zoom: \(percent)"
         let selected: Int
         if zoomPan.isFit {
             selected = 0
@@ -132,6 +152,25 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         presets.selectedSegment = selected
         for item in presetsMenuItem.submenu?.items ?? [] {
             item.state = item.tag == selected ? .on : .off
+        }
+    }
+
+    @objc private func zoomEntered(_ sender: NSTextField) {
+        let digits = sender.stringValue.filter { $0.isNumber || $0 == "." || $0 == "," }
+            .replacingOccurrences(of: ",", with: ".")
+        if let percent = Double(digits), percent > 0 {
+            onZoomEntered?(CGFloat(percent / 100))
+        }
+        sender.window?.makeFirstResponder(nil)
+        refresh()
+    }
+
+    /// Focus left the field without Return: show the current zoom again.
+    func controlTextDidEndEditing(_ notification: Notification) {
+        // The field editor is detached only after this notification.
+        DispatchQueue.main.async { [weak self] in
+            self?.shownZoom = nil
+            self?.refresh()
         }
     }
 
