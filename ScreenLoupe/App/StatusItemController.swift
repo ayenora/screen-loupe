@@ -11,6 +11,7 @@ final class StatusItemController {
         let menu = NSMenu()
         menu.addItem(Self.item("Show Viewer", #selector(AppController.showViewer(_:)), target))
         menu.addItem(Self.item("Show Capture Area", #selector(AppController.toggleCaptureArea(_:)), target))
+        menu.addItem(Self.item("Keep Viewer on Top", #selector(AppController.toggleViewerAlwaysOnTop(_:)), target))
         menu.addItem(.separator())
         menu.addItem(Self.item("Copy View", #selector(AppController.copyView(_:)), target))
         menu.addItem(Self.item("Copy Source", #selector(AppController.copySource(_:)), target))

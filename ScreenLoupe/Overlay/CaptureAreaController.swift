@@ -8,6 +8,11 @@ final class CaptureAreaController {
     /// Called whenever `captureRect` changes.
     var onChange: ((CGRect) -> Void)?
 
+    /// What to capture for the current rect, or `nil` when it is on no display.
+    var captureGeometry: CaptureGeometry? {
+        converter?.captureGeometry(for: GlobalRect(rect: captureRect))
+    }
+
     private let window = CaptureOverlayWindow()
     private let view = CaptureOverlayView()
     private let settings: SettingsStore

@@ -41,6 +41,10 @@ enum MainMenu {
         let area = menu.addItem(
             withTitle: "Show Capture Area", action: #selector(AppController.toggleCaptureArea(_:)), keyEquivalent: "")
         area.target = target
+        let onTop = menu.addItem(
+            withTitle: "Keep Viewer on Top", action: #selector(AppController.toggleViewerAlwaysOnTop(_:)),
+            keyEquivalent: "")
+        onTop.target = target
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")

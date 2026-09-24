@@ -1,4 +1,4 @@
-.PHONY: help build run test test-one format lint preflight clean version
+.PHONY: help build run test test-one format lint preflight clean version icon
 
 PROJECT := ScreenLoupe.xcodeproj
 SCHEME := ScreenLoupe
@@ -32,6 +32,7 @@ help:
 	@echo "  make preflight  - format, lint, build, test (the push gate)"
 	@echo "  make clean      - Remove build/"
 	@echo "  make version    - Show marketing version and build number"
+	@echo "  make icon       - Redraw the app icon (scripts/make_icon.swift)"
 	@echo ""
 	@echo "Variables: CONFIGURATION=Debug|Release (default Debug)"
 
@@ -72,3 +73,6 @@ clean:
 version:
 	@echo "Marketing version: $$(xcodebuild -project $(PROJECT) -scheme $(SCHEME) -showBuildSettings 2>/dev/null | awk '/ MARKETING_VERSION =/ {print $$3; exit}')"
 	@echo "Build number:      $(BUILD_NUMBER)"
+
+icon:
+	swift scripts/make_icon.swift ScreenLoupe/Resources/Assets.xcassets/AppIcon.appiconset

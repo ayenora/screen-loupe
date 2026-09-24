@@ -52,7 +52,8 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 - **Moving or resizing the Capture Area** calls `updateConfiguration` with the new `sourceRect`, `width` and `height`. The calls are coalesced so that at most one update is in flight, and the newest rect wins when it completes.
 - **Moving the Capture Area to another display** calls `updateContentFilter` with a filter for the new display, and then `updateConfiguration`.
 - **Frame bookkeeping:** every frame carries its `contentRect`/`scaleFactor` attachments. The renderer trusts the frame's own geometry, not the latest requested rect, so a frame produced for an old rect is never stretched into the new one.
-- **Display changes:** `SCShareableContent` is cached and refreshed on `NSApplication.didChangeScreenParametersNotification`. If the stream stops with an error (for example, the display was unplugged), it is rebuilt from the current display list.
+- **Display changes:** `SCShareableContent` is cached and refreshed on `NSApplication.didChangeScreenParametersNotification`. If the system stops the stream (for example, the display was unplugged), it is rebuilt from the current display list.
+- **Stop Sharing** in the system's screen-sharing menu stops the stream with `SCStreamError.userStopped`. That is the user's choice, so the stream is not restarted: the Viewer closes together with the Capture Area, exactly like its close button, and Show Viewer starts capturing again.
 
 ### 2.2 Threading (Swift 6 strict concurrency)
 
@@ -64,6 +65,7 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 
 - `MTKView` with `isPaused = true` and `enableSetNeedsDisplay = true`. It redraws only when a new frame arrives or the zoom/pan changes, so an idle screen costs nothing.
 - One vertex/fragment shader pair draws the frame texture as a quad. The quad's placement in the viewport comes from `ZoomPanController`.
+- The shaders are compiled at launch from source (`ViewerShaders.swift`, `makeLibrary(source:)`), not from a `.metal` file: Xcode 26 ships the Metal compiler as a separate download, and runtime compilation keeps the project buildable without it.
 - **Sampler:** `magFilter = .nearest`, `minFilter = .linear`. Magnification is always nearest-neighbor, so pixels are crisp squares; zooming out below 1:1 (for example Fit on a large area) is filtered and doesn't shimmer.
 - **Pixel-exact placement:** the pan offset is snapped to whole drawable pixels. At an integer zoom every source pixel then covers exactly N×N drawable pixels, so there are no uneven columns and the pixel grid lines up.
 - **The pixel grid (post-MVP)** is drawn in the same shader from the source-pixel coordinate. It stays aligned by construction.
@@ -125,7 +127,8 @@ The unit tests cover:
 - **Viewer:** a regular titled, resizable `NSWindow` with an `NSToolbar` (presets, zoom value) and full-screen support.
   - **Pan:** drag, two-finger scroll and horizontal scroll.
   - **Zoom:** `Cmd` + wheel, pinch, `+`/`-`, around the cursor.
-- **App mode:** a regular app with a Dock icon and a main menu, plus the menu bar item of TASK.md §16. Closing the Viewer keeps the app running in the menu bar.
+- **App mode:** a regular app with a Dock icon and a main menu, plus the menu bar item of TASK.md §16. Closing the Viewer also hides the Capture Area, so no frame is left on screen without its Viewer; the app keeps running in the menu bar. Show Viewer (menu bar, Window menu, Dock icon) brings both back. Show/Hide Capture Area still toggles the frame on its own.
+- **Keep Viewer on Top:** a pin toggle at the right of the Viewer toolbar and a checkmarked item in the Window menu and the menu bar item. On, the Viewer is a `.floating` window: it stays above other apps' windows while they are active, and still below the Capture Area frame (`.statusBar`). The choice is persisted.
 - **Permission flow:** `PermissionsManager` checks with `CGPreflightScreenCaptureAccess`. If access is missing, the Viewer shows an explanation panel with **Grant Access** (`CGRequestScreenCaptureAccess`), **Open System Settings** (the Screen Recording pane) and a restart hint, instead of an empty view. The check runs again when the app becomes active.
 - **Sandbox:** off, with the hardened runtime on. Outside the App Store the sandbox only adds security-scoped bookmarks for the persisted screenshot folder. This can be revisited if App Store distribution becomes a goal.
 - **Persistence:** a `Codable` settings struct in `UserDefaults`, covering the Capture Area rect (global points), the Viewer frame (`setFrameAutosaveName`), zoom, grid, inspector, screenshot folder and preferences.
@@ -140,7 +143,7 @@ ScreenLoupe/
   App/          AppController, AppDelegate/main, WindowManager, StatusItemController, Settings
   Capture/      ScreenCaptureManager, FrameStore, PermissionsManager
   Overlay/      CaptureOverlayWindow, CaptureOverlayView
-  Viewer/       ViewerWindowController, ViewerView (MTKView), ViewerRenderer, Shaders.metal,
+  Viewer/       ViewerWindowController, ViewerView (MTKView), ViewerRenderer, ViewerShaders,
                 ZoomPanController, PixelInspector
   Export/       ScreenshotExporter
   Geometry/     DisplayCoordinateConverter, DisplayLayout, coordinate types, ZoomPanMath
