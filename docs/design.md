@@ -48,9 +48,12 @@ CMSampleBuffer → CVPixelBuffer (IOSurface-backed)
         │  FrameStore (latest complete frame, lock-protected)
         ▼
 CVMetalTextureCache → MTLTexture (zero-copy)
-        │  ViewerRenderer: one textured quad, transform from ZoomPanController
-        ▼
-MTKView (drawn on each new frame and on every zoom/pan change)
+        │  ViewerRenderer: one scene — background, frame quad (with the grid), reference layers —
+        │  placed by ZoomPanController
+        ├──────────────────────────────────────────────┐
+        ▼                                              ▼
+MTKView (drawn on each new frame               offscreen texture → CGImage
+and on every zoom/pan change)                  (Copy View / Save View, §2.4)
 ```
 
 ### 2.1 Stream
@@ -72,11 +75,13 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 - `SCStreamOutput` callbacks arrive on a private serial queue. The handler does nothing but put the `CVPixelBuffer` and its frame info into `FrameStore` — a `Sendable` final class guarded by an `NSLock` — and then asks the view to redraw on the main actor.
 - Everything that touches AppKit, window state or the `MTKView` is `@MainActor`.
 - `CVMetalTextureCache` lookups happen in the draw call on the main actor. Creating a texture from an IOSurface is cheap and involves no copy.
+- Reference images are decoded, and drawn into their textures, off the main actor (`@concurrent` functions); the result comes back to the main actor, which stores it and redraws. Values that aren't `Sendable` (`CGImage`, `MTLTexture`) cross in `UncheckedSendable`, handed over once and never shared.
+- Copy View renders on the main actor and waits for the GPU (`waitUntilCompleted`): a user command, one frame's GPU work.
 
 ### 2.3 Rendering
 
 - `MTKView` with `isPaused = true` and `enableSetNeedsDisplay = false`: the view calls `draw()` itself, at most once per main run-loop turn, when a new frame arrives, the zoom/pan changes or the window is shown again. An idle screen costs nothing. (With `setNeedsDisplay` nothing was drawn any more after the window had been closed and reopened.)
-- One vertex/fragment shader pair draws the frame texture as a quad. The quad's placement in the viewport comes from `ZoomPanController`.
+- The renderer puts one scene together (`ViewerRenderer.Scene`: size, zoom/pan state, frame, style, reference layers, colour space) and encodes it the same way for the screen and for Copy View's offscreen target: the checkerboard when chosen, the frame texture as a quad with the grid in its fragment shader, then each reference layer as a quad. The quads' placement comes from `ZoomPanController`. The drawable and the offscreen target share one pixel format (`ViewerRenderer.pixelFormat`).
 - The shaders are compiled at launch from source (`ViewerShaders.swift`, `makeLibrary(source:)`), not from a `.metal` file: Xcode 26 ships the Metal compiler as a separate download, and runtime compilation keeps the project buildable without it.
 - **Sampler:** `magFilter = .nearest`, `minFilter = .linear`. Magnification is always nearest-neighbor, so pixels are crisp squares; zooming out below 1:1 (for example Fit on a large area) is linearly filtered. Without mipmaps that still aliases below 50%; acceptable for a loupe, whose point is magnification.
 - **Stable framing** (product.md, principle 2): Fit is applied once to the first frame and then only on request. A resize of the window or the Capture Area keeps the zoom; `ZoomPanState.resizingContent` shifts the offset by the move of the area's top-left corner, so pixels already visible stay put when the left or top edge is dragged. Clamping keeps an image smaller than the viewport wholly inside it without re-centring it.
@@ -196,8 +201,9 @@ ScreenLoupe/
                 LenientDecoding, SizeText, ViewerWindowFit, CornerRuler, ReferenceLayers
   Resources/    Assets.xcassets (the app icon, drawn by scripts/make_icon.swift); Info.plist is generated from build settings, no entitlements file
 ScreenLoupeTests/
-  Geometry/     converter, snapping, display layouts, zoom/pan math, overlay layout, colour math,
-                window fit, ruler, reference layers
+  Geometry/     converter, snapping, display layouts, edge-drag framing, Copy Source placement,
+                zoom/pan math, overlay layout, colour math, window fit, ruler, reference layers
+                and their lenient decoding
 ```
 
 `Geometry/` imports only Foundation and CoreGraphics, never AppKit. That keeps it fully unit-testable and stops window state from leaking into the math. The test target is hostless: it compiles the Geometry files itself and never launches the app, so tests never trigger the Screen Recording prompt.
@@ -220,7 +226,7 @@ ScreenLoupeTests/
 
 ## 7. Verification
 
-**Unit tests** cover the deterministic logic, where Retina and multi-display bugs hide: coordinate conversion, snapping, zoom/pan math, pixel lookup, export geometry, overlay layout and colour math. The converter tests include:
+**Unit tests** cover the deterministic logic, where Retina and multi-display bugs hide: coordinate conversion, snapping, zoom/pan math, pixel lookup, export geometry (where the image sits in Copy Source), the framing when the area is resized by its left or top edge (`AreaResizeTracker`), overlay layout, colour math, the ruler, reference layers and lenient decoding of saved data. The Metal path (the screen and Copy View) can't be unit-tested in the hostless test target; step 11 below checks it. The converter tests include:
 
 - a 1× and a 2× display side by side;
 - a display placed left of or above the primary one (negative global coordinates);
