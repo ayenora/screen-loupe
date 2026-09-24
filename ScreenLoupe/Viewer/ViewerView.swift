@@ -67,8 +67,7 @@ final class ViewerView: MTKView {
     private func matchColorSpace(ofDisplay displayID: CGDirectDisplayID) {
         guard displayID != colorSpaceDisplayID else { return }
         colorSpaceDisplayID = displayID
-        let screen = NSScreen.screens.first { DisplayInfo(screen: $0)?.id == displayID }
-        colorspace = screen?.colorSpace?.cgColorSpace
+        colorspace = NSScreen.colorSpace(forDisplay: displayID)
     }
 
     // MARK: Coordinates

@@ -9,11 +9,15 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     var onPermissionChange: (() -> Void)?
     /// Called when the user asks to try capturing again after a failure.
     var onRetry: (() -> Void)?
+    /// The toolbar's Copy and Save buttons.
+    var onCopyView: (() -> Void)?
+    var onSaveView: (() -> Void)?
 
     private let permissions: PermissionsManager
     private let settings: SettingsStore
     private let viewerView: ViewerView
     private let statusView = CaptureStatusView()
+    private let toast = ToastView()
     private let captureContent = NSView()
     private let toolbar: ViewerToolbar
     private var showsPermissionView: Bool?
@@ -54,7 +58,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
             self?.toolbar.refresh()
         }
         toolbar.onToggleAlwaysOnTop = { [weak self] in self?.toggleAlwaysOnTop() }
+        toolbar.onCopy = { [weak self] in self?.onCopyView?() }
+        toolbar.onSave = { [weak self] in self?.onSaveView?() }
         statusView.onRetry = { [weak self] in self?.onRetry?() }
+        statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
         applyAlwaysOnTop()
         refreshContent()
     }
@@ -70,10 +77,19 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         statusView.isHidden = true
         statusView.translatesAutoresizingMaskIntoConstraints = false
         captureContent.addSubview(statusView)
+        toast.translatesAutoresizingMaskIntoConstraints = false
+        captureContent.addSubview(toast)
         NSLayoutConstraint.activate([
             statusView.centerXAnchor.constraint(equalTo: captureContent.centerXAnchor),
             statusView.centerYAnchor.constraint(equalTo: captureContent.centerYAnchor),
+            toast.centerXAnchor.constraint(equalTo: captureContent.centerXAnchor),
+            toast.bottomAnchor.constraint(equalTo: captureContent.bottomAnchor, constant: -16),
         ])
+    }
+
+    /// A short confirmation at the bottom of the Viewer, such as "View copied".
+    func showToast(_ text: String) {
+        toast.show(text)
     }
 
     // MARK: First launch
@@ -127,19 +143,31 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         viewerView.frameArrived()
     }
 
-    /// Shows or clears a capture failure.
+    /// Shows or clears an interrupted capture.
     func setCaptureProblem(_ problem: CaptureProblem?) {
+        let wasInterrupted = !statusView.isHidden
         switch problem {
         case .permissionDenied?:
             permissionDeniedByCapture = true
-            statusView.isHidden = true
+            hideStatus()
             refreshContent()
-        case .failed(let message)?:
-            statusView.show(message: message)
+        case .reconnecting(let reason, let attempt, let maxAttempts, let nextAttempt)?:
+            statusView.showReconnecting(reason: reason, attempt: attempt, of: maxAttempts, nextAttempt: nextAttempt)
+            statusView.isHidden = false
+        case .failed(let reason, let afterUserRetry)?:
+            statusView.showFailed(reason: reason, afterUserRetry: afterUserRetry)
             statusView.isHidden = false
         case nil:
-            statusView.isHidden = true
+            hideStatus()
+            if wasInterrupted, showsCapture {
+                showToast("Capture restored")
+            }
         }
+    }
+
+    private func hideStatus() {
+        statusView.stop()
+        statusView.isHidden = true
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
