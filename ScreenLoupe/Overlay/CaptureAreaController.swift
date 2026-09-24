@@ -37,10 +37,9 @@ final class CaptureAreaController {
 
     init(settings: SettingsStore) {
         self.settings = settings
-        view = CaptureOverlayView(style: Self.style(settings.settings))
+        view = CaptureOverlayView(style: FrameStyle(settings.settings.frameStyleSettings))
         window.contentView = view
         view.delegate = self
-        view.isPinned = settings.settings.captureAreaPinned
         refreshDisplays()
         apply(initialRect(), persist: false)
 
@@ -51,28 +50,13 @@ final class CaptureAreaController {
                     MainActor.assumeIsolated { self?.updateReveal() }
                 })
         }
-        settings.observe { [weak self] old, new in self?.settingsChanged(from: old, to: new) }
-    }
-
-    // MARK: Settings › Capture Area
-
-    private static func style(_ settings: Settings) -> FrameStyle {
-        FrameStyle(
-            color: settings.frameColor, lineWidth: settings.frameLineWidth, showsLabelAtRest: settings.showsSizeAtRest)
-    }
-
-    private func settingsChanged(from old: Settings, to new: Settings) {
-        if old.frameColor != new.frameColor || old.frameLineWidth != new.frameLineWidth
-            || old.showsSizeAtRest != new.showsSizeAtRest
-        {
-            view.style = Self.style(new)
-        }
-        if old.sizeUnits != new.sizeUnits {
+        // Settings › Capture Area. Each first call repeats what init just set up, harmlessly.
+        settings.observe(\.frameStyleSettings) { [weak self] in self?.view.style = FrameStyle($0) }
+        settings.observe(\.sizeUnits) { [weak self] _ in
+            guard let self else { return }
             apply(captureRect, persist: false)
         }
-        if old.captureAreaPinned != new.captureAreaPinned {
-            view.isPinned = new.captureAreaPinned
-        }
+        settings.observe(\.captureAreaPinned) { [weak self] in self?.view.isPinned = $0 }
     }
 
     // MARK: Visibility

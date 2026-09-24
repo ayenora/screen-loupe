@@ -1,5 +1,21 @@
 import AppKit
 
+/// Which side panels are open, and which of two is expanded.
+struct SidePanelLayout: Equatable {
+    var showsMeter: Bool
+    var showsReferences: Bool
+    var expanded: SidePanel
+
+    /// The Color Meter is open and not collapsed to its strip: the eyedropper works then.
+    var isMeterExpanded: Bool { showsMeter && (!showsReferences || expanded == .colorMeter) }
+}
+
+extension Settings {
+    var sidePanelLayout: SidePanelLayout {
+        SidePanelLayout(showsMeter: meterVisible, showsReferences: referencesVisible, expanded: expandedSidePanel)
+    }
+}
+
 /// The panels at the right of the Viewer, top down: the Color Meter, then References
 /// (docs/product.md, References). With both open only one is expanded and fills the height; the
 /// other is a strip in its place that expands it when clicked.
@@ -80,14 +96,13 @@ final class SidePanelStack: NSView {
         layer?.borderWidth = 0.5
     }
 
-    /// Which panels are open, and which of two is expanded.
-    func show(meter showsMeter: Bool, references showsReferences: Bool, expanded: SidePanel) {
-        let both = showsMeter && showsReferences
-        meter.isHidden = !showsMeter || (both && expanded != .colorMeter)
-        meterStrip.isHidden = !(both && expanded != .colorMeter)
-        references.isHidden = !showsReferences || (both && expanded != .references)
-        referencesStrip.isHidden = !(both && expanded != .references)
-        isHidden = !showsMeter && !showsReferences
+    func show(_ layout: SidePanelLayout) {
+        let both = layout.showsMeter && layout.showsReferences
+        meter.isHidden = !layout.showsMeter || (both && layout.expanded != .colorMeter)
+        meterStrip.isHidden = !(both && layout.expanded != .colorMeter)
+        references.isHidden = !layout.showsReferences || (both && layout.expanded != .references)
+        referencesStrip.isHidden = !(both && layout.expanded != .references)
+        isHidden = !layout.showsMeter && !layout.showsReferences
         needsLayout = true
     }
 

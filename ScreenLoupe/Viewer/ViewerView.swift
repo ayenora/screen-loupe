@@ -25,8 +25,6 @@ final class ViewerView: MTKView {
 
     /// Called when a click (not a drag) should pin the colour under the cursor.
     var onPick: (() -> Void)?
-    /// Space: freezes the live view or resumes it.
-    var onToggleFreeze: (() -> Void)?
 
     /// The eyedropper cursor and click-to-pin, while the Color Meter is open.
     var isPicking = false {
@@ -51,7 +49,7 @@ final class ViewerView: MTKView {
         self.zoomPan = zoomPan
         self.inspector = inspector
         super.init(frame: .zero, device: MTLCreateSystemDefaultDevice())
-        colorPixelFormat = .bgra8Unorm
+        colorPixelFormat = ViewerRenderer.pixelFormat
         clearColor = ViewerBackground.dark.clearColor
         isPaused = true
         enableSetNeedsDisplay = false
@@ -97,6 +95,16 @@ final class ViewerView: MTKView {
             matchColorSpace(ofDisplay: geometry.display.id)
         }
         requestDraw()
+    }
+
+    /// Copy View: what the Viewer shows now, rendered offscreen, with the pixel grid only when
+    /// `showsGrid` (Settings › Screenshots). Tagged with the colour space the Viewer shows it in.
+    /// `nil` without a frame or without Metal.
+    func renderViewImage(showsGrid: Bool) -> CGImage? {
+        guard let renderer else { return nil }
+        var style = renderer.style
+        style.showsGrid = style.showsGrid && showsGrid
+        return renderer.renderImage(renderer.scene(for: self, style: style))
     }
 
     private var resizeTracker = AreaResizeTracker()
@@ -293,7 +301,7 @@ final class ViewerView: MTKView {
         case "+", "=": zoomPan.stepZoom(1, around: cursorPoint)
         case "-", "_": zoomPan.stepZoom(-1, around: cursorPoint)
         case "0": zoomPan.fit()
-        case " ": onToggleFreeze?()
+        case " ": NSApp.sendAction(#selector(AppController.toggleFreeze(_:)), to: nil, from: self)
         default: super.keyDown(with: event)
         }
     }

@@ -1,7 +1,7 @@
 import AppKit
-import SwiftUI
 
-/// The Viewer: a regular, resizable window that can go full screen or live on another display.
+/// The Viewer: a regular, resizable window that can go full screen or live on another display. It
+/// shows `ViewerContentView`, or the permission explanation while Screen Recording access is missing.
 @MainActor
 final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     /// Called when the user closes the Viewer.
@@ -10,28 +10,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     var onPermissionChange: (() -> Void)?
     /// Called when the user asks to try capturing again after a failure.
     var onRetry: (() -> Void)?
-    /// The toolbar's Copy and Save buttons.
-    var onCopyView: (() -> Void)?
-    var onSaveView: (() -> Void)?
-    /// Space, the toolbar's pause button.
-    var onToggleFreeze: (() -> Void)?
 
     private let permissions: PermissionsManager
     private let settings: SettingsStore
-    private let viewerView: ViewerView
-    private let overlay: ViewerOverlayView
-    private let meterPanel: ColorMeterPanel
-    private let inspector: PixelInspector
     private let zoomPan: ZoomPanController
-    private let statusView = CaptureStatusView()
-    private let toast = ToastView()
-    private let frozenIndicator = FrozenIndicatorView()
-    private let ruler: RulerController
-    private let references: ReferencesController
-    private let sidePanels: SidePanelStack
-    /// The magnified image with everything drawn over it; left of the Color Meter.
-    private let imageArea = NSView()
-    private let captureContent = NSStackView()
+    private let content: ViewerContentView
     private let toolbar: ViewerToolbar
     private var showsPermissionView: Bool?
     /// ScreenCaptureKit refused for lack of permission although the preflight said yes. The
@@ -45,25 +28,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     ) {
         self.permissions = permissions
         self.settings = settings
-        self.inspector = inspector
         self.zoomPan = zoomPan
-        let viewerView = ViewerView(frameStore: frameStore, zoomPan: zoomPan, inspector: inspector)
-        self.viewerView = viewerView
-        overlay = ViewerOverlayView(zoomPan: zoomPan, inspector: inspector)
-        overlay.drawableScale = { [weak viewerView] in viewerView?.drawableScale ?? 1 }
-        meterPanel = ColorMeterPanel(inspector: inspector)
-        toolbar = ViewerToolbar(zoomPan: zoomPan)
-        ruler = RulerController(zoomPan: zoomPan, project: project)
-        viewerView.ruler = ruler
-        overlay.ruler = ruler
-        references = ReferencesController(project: project, zoomPan: zoomPan)
-        viewerView.references = references
-        overlay.references = references
-        let referencesPanel = NSHostingView(rootView: ReferencesPanel(references: references))
-        // The side panel column sizes it, not its content.
-        referencesPanel.sizingOptions = []
-        sidePanels = SidePanelStack(meter: meterPanel, references: referencesPanel)
-        overlay.sourceScale = { frameStore.latestFrame?.geometry.display.scale ?? 1 }
+        content = ViewerContentView(
+            settings: settings, frameStore: frameStore, zoomPan: zoomPan, inspector: inspector, project: project)
+        toolbar = ViewerToolbar(zoomPan: zoomPan, settings: settings, ruler: content.ruler)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
@@ -85,124 +53,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         }
         window.setFrameAutosaveName("Viewer")
 
-        buildCaptureContent()
-        zoomPan.onChange = { [weak self] in
-            self?.viewerView.requestDraw()
-            self?.overlay.needsDisplay = true
-            self?.toolbar.refresh()
-            self?.ruler.viewportChanged()
-        }
-        toolbar.onZoomEntered = { zoomPan.setZoom($0) }
-        inspector.onChange = { [weak self] in
-            self?.overlay.needsDisplay = true
-            self?.meterPanel.refresh()
-        }
-        toolbar.onToggle = { [weak self] toggle in self?.toggle(toggle) }
-        viewerView.onPick = { [weak self] in self?.pickColor() }
-        meterPanel.onCopy = { [weak self] text, what in self?.copyText(text, what: what) }
-        applyToggles()
-        toolbar.onToggleAlwaysOnTop = { [weak self] in self?.toggleAlwaysOnTop() }
-        toolbar.onCopy = { [weak self] in self?.onCopyView?() }
-        toolbar.onSave = { [weak self] in self?.onSaveView?() }
-        toolbar.onToggleFreeze = { [weak self] in self?.onToggleFreeze?() }
-        toolbar.onToggleRuler = { [weak self] in self?.toggleRuler() }
-        references.window = window
-        references.onChange = { [weak self] in
-            self?.viewerView.requestDraw()
-            self?.overlay.needsDisplay = true
-        }
-        sidePanels.onExpand = { panel in settings.update { $0.expandedSidePanel = panel } }
-        sidePanels.onScale = { [weak references] scale in references?.scale = scale }
-        sidePanels.width = CGFloat(settings.settings.sidePanelWidth)
-        sidePanels.onResize = { width in settings.update { $0.sidePanelWidth = Double(width) } }
-        // The ruler may come back from the project.
-        toolbar.setRuler(ruler.isOn)
-        ruler.onChange = { [weak self] in
-            guard let self else { return }
-            overlay.needsDisplay = true
-            toolbar.setRuler(ruler.isOn)
-        }
-        viewerView.onToggleFreeze = { [weak self] in self?.onToggleFreeze?() }
-        statusView.onRetry = { [weak self] in self?.onRetry?() }
-        statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
-        // Any change: what applyToggles sets is left alone when it didn't change.
-        settings.observe { [weak self] _, _ in self?.applyToggles() }
-        applyAlwaysOnTop()
+        content.statusView.onRetry = { [weak self] in self?.onRetry?() }
+        content.statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
+        // A floating window stays above other apps' windows even while another app is active. The
+        // Capture Area frame sits higher still (`.statusBar`), so the Viewer never covers it.
+        settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.window?.level = $0 ? .floating : .normal }
         refreshContent()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-    /// The magnified image with the crosshair, status panel and toast over it, and the Color Meter
-    /// at its right.
-    private func buildCaptureContent() {
-        // Views don't clip by default since macOS 14; the reference frame and the ruler would draw
-        // over the side panels.
-        imageArea.clipsToBounds = true
-        frozenIndicator.isHidden = true
-        for view in [viewerView, overlay, frozenIndicator] as [NSView] {
-            view.frame = imageArea.bounds
-            view.autoresizingMask = [.width, .height]
-            imageArea.addSubview(view)
-        }
-        statusView.isHidden = true
-        statusView.translatesAutoresizingMaskIntoConstraints = false
-        imageArea.addSubview(statusView)
-        toast.translatesAutoresizingMaskIntoConstraints = false
-        imageArea.addSubview(toast)
-        NSLayoutConstraint.activate([
-            statusView.centerXAnchor.constraint(equalTo: imageArea.centerXAnchor),
-            statusView.centerYAnchor.constraint(equalTo: imageArea.centerYAnchor),
-            toast.centerXAnchor.constraint(equalTo: imageArea.centerXAnchor),
-            toast.bottomAnchor.constraint(equalTo: imageArea.bottomAnchor, constant: -16),
-        ])
-        imageArea.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        captureContent.orientation = .horizontal
-        captureContent.spacing = 0
-        captureContent.alignment = .height
-        captureContent.distribution = .fill
-        captureContent.addArrangedSubview(imageArea)
-        captureContent.addArrangedSubview(sidePanels)
-    }
-
-    // MARK: Grid, crosshair, Color Meter and Settings › Viewer
-
-    private func toggle(_ toggle: ViewerToolbar.Toggle) {
-        settings.update {
-            switch toggle {
-            case .grid: $0.gridEnabled.toggle()
-            case .crosshair: $0.crosshairEnabled.toggle()
-            case .meter:
-                $0.meterVisible.toggle()
-                if $0.meterVisible { $0.expandedSidePanel = .colorMeter }
-            case .references:
-                $0.referencesVisible.toggle()
-                if $0.referencesVisible { $0.expandedSidePanel = .references }
-            }
-        }
-    }
-
-    private func applyToggles() {
-        let current = settings.settings
-        viewerView.style = ViewerStyle(
-            showsGrid: current.gridEnabled, gridMinimumZoom: CGFloat(current.gridMinimumZoom),
-            gridLines: current.gridLines, background: current.viewerBackground)
-        viewerView.wheelZoomNeedsCommand = current.wheelZoomNeedsCommand
-        overlay.showsCrosshair = current.crosshairEnabled
-        overlay.color = current.crosshairColor.nsColor
-        sidePanels.show(
-            meter: current.meterVisible, references: current.referencesVisible, expanded: current.expandedSidePanel)
-        references.isActive = current.referencesVisible
-        // The eyedropper works only while the Color Meter is open and not collapsed to its strip.
-        viewerView.isPicking =
-            current.meterVisible && (!current.referencesVisible || current.expandedSidePanel == .colorMeter)
-        references.takesMouse = !viewerView.isPicking
-        toolbar.setToggle(.grid, isOn: current.gridEnabled)
-        toolbar.setToggle(.crosshair, isOn: current.crosshairEnabled)
-        toolbar.setToggle(.meter, isOn: current.meterVisible)
-        toolbar.setToggle(.references, isOn: current.referencesVisible)
-    }
 
     /// Whether the inspector is needed at all: for the crosshair or the Color Meter.
     var isInspecting: Bool {
@@ -210,21 +70,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         return current.crosshairEnabled || current.meterVisible
     }
 
-    private func pickColor() {
-        guard let pin = inspector.pinProbe() else { return }
-        showToast("Pinned \(pin.hex)")
-    }
-
-    private func copyText(_ text: String, what: String) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        showToast("Copied \(what)")
-    }
-
     /// A short confirmation at the bottom of the Viewer, such as "View copied".
     func showToast(_ text: String) {
-        toast.show(text)
+        content.showToast(text)
     }
 
     // MARK: First launch
@@ -259,37 +107,29 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     func toggleAlwaysOnTop() {
         settings.update { $0.viewerAlwaysOnTop.toggle() }
-        applyAlwaysOnTop()
     }
 
-    /// A floating window stays above other apps' windows even while another app is active. The
-    /// Capture Area frame sits higher still (`.statusBar`), so the Viewer never covers it.
-    private func applyAlwaysOnTop() {
-        window?.level = isAlwaysOnTop ? .floating : .normal
-        toolbar.setAlwaysOnTop(isAlwaysOnTop)
+    // MARK: Copy View
+
+    /// What the Viewer shows, rendered offscreen (docs/design.md §2.4). `nil` without a frame.
+    func renderViewImage(showsGrid: Bool) -> CGImage? {
+        content.viewerView.renderViewImage(showsGrid: showsGrid)
     }
-
-    /// The Viewer's drawable pixels per point, for Copy View's checkerboard.
-    var drawableScale: CGFloat { viewerView.drawableScale }
-
-    /// The visible reference layers for Copy View, bottom first.
-    var referencesForExport: [(layer: ReferenceLayer, image: CGImage)] { references.drawable }
 
     // MARK: Ruler
 
-    var isRulerOn: Bool { ruler.isOn }
+    var isRulerOn: Bool { content.ruler.isOn }
 
     /// Turning the ruler off forgets it; turning it on starts a new one.
     func toggleRuler() {
-        ruler.toggle()
+        content.ruler.toggle()
     }
 
     // MARK: Freeze frame
 
     func setFrozen(_ frozen: Bool) {
-        frozenIndicator.isHidden = !frozen
+        content.setFrozen(frozen)
         toolbar.setFrozen(frozen)
-        if !frozen { viewerView.forgetAreaOrigin() }
     }
 
     // MARK: Size to area
@@ -305,9 +145,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     func sizeToArea() {
         guard canSizeToArea, let window, let screen = window.screen else { return }
         let image = zoomPan.state.scaledContentSize
-        let drawableScale = viewerView.drawableScale
+        let drawableScale = content.viewerView.drawableScale
         let chrome = CGSize(
-            width: window.frame.width - imageArea.frame.width, height: window.frame.height - imageArea.frame.height)
+            width: window.frame.width - content.imageAreaSize.width,
+            height: window.frame.height - content.imageAreaSize.height)
         let frame = ViewerWindowFit.frame(
             imageSize: CGSize(width: image.width / drawableScale, height: image.height / drawableScale),
             chrome: chrome, window: window.frame, visible: screen.visibleFrame, minSize: window.minSize,
@@ -321,11 +162,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     var showsCapture: Bool { showsPermissionView == false }
 
     func frameArrived() {
-        viewerView.frameArrived()
+        content.viewerView.frameArrived()
     }
 
     /// Shows or clears an interrupted capture.
     func setCaptureProblem(_ problem: CaptureProblem?) {
+        let statusView = content.statusView
         let wasInterrupted = !statusView.isHidden
         switch problem {
         case .permissionDenied?:
@@ -347,12 +189,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func hideStatus() {
-        statusView.stop()
-        statusView.isHidden = true
+        content.statusView.stop()
+        content.statusView.isHidden = true
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
-        viewerView.requestDraw()
+        content.viewerView.requestDraw()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -365,9 +207,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         guard needsPermission != showsPermissionView else { return }
         showsPermissionView = needsPermission
         window?.toolbar = needsPermission ? nil : toolbar.toolbar
-        window?.contentView = needsPermission ? PermissionView(permissions: permissions) : captureContent
+        window?.contentView = needsPermission ? PermissionView(permissions: permissions) : content
         if !needsPermission {
-            window?.makeFirstResponder(viewerView)
+            window?.makeFirstResponder(content.viewerView)
         }
         onPermissionChange?()
     }

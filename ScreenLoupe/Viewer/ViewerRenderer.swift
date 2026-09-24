@@ -15,6 +15,21 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     /// Called when a reference texture made off the main thread is ready to draw.
     var onTextureReady: (() -> Void)?
 
+    /// One picture of the Viewer: what the screen shows now, or what Copy View renders.
+    struct Scene {
+        /// The target's size in drawable pixels, the space `state` works in.
+        var size: CGSize
+        /// Drawable pixels per point, for the checkerboard's squares.
+        var drawableScale: CGFloat
+        var state: ZoomPanState
+        var frame: CapturedFrame?
+        var style: ViewerStyle
+        /// The visible reference layers, bottom first.
+        var references: [(layer: ReferenceLayer, image: CGImage)]
+        /// The colour space the target is shown in; reference images are drawn into it.
+        var colorSpace: CGColorSpace
+    }
+
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private let checkerPipeline: MTLRenderPipelineState
@@ -28,6 +43,9 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
     private let log = Logger(category: "viewer")
+
+    /// The format of the Viewer's drawable and of Copy View's offscreen target.
+    static let pixelFormat = MTLPixelFormat.bgra8Unorm
 
     init?(view: MTKView, frameStore: FrameStore, zoomPan: ZoomPanController) {
         guard let device = view.device,
@@ -45,7 +63,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: "quadVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "quadFragment")
-        descriptor.colorAttachments[0].pixelFormat = view.colorPixelFormat
+        descriptor.colorAttachments[0].pixelFormat = Self.pixelFormat
         let checkerDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
         checkerDescriptor.fragmentFunction = library.makeFunction(name: "checkerFragment")
         let referenceDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
@@ -88,32 +106,13 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             let commands = queue.makeCommandBuffer(),
             let encoder = commands.makeRenderCommandEncoder(descriptor: pass)
         else { return }
-
-        if style.background == .checkerboard {
-            drawCheckerboard(encoder, view: view)
-        }
-        var texture: CVMetalTexture?
-        var frameTexture: MTLTexture?
-        let frame = frameStore.latestFrame
         #if DEBUG
             frameStore.count { $0.draws += 1 }
         #endif
-        if let frame, let quad = quadRect(for: frame, drawableSize: view.drawableSize) {
-            texture = makeTexture(frame.pixelBuffer)
-            if let texture, let metalTexture = CVMetalTextureGetTexture(texture) {
-                frameTexture = metalTexture
-                var uniforms = quad
-                let zoom = zoomPan.state.zoom
-                var fragment = SIMD4<Float>(
-                    Float(frame.pixelSize.width), Float(frame.pixelSize.height), Float(zoom), gridMode(zoom: zoom))
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setVertexBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
-                encoder.setFragmentBytes(&fragment, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
-                encoder.setFragmentTexture(metalTexture, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-            }
-        }
-        drawReferences(encoder, view: view, frame: frame, frameTexture: frameTexture)
+        let scene = scene(for: view, style: style)
+        // Textures of layers that are gone or hidden go too.
+        referenceTextures = referenceTextures.filter { entry in scene.references.contains { $0.layer.id == entry.key } }
+        let texture = encode(scene, into: encoder)
         encoder.endEncoding()
         commands.present(drawable)
         // The CVMetalTexture must outlive the GPU work that samples it; only held, never used, on the
@@ -125,27 +124,105 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         CVMetalTextureCacheFlush(textureCache, 0)
     }
 
-    private func drawReferences(
-        _ encoder: MTLRenderCommandEncoder, view: MTKView, frame: CapturedFrame?, frameTexture: MTLTexture?
-    ) {
-        let layers = references()
-        let space = view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!
-        referenceTextures = referenceTextures.filter { entry in layers.contains { $0.layer.id == entry.key } }
-        guard !layers.isEmpty else { return }
-        let state = zoomPan.state
-        let size = view.drawableSize
-        guard size.width > 0, size.height > 0 else { return }
+    /// What `view` shows now, drawn with `style`: the one place a scene is put together, for the
+    /// screen and for Copy View alike.
+    func scene(for view: MTKView, style: ViewerStyle) -> Scene {
+        Scene(
+            size: view.drawableSize, drawableScale: view.drawableScale, state: zoomPan.state,
+            frame: frameStore.latestFrame, style: style, references: references(),
+            colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!)
+    }
+
+    /// `scene` rendered offscreen by the same pipelines as the screen, for Copy View
+    /// (docs/design.md §2.4): what it shows is the Viewer, at any zoom, with the grid and the
+    /// reference layers as drawn. `nil` without a frame or a viewport.
+    func renderImage(_ scene: Scene) -> CGImage? {
+        let width = Int(scene.size.width.rounded())
+        let height = Int(scene.size.height.rounded())
+        guard scene.frame != nil, width > 0, height > 0 else { return nil }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: Self.pixelFormat, width: width, height: height, mipmapped: false)
+        descriptor.usage = .renderTarget
+        // Managed, not shared: GPUs of Intel Macs don't take shared textures; on Apple silicon it is
+        // the same memory either way.
+        descriptor.storageMode = .managed
+        guard let target = device.makeTexture(descriptor: descriptor),
+            let commands = queue.makeCommandBuffer()
+        else { return nil }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = scene.style.background.clearColor
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return nil }
+        let texture = encode(scene, into: encoder)
+        encoder.endEncoding()
+        if let blit = commands.makeBlitCommandEncoder() {
+            blit.synchronize(resource: target)
+            blit.endEncoding()
+        }
+        commands.commit()
+        commands.waitUntilCompleted()
+        withExtendedLifetime(texture) {}
+        CVMetalTextureCacheFlush(textureCache, 0)
+
+        let bytesPerRow = width * 4
+        var bytes = Data(count: bytesPerRow * height)
+        bytes.withUnsafeMutableBytes { buffer in
+            guard let base = buffer.baseAddress else { return }
+            target.getBytes(
+                base, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        }
+        guard let provider = CGDataProvider(data: bytes as CFData) else { return nil }
+        // BGRA, opaque: the clear is opaque and every layer blends source-over.
+        let info = CGBitmapInfo(
+            rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        return CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+            space: scene.colorSpace, bitmapInfo: info, provider: provider, decode: nil, shouldInterpolate: false,
+            intent: .defaultIntent)
+    }
+
+    /// The checkerboard, the frame with its grid, and the reference layers. Returns the frame's
+    /// texture, which must stay alive until the GPU is done with it.
+    private func encode(_ scene: Scene, into encoder: MTLRenderCommandEncoder) -> CVMetalTexture? {
+        guard scene.size.width > 0, scene.size.height > 0 else { return nil }
+        if scene.style.background == .checkerboard {
+            drawCheckerboard(encoder, drawableScale: scene.drawableScale)
+        }
+        var texture: CVMetalTexture?
+        var frameTexture: MTLTexture?
+        if let frame = scene.frame {
+            texture = makeTexture(frame.pixelBuffer)
+            if let texture, let metalTexture = CVMetalTextureGetTexture(texture) {
+                frameTexture = metalTexture
+                let size = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
+                var quad = Self.ndc(
+                    scene.state.imageRect(origin: frame.geometry.imageOrigin, size: size), in: scene.size)
+                let zoom = scene.state.zoom
+                var fragment = SIMD4<Float>(
+                    Float(size.width), Float(size.height), Float(zoom), Self.gridMode(scene.style, zoom: zoom))
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setVertexBytes(&quad, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                encoder.setFragmentBytes(&fragment, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                encoder.setFragmentTexture(metalTexture, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            }
+        }
+        drawReferences(encoder, scene: scene, frameTexture: frameTexture)
+        return texture
+    }
+
+    private func drawReferences(_ encoder: MTLRenderCommandEncoder, scene: Scene, frameTexture: MTLTexture?) {
+        guard !scene.references.isEmpty else { return }
         encoder.setRenderPipelineState(referencePipeline)
-        for (layer, image) in layers {
-            guard let texture = referenceTexture(layer.id, image: image, space: space) else { continue }
-            let rect = state.imageRect(origin: layer.origin, size: layer.frame.size)
-            var quad = SIMD4<Float>(
-                Float(rect.minX / size.width * 2 - 1), Float(1 - rect.minY / size.height * 2),
-                Float(rect.maxX / size.width * 2 - 1), Float(1 - rect.maxY / size.height * 2))
+        for (layer, image) in scene.references {
+            guard let texture = referenceTexture(layer.id, image: image, space: scene.colorSpace) else { continue }
+            var quad = Self.ndc(scene.state.imageRect(origin: layer.origin, size: layer.frame.size), in: scene.size)
             // The layer's corners in the frame's UV: the frame covers its pixel size from its origin.
             var frameUV = SIMD4<Float>(0, 0, 0, 0)
             let difference = layer.blend == .difference && frameTexture != nil
-            if difference, let frame {
+            if difference, let frame = scene.frame {
                 let pixels = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
                 let origin = frame.geometry.imageOrigin
                 frameUV = SIMD4(
@@ -214,7 +291,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     }
 
     /// The shader's grid value: 0 none, 1 auto, 2 dark, 3 light lines.
-    private func gridMode(zoom: CGFloat) -> Float {
+    private static func gridMode(_ style: ViewerStyle, zoom: CGFloat) -> Float {
         guard style.showsGrid, zoom >= style.gridMinimumZoom else { return 0 }
         switch style.gridLines {
         case .auto: return 1
@@ -223,12 +300,11 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    private func drawCheckerboard(_ encoder: MTLRenderCommandEncoder, view: MTKView) {
-        let scale = view.drawableScale
+    private func drawCheckerboard(_ encoder: MTLRenderCommandEncoder, drawableScale: CGFloat) {
         func color(_ c: SIMD3<Double>) -> SIMD4<Float> { SIMD4(Float(c.x), Float(c.y), Float(c.z), 1) }
         var uniforms = [
             color(ViewerBackground.checkerboard.components), color(ViewerBackground.checkerDarkComponents),
-            SIMD4<Float>(Float(ViewerBackground.checkerSquare * scale), 0, 0, 0),
+            SIMD4<Float>(Float(ViewerBackground.checkerSquare * drawableScale), 0, 0, 0),
         ]
         var viewport = SIMD4<Float>(-1, 1, 1, -1)
         encoder.setRenderPipelineState(checkerPipeline)
@@ -237,19 +313,11 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
     }
 
-    /// The frame's quad in NDC: left, top, right, bottom.
-    private func quadRect(for frame: CapturedFrame, drawableSize: CGSize) -> SIMD4<Float>? {
-        guard drawableSize.width > 0, drawableSize.height > 0 else { return nil }
-        let size = frame.pixelSize
-        let rect = zoomPan.state.imageRect(
-            origin: frame.geometry.imageOrigin, size: CGSize(width: size.width, height: size.height))
-        let left = rect.minX
-        let top = rect.minY
-        let right = rect.maxX
-        let bottom = rect.maxY
-        func ndcX(_ x: CGFloat) -> Float { Float(x / drawableSize.width * 2 - 1) }
-        func ndcY(_ y: CGFloat) -> Float { Float(1 - y / drawableSize.height * 2) }
-        return SIMD4(ndcX(left), ndcY(top), ndcX(right), ndcY(bottom))
+    /// `rect` (drawable pixels, y down) in NDC: left, top, right, bottom.
+    private static func ndc(_ rect: CGRect, in size: CGSize) -> SIMD4<Float> {
+        func x(_ value: CGFloat) -> Float { Float(value / size.width * 2 - 1) }
+        func y(_ value: CGFloat) -> Float { Float(1 - value / size.height * 2) }
+        return SIMD4(x(rect.minX), y(rect.minY), x(rect.maxX), y(rect.maxY))
     }
 
     private func makeTexture(_ pixelBuffer: CVPixelBuffer) -> CVMetalTexture? {
@@ -271,6 +339,14 @@ struct ViewerStyle: Equatable {
     var gridMinimumZoom: CGFloat = 8
     var gridLines = GridLines.auto
     var background = ViewerBackground.dark
+}
+
+extension Settings {
+    var viewerStyle: ViewerStyle {
+        ViewerStyle(
+            showsGrid: gridEnabled, gridMinimumZoom: CGFloat(gridMinimumZoom), gridLines: gridLines,
+            background: viewerBackground)
+    }
 }
 
 extension ViewerBackground {

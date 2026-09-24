@@ -6,6 +6,7 @@ import AppKit
 final class WindowManager {
     let captureArea: CaptureAreaController
     let viewer: ViewerWindowController
+    let export: ExportController
     private let capture = ScreenCaptureManager()
     private let zoomPan = ZoomPanController()
     private let project = ProjectStore()
@@ -22,6 +23,7 @@ final class WindowManager {
         viewer = ViewerWindowController(
             permissions: permissions, settings: settings, frameStore: capture.frameStore, zoomPan: zoomPan,
             inspector: inspector, project: project)
+        export = ExportController(frameStore: capture.frameStore, settings: settings, viewer: viewer)
 
         capture.onFrame = { [weak self] in
             self?.viewer.frameArrived()
@@ -31,10 +33,7 @@ final class WindowManager {
         capture.onUserStopped = { [weak self] in self?.viewer.close() }
         capture.onProblem = { [weak self] problem in self?.viewer.setCaptureProblem(problem) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
-        viewer.onCopyView = { [weak self] in self?.copyView() }
-        viewer.onSaveView = { [weak self] in self?.saveView() }
         viewer.onPermissionChange = { [weak self] in self?.updateCapture() }
-        viewer.onToggleFreeze = { [weak self] in self?.toggleFreeze() }
         // Closing the Viewer hides the Capture Area too; the app stays in the menu bar.
         viewer.onClose = { [weak self] in
             guard let self else { return }
@@ -105,7 +104,7 @@ final class WindowManager {
 
     /// Space in the Viewer, the toolbar's pause button, View › Freeze Frame.
     func toggleFreeze() {
-        guard isFrozen || canExport else { return NSSound.beep() }
+        guard isFrozen || export.canExport else { return NSSound.beep() }
         setFrozen(!isFrozen)
     }
 
@@ -134,75 +133,6 @@ final class WindowManager {
             capture.simulateInterruption(recovers: recovers)
         }
     #endif
-
-    // MARK: Screenshots (docs/product.md, Screenshots)
-
-    /// Whether there is a frame to copy or save.
-    var canExport: Bool { viewer.showsCapture && capture.frameStore.latestFrame != nil }
-
-    func copyView() {
-        guard let image = viewImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
-        viewer.showToast("View copied")
-    }
-
-    func copySource() {
-        guard let image = sourceImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
-        viewer.showToast("Source copied")
-    }
-
-    func saveView() {
-        save(viewImage(), kind: "View")
-    }
-
-    func saveSource() {
-        save(sourceImage(), kind: "Source")
-    }
-
-    private func viewImage() -> CGImage? {
-        guard let frame = capture.frameStore.latestFrame else { return nil }
-        let current = settings.settings
-        // The grid as the Viewer shows it, when Settings › Screenshots includes it.
-        let showsGrid =
-            current.gridEnabled && current.gridInCopyView && zoomPan.state.zoom >= CGFloat(current.gridMinimumZoom)
-        return ScreenshotExporter.viewImage(
-            from: frame, state: zoomPan.state, background: current.viewerBackground,
-            checkerSquare: ViewerBackground.checkerSquare * viewer.drawableScale,
-            grid: showsGrid ? current.gridLines : nil, references: viewer.referencesForExport,
-            colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
-    }
-
-    private func sourceImage() -> CGImage? {
-        guard let frame = capture.frameStore.latestFrame else { return nil }
-        return ScreenshotExporter.sourceImage(
-            from: frame, colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
-    }
-
-    /// The image is taken when the command is given, before the save panel opens.
-    private func save(_ image: CGImage?, kind: String) {
-        guard let image, let png = ScreenshotExporter.pngData(image), let window = viewer.window else {
-            return NSSound.beep()
-        }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.canCreateDirectories = true
-        panel.nameFieldStringValue = ScreenshotExporter.fileName(kind: kind, style: settings.settings.fileNameStyle)
-        panel.directoryURL =
-            settings.settings.screenshotDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
-            ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            do {
-                try png.write(to: url, options: .atomic)
-                self?.settings.update { $0.screenshotDirectory = url.deletingLastPathComponent().path }
-                self?.viewer.showToast("Saved \(url.lastPathComponent)")
-                if self?.settings.settings.revealsSavedFile == true {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                }
-            } catch {
-                NSAlert(error: error).beginSheetModal(for: window)
-            }
-        }
-    }
 
     func displaysChanged() {
         captureArea.screenParametersChanged()

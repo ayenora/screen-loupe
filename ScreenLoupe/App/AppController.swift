@@ -1,29 +1,36 @@
 import AppKit
 
-/// Wires the app together and handles the commands shared by the main menu and the menu bar item.
+/// Wires the app together and handles the app's commands. It is the app delegate, so it ends the
+/// responder chain: a command sent with no target (the Viewer's toolbar, Space in the Viewer, ⌘C)
+/// reaches it from any window, and the menus validate against it.
 @MainActor
-final class AppController: NSObject {
+final class AppController: NSObject, NSApplicationDelegate {
     private let settings = SettingsStore()
     private let permissions = PermissionsManager()
-    private lazy var windows = WindowManager(settings: settings, permissions: permissions)
+    private var builtWindows: WindowManager?
+    /// Built on first use. With nothing shown at launch, the windows, Metal and the capture wait
+    /// until something needs them; code that only reacts to them uses `builtWindows`.
+    private var windows: WindowManager {
+        if let builtWindows { return builtWindows }
+        let windows = WindowManager(settings: settings, permissions: permissions)
+        builtWindows = windows
+        return windows
+    }
     private let shortcuts = GlobalShortcuts()
     /// Built the first time Settings opens, then kept.
     private var settingsWindow: SettingsWindowController?
     private var statusItem: StatusItemController?
     private var observers: [NSObjectProtocol] = []
 
-    func start() {
-        applyDockIcon()
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        settings.observe(\.showsDockIcon) { [weak self] in self?.applyDockIcon($0) }
         NSApp.mainMenu = MainMenu.make(target: self)
         statusItem = StatusItemController(target: self)
         shortcuts.onAction = { [weak self] action in self?.perform(action) }
-        shortcuts.register(settings.settings.shortcuts)
-        settings.observe { [weak self] old, new in
-            if old.shortcuts != new.shortcuts { self?.shortcuts.register(new.shortcuts) }
-            if old.showsDockIcon != new.showsDockIcon { self?.applyDockIcon() }
-            if old.viewerAlwaysOnTop != new.viewerAlwaysOnTop, let self {
-                self.settingsWindow?.window?.level = self.settingsLevel
-            }
+        settings.observe(\.shortcuts) { [weak self] in self?.shortcuts.register($0) }
+        settings.observe(\.viewerAlwaysOnTop) { [weak self] _ in
+            guard let self else { return }
+            settingsWindow?.window?.level = settingsLevel
         }
         // Without Screen Recording access the Viewer explains why it is needed and asks from there,
         // even when Settings says to show nothing on launch.
@@ -36,17 +43,29 @@ final class AppController: NSObject {
             center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main)
             {
                 [weak self] _ in
-                MainActor.assumeIsolated { self?.windows.displaysChanged() }
+                MainActor.assumeIsolated { self?.builtWindows?.displaysChanged() }
             })
         observers.append(
             center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) {
                 [weak self] _ in
-                MainActor.assumeIsolated { self?.windows.viewer.refreshContent() }
+                MainActor.assumeIsolated { self?.builtWindows?.viewer.refreshContent() }
             })
     }
 
-    func reopen() {
+    /// Saves what AppKit doesn't keep by itself before the app quits.
+    func applicationWillTerminate(_ notification: Notification) {
+        builtWindows?.saveViewerState()
+        builtWindows?.saveProject()
+    }
+
+    /// Closing the Viewer keeps the app running in the menu bar (docs/product.md, Menu bar and app mode).
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         windows.showViewer()
+        return true
     }
 
     // MARK: Commands
@@ -67,7 +86,8 @@ final class AppController: NSObject {
         windows.resetZoom()
     }
 
-    @objc func toggleRuler(_ sender: Any?) {
+    /// Not `toggleRuler(_:)`: that is an `NSText` action, which a text field being edited would take.
+    @objc func toggleMeasuringRuler(_ sender: Any?) {
         windows.viewer.toggleRuler()
     }
 
@@ -79,26 +99,26 @@ final class AppController: NSObject {
         windows.viewer.sizeToArea()
     }
 
-    /// Saves what AppKit doesn't keep by itself before the app quits.
-    func willTerminate() {
-        windows.saveViewerState()
-        windows.saveProject()
+    @objc func copyView(_ sender: Any?) {
+        windows.export.copyView()
     }
 
-    @objc func copyView(_ sender: Any?) {
-        windows.copyView()
+    /// Edit › Copy View (⌘C) when no text field has the focus: a text field with the focus copies its
+    /// text first.
+    @objc func copy(_ sender: Any?) {
+        windows.export.copyView()
     }
 
     @objc func copySource(_ sender: Any?) {
-        windows.copySource()
+        windows.export.copySource()
     }
 
     @objc func saveView(_ sender: Any?) {
-        windows.saveView()
+        windows.export.saveView()
     }
 
     @objc func saveSource(_ sender: Any?) {
-        windows.saveSource()
+        windows.export.saveSource()
     }
 
     #if DEBUG
@@ -118,12 +138,12 @@ final class AppController: NSObject {
     }
 
     /// Settings stays above the Viewer when the Viewer is kept on top.
-    private var settingsLevel: NSWindow.Level { windows.viewer.isAlwaysOnTop ? .floating : .normal }
+    private var settingsLevel: NSWindow.Level { settings.settings.viewerAlwaysOnTop ? .floating : .normal }
 
     /// Menu bar only: no Dock icon and no main menu bar. Switching keeps the app active, so an open
     /// Settings window stays in front.
-    private func applyDockIcon() {
-        NSApp.setActivationPolicy(settings.settings.showsDockIcon ? .regular : .accessory)
+    private func applyDockIcon(_ showsDockIcon: Bool) {
+        NSApp.setActivationPolicy(showsDockIcon ? .regular : .accessory)
         if NSApp.isActive || settingsWindow?.window?.isVisible == true {
             NSApp.activate()
         }
@@ -133,32 +153,36 @@ final class AppController: NSObject {
         switch action {
         case .toggleCaptureArea: windows.toggleCaptureArea()
         case .toggleViewer: windows.toggleViewer()
-        case .copyView: windows.copyView()
-        case .copySource: windows.copySource()
+        case .copyView: windows.export.copyView()
+        case .copySource: windows.export.copySource()
         }
     }
 }
 
 extension AppController: NSMenuItemValidation {
+    /// Reads the windows only when they exist: opening a menu doesn't build them.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let canExport = builtWindows?.export.canExport == true
         switch menuItem.action {
         case #selector(toggleCaptureArea(_:)):
-            menuItem.title = windows.captureArea.isVisible ? "Hide Capture Area" : "Show Capture Area"
+            let isVisible = builtWindows?.captureArea.isVisible == true
+            menuItem.title = isVisible ? "Hide Capture Area" : "Show Capture Area"
             return true
         case #selector(toggleViewerAlwaysOnTop(_:)):
-            menuItem.state = windows.viewer.isAlwaysOnTop ? .on : .off
+            menuItem.state = settings.settings.viewerAlwaysOnTop ? .on : .off
             return true
-        case #selector(toggleRuler(_:)):
-            menuItem.state = windows.viewer.isRulerOn ? .on : .off
-            return windows.viewer.showsCapture
+        case #selector(toggleMeasuringRuler(_:)):
+            menuItem.state = builtWindows?.viewer.isRulerOn == true ? .on : .off
+            return builtWindows?.viewer.showsCapture == true
         case #selector(toggleFreeze(_:)):
-            menuItem.state = windows.isFrozen ? .on : .off
-            return windows.isFrozen || windows.canExport
+            let isFrozen = builtWindows?.isFrozen == true
+            menuItem.state = isFrozen ? .on : .off
+            return isFrozen || canExport
         case #selector(sizeViewerToArea(_:)):
-            return windows.viewer.canSizeToArea
+            return builtWindows?.viewer.canSizeToArea == true
         case #selector(copyView(_:)), #selector(NSText.copy(_:)), #selector(copySource(_:)), #selector(saveView(_:)),
             #selector(saveSource(_:)):
-            return windows.canExport
+            return canExport
         default:
             return true
         }

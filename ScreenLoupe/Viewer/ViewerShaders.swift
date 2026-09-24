@@ -1,8 +1,7 @@
 /// The Viewer's Metal shaders, compiled at launch with `MTLDevice.makeLibrary(source:options:)`.
 ///
 /// Kept as source rather than a `.metal` file so building the app doesn't need Xcode's separately
-/// downloaded Metal toolchain. The grid's constants come from `PixelGrid`, so Copy View draws the
-/// same grid.
+/// downloaded Metal toolchain.
 enum ViewerShaders {
     static let source = """
         #include <metal_stdlib>
@@ -52,11 +51,11 @@ enum ViewerShaders {
                 // lines sit exactly on pixel boundaries and are one drawable pixel wide.
                 float2 into = fract(in.uv * uniforms.imageSize) * uniforms.zoom;
                 if (into.x < 1.0 || into.y < 1.0) {
-                    float luma = dot(color.rgb, float3(\(PixelGrid.lumaWeights.red), \(PixelGrid.lumaWeights.green), \(PixelGrid.lumaWeights.blue)));
+                    float luma = dot(color.rgb, float3(0.2126, 0.7152, 0.0722));
                     float3 line = uniforms.grid > 2.5 ? float3(1.0)
                         : uniforms.grid > 1.5 ? float3(0.0)
                         : (luma > 0.5 ? float3(0.0) : float3(1.0));
-                    color.rgb = mix(color.rgb, line, \(PixelGrid.opacity));
+                    color.rgb = mix(color.rgb, line, 0.22);
                 }
             }
             return color;
