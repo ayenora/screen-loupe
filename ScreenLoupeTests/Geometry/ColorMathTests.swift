@@ -40,12 +40,4 @@ struct ColorMathTests {
         let ratio = ColorSample.contrastRatio(ColorSample(srgbHex: a), ColorSample(srgbHex: b))
         #expect(abs(ratio - expected) < 0.01)
     }
-
-    @Test func ratingThresholds() {
-        let rating = ContrastRating(ratio: 4.6)
-        #expect(rating.passesAA)
-        #expect(!rating.passesAAA)
-        #expect(rating.passesAALarge)
-        #expect(rating.text == "4.60 : 1")
-    }
 }

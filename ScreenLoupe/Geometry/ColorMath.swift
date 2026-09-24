@@ -104,16 +104,3 @@ struct ColorSample: Equatable, Sendable {
         return name.replacingOccurrences(of: "kCGColorSpace", with: "")
     }
 }
-
-/// WCAG 2.x conformance levels for a contrast ratio.
-struct ContrastRating: Equatable, Sendable {
-    var ratio: Double
-    /// Normal text: AA needs 4.5, AAA needs 7.
-    var passesAA: Bool { ratio >= 4.5 }
-    var passesAAA: Bool { ratio >= 7 }
-    /// Large text (18 pt, or 14 pt bold): AA needs 3, AAA needs 4.5.
-    var passesAALarge: Bool { ratio >= 3 }
-
-    /// `4.82 : 1`
-    var text: String { String(format: "%.2f : 1", ratio) }
-}

@@ -19,6 +19,8 @@ struct Settings: Codable, Equatable {
     var referencesVisible = false
     /// With both side panels open, the one that is expanded.
     var expandedSidePanel = SidePanel.colorMeter
+    /// The side panel column's width in points; its content scales with it.
+    var sidePanelWidth: Double = 250
     var pinnedColors: [PinnedColor] = []
     /// The Viewer's zoom when the app last quit or the Viewer closed.
     var viewerZoom: Double?
@@ -69,6 +71,7 @@ struct Settings: Codable, Equatable {
         referencesVisible = try container.decodeIfPresent(Bool.self, forKey: .referencesVisible) ?? false
         expandedSidePanel =
             try container.decodeIfPresent(SidePanel.self, forKey: .expandedSidePanel) ?? fallback.expandedSidePanel
+        sidePanelWidth = try container.decodeIfPresent(Double.self, forKey: .sidePanelWidth) ?? fallback.sidePanelWidth
         pinnedColors = try container.decodeIfPresent([PinnedColor].self, forKey: .pinnedColors) ?? []
         viewerZoom = try container.decodeIfPresent(Double.self, forKey: .viewerZoom)
         showsDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showsDockIcon) ?? fallback.showsDockIcon

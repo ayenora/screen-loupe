@@ -3,10 +3,23 @@ import AppKit
 /// The Color Meter panel at the right of the Viewer (mockup variant C).
 ///
 /// Top: the inspected pixel — a large swatch and its value in every format, each with a copy button.
-/// Below: the pinned colours, newest first, each copyable and removable, and the WCAG contrast of the
-/// two newest. A click in the Viewer pins a colour.
+/// Below: the pinned colours, the last 8, newest first, each copyable and removable. A click in the
+/// Viewer pins a colour.
+///
+/// It fills the width it is given. `scale` multiplies every font, size and spacing, so the panel
+/// grows with the side column without any drawing transform.
 final class ColorMeterPanel: NSView {
+    /// The column's width at scale 1.
     static let width: CGFloat = 250
+
+    var scale: CGFloat = 1 {
+        didSet {
+            guard scale != oldValue else { return }
+            build()
+            shownPins = []
+            refresh()
+        }
+    }
 
     /// Called with the text to copy and a short description for the confirmation.
     var onCopy: ((_ text: String, _ what: String) -> Void)?
@@ -16,8 +29,8 @@ final class ColorMeterPanel: NSView {
     private let swatch = SwatchView()
     private var valueFields: [Format: NSTextField] = [:]
     private var copyButtons: [Format: NSButton] = [:]
-    private let pinsStack = NSStackView()
-    private let contrastLabel = NSTextField(labelWithString: "")
+    private var pinsStack = NSStackView()
+    private var content: NSView?
     private let pinsHint = NSTextField(wrappingLabelWithString: "Click a pixel in the Viewer to pin its color.")
     private let clearButton = NSButton(title: "Clear", target: nil, action: nil)
 
@@ -67,22 +80,27 @@ final class ColorMeterPanel: NSView {
     // MARK: Layout
 
     private func build() {
+        content?.removeFromSuperview()
+        let s = scale
+        let small = NSFont.smallSystemFontSize * s
         let title = sectionTitle("Color Meter")
-        sourceLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        sourceLabel.font = .systemFont(ofSize: small)
         sourceLabel.textColor = .secondaryLabelColor
         sourceLabel.lineBreakMode = .byTruncatingTail
 
+        let swatch = self.swatch
+        swatch.removeConstraints(swatch.constraints)
         swatch.translatesAutoresizingMaskIntoConstraints = false
-        swatch.heightAnchor.constraint(equalToConstant: 56).isActive = true
+        swatch.heightAnchor.constraint(equalToConstant: 56 * s).isActive = true
 
         var rows: [NSView] = []
         for format in Format.allCases {
             let key = NSTextField(labelWithString: format.title)
-            key.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            key.font = .systemFont(ofSize: small)
             key.textColor = .secondaryLabelColor
-            key.widthAnchor.constraint(equalToConstant: 48).isActive = true
+            key.widthAnchor.constraint(equalToConstant: 48 * s).isActive = true
             let value = NSTextField(labelWithString: "—")
-            value.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            value.font = .monospacedSystemFont(ofSize: small, weight: .regular)
             value.lineBreakMode = .byTruncatingMiddle
             value.isSelectable = true
             value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -90,7 +108,7 @@ final class ColorMeterPanel: NSView {
             copy.tag = Format.allCases.firstIndex(of: format) ?? 0
             copy.action = #selector(copyFormat(_:))
             let row = NSStackView(views: [key, value, copy])
-            row.spacing = 6
+            row.spacing = 6 * s
             row.setHuggingPriority(.defaultHigh, for: .vertical)
             valueFields[format] = value
             copyButtons[format] = copy
@@ -99,45 +117,45 @@ final class ColorMeterPanel: NSView {
 
         let pinnedTitle = sectionTitle("Pinned")
         clearButton.bezelStyle = .inline
-        clearButton.controlSize = .small
+        clearButton.font = .systemFont(ofSize: small)
         clearButton.target = self
         clearButton.action = #selector(clearPins)
         let pinnedHeader = NSStackView(views: [pinnedTitle, NSView(), clearButton])
 
+        pinsStack = NSStackView()
         pinsStack.orientation = .vertical
         pinsStack.alignment = .leading
-        pinsStack.spacing = 4
-        contrastLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        pinsHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        pinsStack.spacing = 4 * s
+        pinsHint.font = .systemFont(ofSize: small)
         pinsHint.textColor = .tertiaryLabelColor
 
         let stack = NSStackView(
             views: [title, sourceLabel, swatch] + rows + [
-                separator(), pinnedHeader, pinsStack, contrastLabel, pinsHint,
+                separator(), pinnedHeader, pinsStack, pinsHint,
             ])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 6
-        stack.setCustomSpacing(10, after: swatch)
-        stack.setCustomSpacing(12, after: rows.last ?? swatch)
-        stack.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 12)
+        stack.spacing = 6 * s
+        stack.setCustomSpacing(10 * s, after: swatch)
+        stack.setCustomSpacing(12 * s, after: rows.last ?? swatch)
+        stack.edgeInsets = NSEdgeInsets(top: 12 * s, left: 14 * s, bottom: 12 * s, right: 12 * s)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+        content = stack
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: Self.width),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
         ])
         for view in [swatch] + rows + [pinnedHeader, pinsStack] {
-            view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -26).isActive = true
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -26 * s).isActive = true
         }
     }
 
     private func sectionTitle(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text.uppercased())
-        label.font = .systemFont(ofSize: 10, weight: .semibold)
+        label.font = .systemFont(ofSize: 10 * scale, weight: .semibold)
         label.textColor = .secondaryLabelColor
         return label
     }
@@ -152,7 +170,8 @@ final class ColorMeterPanel: NSView {
         let button = NSButton()
         button.bezelStyle = .inline
         button.isBordered = false
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12 * scale, weight: .regular))
         button.toolTip = label
         button.target = self
         return button
@@ -198,20 +217,13 @@ final class ColorMeterPanel: NSView {
         let pins = inspector.pins
         clearButton.isHidden = pins.isEmpty
         pinsHint.isHidden = !pins.isEmpty
-        if let contrast = inspector.contrast {
-            func mark(_ passes: Bool) -> String { passes ? "✓" : "✗" }
-            contrastLabel.stringValue =
-                "Contrast \(contrast.text)   AA \(mark(contrast.passesAA))  AAA \(mark(contrast.passesAAA))  Large \(mark(contrast.passesAALarge))"
-            contrastLabel.toolTip = "WCAG contrast of the two newest pins. Large: 18 pt, or 14 pt bold."
-            contrastLabel.isHidden = false
-        } else {
-            contrastLabel.isHidden = true
-        }
         guard pins != shownPins else { return }
         shownPins = pins
         pinsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (index, pin) in pins.enumerated() {
-            pinsStack.addArrangedSubview(pinRow(pin, index: index))
+            let row = pinRow(pin, index: index)
+            pinsStack.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: pinsStack.widthAnchor).isActive = true
         }
     }
 
@@ -221,13 +233,14 @@ final class ColorMeterPanel: NSView {
             srgbRed: pin.sample.srgb.red, green: pin.sample.srgb.green, blue: pin.sample.srgb.blue, alpha: 1)
         swatch.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            swatch.widthAnchor.constraint(equalToConstant: 18), swatch.heightAnchor.constraint(equalToConstant: 18),
+            swatch.widthAnchor.constraint(equalToConstant: 18 * scale),
+            swatch.heightAnchor.constraint(equalToConstant: 18 * scale),
         ])
         let hex = NSTextField(labelWithString: pin.hex)
-        hex.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        hex.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize * scale, weight: .medium)
         hex.isSelectable = true
         let position = NSTextField(labelWithString: "\(pin.x), \(pin.y)")
-        position.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        position.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize * scale, weight: .regular)
         position.textColor = .secondaryLabelColor
         let copy = iconButton("doc.on.doc", label: "Copy \(pin.hex)")
         copy.tag = index
@@ -236,9 +249,8 @@ final class ColorMeterPanel: NSView {
         remove.tag = index
         remove.action = #selector(removePin(_:))
         let row = NSStackView(views: [swatch, hex, position, NSView(), copy, remove])
-        row.spacing = 6
+        row.spacing = 6 * scale
         row.translatesAutoresizingMaskIntoConstraints = false
-        row.widthAnchor.constraint(equalToConstant: Self.width - 26).isActive = true
         return row
     }
 
