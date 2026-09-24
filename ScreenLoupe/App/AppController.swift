@@ -67,9 +67,22 @@ final class AppController: NSObject {
         windows.resetZoom()
     }
 
+    @objc func toggleRuler(_ sender: Any?) {
+        windows.viewer.toggleRuler()
+    }
+
+    @objc func toggleFreeze(_ sender: Any?) {
+        windows.toggleFreeze()
+    }
+
+    @objc func sizeViewerToArea(_ sender: Any?) {
+        windows.viewer.sizeToArea()
+    }
+
     /// Saves what AppKit doesn't keep by itself before the app quits.
     func willTerminate() {
         windows.saveViewerState()
+        windows.saveProject()
     }
 
     @objc func copyView(_ sender: Any?) {
@@ -136,6 +149,14 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleViewerAlwaysOnTop(_:)):
             menuItem.state = windows.viewer.isAlwaysOnTop ? .on : .off
             return true
+        case #selector(toggleRuler(_:)):
+            menuItem.state = windows.viewer.isRulerOn ? .on : .off
+            return windows.viewer.showsCapture
+        case #selector(toggleFreeze(_:)):
+            menuItem.state = windows.isFrozen ? .on : .off
+            return windows.isFrozen || windows.canExport
+        case #selector(sizeViewerToArea(_:)):
+            return windows.viewer.canSizeToArea
         case #selector(copyView(_:)), #selector(copySource(_:)), #selector(saveView(_:)), #selector(saveSource(_:)):
             return windows.canExport
         default:

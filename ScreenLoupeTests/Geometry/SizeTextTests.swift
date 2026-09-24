@@ -26,4 +26,11 @@ struct SizeTextTests {
         #expect(SizeText.tab(size, scale: 2, units: units) == tab)
         #expect(SizeText.label(size, scale: 2, units: units) == label)
     }
+
+    @Test func edgesAreLeftTopRightBottomInPointsOrPixels() {
+        let rect = CGRect(x: 209, y: 149.5, width: 222, height: 152)
+        #expect(SizeText.edges(rect, scale: 2, units: .points).map(\.value) == ["209", "149.5", "431", "301.5"])
+        #expect(SizeText.edges(rect, scale: 2, units: .pixels).map(\.value) == ["418", "299", "862", "603"])
+        #expect(SizeText.edges(rect, scale: 2, units: .pointsAndPixels).map(\.key) == ["L", "T", "R", "B"])
+    }
 }

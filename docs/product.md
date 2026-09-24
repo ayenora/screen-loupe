@@ -29,6 +29,8 @@ A frame above every other window that marks the region being inspected.
 - Transparent inside: nothing covers the content, and clicks go through to the app underneath.
 - Shows its size in points and pixels (`220 × 150 pt · 440 × 300 px`), so the numbers mean something on Retina and non-Retina displays alike.
 - Arrow keys move it by one pixel, Shift + arrow by ten; Option resizes instead of moving.
+- On hover a narrow box beside the frame shows its edges — L, T, R, B — from the top-left corner of its display, in the tab's units (points, or pixels when only pixels are chosen). It sits right of the frame, or left of it when there is no room.
+- The pin button right of the tab (left of it at the screen's edge) locks the frame: pinned, it neither moves nor resizes, and shows no handles. The pin is kept between launches.
 - It doesn't follow the mouse and doesn't depend on the Viewer: it stays where you placed it.
 
 ### Viewer
@@ -36,8 +38,9 @@ A frame above every other window that marks the region being inspected.
 A regular macOS window that shows the Capture Area live.
 
 - Moved, resized, taken full screen or placed on another display; none of that changes the Capture Area.
-- Toolbar: zoom presets and the current zoom on the left; grid, crosshair, Color Meter, Copy, Save and Keep on Top on the right.
+- Toolbar: zoom presets and the current zoom on the left; freeze, ruler, grid, crosshair, Color Meter, References, Copy, Save and Keep on Top on the right.
 - **Keep Viewer on Top** keeps it above other apps' windows.
+- **Size Window to Area** (View menu, ⌥⌘0) sizes the Viewer so the whole magnified area shows at the current zoom, without panning. The zoom doesn't change. The window never grows beyond its screen: it moves to stay on it, and an image bigger than the screen still pans.
 - When access to the screen is missing or capture breaks, the Viewer says so and offers a way out; it is never an empty window without an explanation.
 
 ### Zoom and pan
@@ -54,7 +57,7 @@ A regular macOS window that shows the Capture Area live.
 | Mode | What you get |
 |---|---|
 | **Copy/Save Source** | The Capture Area as it is on screen, unmagnified, at native resolution: a 500×300 pt area on a 2× display is a 1000×600 PNG. |
-| **Copy/Save View** | Exactly what the Viewer shows: its zoom, pan and viewport. |
+| **Copy/Save View** | Exactly what the Viewer shows: its zoom, pan and viewport, with the reference layers. The crosshair and the ruler are tools, not content, and stay out. |
 
 | Shortcut | Action |
 |---|---|
@@ -64,6 +67,26 @@ A regular macOS window that shows the Capture Area live.
 | `⇧⌘S` | Save Source… |
 
 Saved files are PNGs with the display's colour profile, named like macOS screenshots, in the folder used last. Copy View is the point of the app for reviews and bug reports: zoom into a detail at 800–1600%, frame it, copy exactly that.
+
+### Freeze frame
+
+Space in the Viewer, the pause button in the toolbar or View › Freeze Frame stops the live view on the current frame, to study a transient state — a hover, a pressed button, a frame of an animation. Space again resumes.
+
+- While frozen, a blue border runs around the image with "Frozen · Space to resume" at its top.
+- Copy, Save and the Color Meter use the frozen frame.
+- The Capture Area can still be moved and resized; the image updates when the view resumes.
+- Closing the Viewer resumes.
+
+### Ruler
+
+A corner ruler over the image, for measuring in screen pixels at any zoom. The toolbar's ruler button or View › Ruler (⌘R) turns it on and off; turning it off forgets it.
+
+- A corner and two arms, one horizontal and one vertical. Each arm shows its length, `32 px · 16 pt` (just `px` on a 1× display), with a tick per pixel when they are far enough apart.
+- Drag the line to move the ruler, an arm's end to stretch that arm, the corner to move it while the ends stay. An arm dragged past the corner flips to the other side. Everything moves in whole pixels, so the ends sit on pixel edges.
+- No arm looks shorter than 32 pt, so its handles never touch.
+- Unpinned, the ruler stays where it is in the Viewer while the image pans and zooms under it.
+- On hover a translucent band shows along the line — the part that moves the ruler — and a pin button outside the corner; both stay a moment after the pointer leaves. While the image pans or zooms, an unpinned ruler hides, since it would jump from pixel to pixel, and eases back in once the image settles.
+- The pin button pins the ruler to the pixels under it. Panning and zooming then carry it along, and it can't be moved, only its arms stretched. Zooming out lengthens an arm that would look too short, and zooming back in returns it to the length it was set to.
 
 ### Crosshair
 
@@ -76,6 +99,23 @@ A panel beside the image for the pixel under the cursor — in the Viewer, or un
 - Position in Capture Area pixels, not in the magnified image.
 - HEX and CSS `rgb()` in sRGB, matching design tools; SwiftUI `Color` and AppKit `NSColor`; the native display value (for example Display P3). Each has a copy button.
 - Click a pixel to pin its colour (up to 12, kept between launches); the WCAG contrast ratio of the two newest pins.
+
+### References
+
+Images laid over the live pixels — a design export, an earlier screenshot — for an exact check of the screen against them. PNG, JPEG, TIFF, HEIC, BMP and GIF are accepted. The toolbar's References button opens the panel; the layers show and take the mouse only while it is open.
+
+- Up to 10 layers, top first, like layers in an image editor: drag a row to reorder, the eye hides a layer, Delete removes it.
+- Each layer is one row (eye, thumbnail, name, opacity, pin, chevron) or, expanded, a block with its settings: opacity, Normal or Difference, X and Y of its top-left corner in pixels from the Capture Area's top-left, scale, Reset Position and Delete. The panel scrolls.
+- Difference shows the absolute difference from the live capture: pixels that match turn black. The image is converted to the display's colour space first, so a design colour that renders exactly matches exactly.
+- In the Viewer, dragging a layer moves it in whole pixels; the selected layer has corner handles that scale it with its proportions kept. Exact values go in the panel.
+- A pinned layer lets the mouse through: a drag takes the next unpinned layer under it, or pans the image.
+- Copy View and Save View include the layers as shown.
+
+The Color Meter and References share the column at the right, top down in that order. With both open one is expanded and fills the height, and the other is a strip at its place; clicking the strip expands it and collapses the other. The eyedropper works only while the Color Meter is expanded.
+
+### Project
+
+What you set up to inspect a spot — the reference layers and the ruler — is the working project. There is one: it is saved as you work and restored at launch. Added images are copied into it, so a reference keeps working when its original file moves.
 
 ### Pixel grid
 
@@ -121,7 +161,7 @@ Opened with Settings… (⌘,) in the app menu or the menu bar item. Five tabs; 
 
 ### Kept between launches
 
-The Capture Area's place and size, the Viewer's frame, zoom, the toolbar toggles, pinned colours, the screenshot folder and every setting.
+The Capture Area's place, size and pin, the Viewer's frame, zoom, the toolbar toggles, which side panel is expanded, pinned colours, the screenshot folder and every setting — and the project: the reference layers and the ruler. Freeze is not kept; the Viewer always opens live.
 
 ## Not in scope
 

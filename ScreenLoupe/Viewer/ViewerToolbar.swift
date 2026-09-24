@@ -1,7 +1,7 @@
 import AppKit
 
-/// The Viewer's toolbar (docs/product.md, Viewer): zoom presets and the current zoom on the left; the Grid,
-/// Crosshair and Color Meter toggles, Copy, Save and the keep-on-top pin on the right.
+/// The Viewer's toolbar (docs/product.md, Viewer): zoom presets and the current zoom on the left; Freeze,
+/// the Ruler, the Grid, Crosshair and Color Meter toggles, Copy, Save and the keep-on-top pin on the right.
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
 /// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the pin a checkmark.
@@ -9,9 +9,12 @@ import AppKit
 final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let presetsID = NSToolbarItem.Identifier("zoomPresets")
     private static let zoomLabelID = NSToolbarItem.Identifier("zoomLabel")
+    private static let freezeID = NSToolbarItem.Identifier("freeze")
+    private static let rulerID = NSToolbarItem.Identifier("ruler")
     private static let gridID = NSToolbarItem.Identifier("grid")
     private static let crosshairID = NSToolbarItem.Identifier("crosshair")
     private static let meterID = NSToolbarItem.Identifier("colorMeter")
+    private static let referencesID = NSToolbarItem.Identifier("references")
     private static let copyID = NSToolbarItem.Identifier("copyView")
     private static let saveID = NSToolbarItem.Identifier("saveView")
     private static let onTopID = NSToolbarItem.Identifier("alwaysOnTop")
@@ -19,15 +22,18 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     var onToggleAlwaysOnTop: (() -> Void)?
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
+    var onToggleFreeze: (() -> Void)?
+    var onToggleRuler: (() -> Void)?
 
     enum Toggle: CaseIterable {
-        case grid, crosshair, meter
+        case grid, crosshair, meter, references
 
         var title: String {
             switch self {
             case .grid: "Pixel Grid"
             case .crosshair: "Crosshair"
             case .meter: "Color Meter"
+            case .references: "References"
             }
         }
 
@@ -36,6 +42,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             case .grid: "grid"
             case .crosshair: "scope"
             case .meter: "eyedropper"
+            case .references: "square.stack.3d.up"
             }
         }
     }
@@ -54,6 +61,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     /// The zoom the label last showed, to tell a zoom change from a pan.
     private var shownZoom: CGFloat?
     var onZoomEntered: ((CGFloat) -> Void)?
+    private let freezeButton = NSButton()
+    private let rulerButton = NSButton()
+    private let rulerMenuItem = NSMenuItem(title: "Ruler", action: nil, keyEquivalent: "")
+    private let freezeMenuItem = NSMenuItem(title: "Freeze Frame", action: nil, keyEquivalent: "")
     private let onTopButton = NSButton()
     private let copyButton = NSButton()
     private let saveButton = NSButton()
@@ -90,6 +101,14 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         configure(saveButton, symbol: "square.and.arrow.down", title: "Save View…", action: #selector(saveClicked))
         configure(onTopButton, symbol: "pin", title: "Keep on Top", action: #selector(onTopClicked))
         onTopButton.setButtonType(.pushOnPushOff)
+        configure(freezeButton, symbol: "pause", title: "Freeze Frame (Space)", action: #selector(freezeClicked))
+        freezeButton.setButtonType(.pushOnPushOff)
+        freezeMenuItem.target = self
+        freezeMenuItem.action = #selector(freezeClicked)
+        configure(rulerButton, symbol: "ruler", title: "Ruler", action: #selector(rulerClicked))
+        rulerButton.setButtonType(.pushOnPushOff)
+        rulerMenuItem.target = self
+        rulerMenuItem.action = #selector(rulerClicked)
         for toggle in Toggle.allCases {
             let button = NSButton()
             configure(button, symbol: toggle.symbol, title: toggle.title, action: #selector(toggleClicked(_:)))
@@ -184,6 +203,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         onToggle?(Toggle.allCases[tag])
     }
 
+    func setRuler(_ isOn: Bool) {
+        rulerButton.state = isOn ? .on : .off
+        rulerMenuItem.state = isOn ? .on : .off
+    }
+
+    func setFrozen(_ isOn: Bool) {
+        freezeButton.state = isOn ? .on : .off
+        freezeMenuItem.state = isOn ? .on : .off
+    }
+
     func setAlwaysOnTop(_ isOn: Bool) {
         onTopButton.state = isOn ? .on : .off
         onTopMenuItem.state = isOn ? .on : .off
@@ -192,6 +221,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     // MARK: Actions
 
     @objc private func onTopClicked() { onToggleAlwaysOnTop?() }
+    @objc private func freezeClicked() { onToggleFreeze?() }
+    @objc private func rulerClicked() { onToggleRuler?() }
     @objc private func copyClicked() { onCopy?() }
     @objc private func saveClicked() { onSave?() }
 
@@ -215,7 +246,9 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.gridID, Self.crosshairID, Self.meterID, .space,
+            Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.freezeID, Self.rulerID, Self.gridID,
+            Self.crosshairID,
+            Self.meterID, Self.referencesID, .space,
             Self.copyID, Self.saveID, Self.onTopID,
         ]
     }
@@ -237,9 +270,19 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         case Self.zoomLabelID:
             item.view = zoomLabel
             item.menuFormRepresentation = zoomLabelMenuItem
-        case Self.gridID, Self.crosshairID, Self.meterID:
-            let toggle: Toggle =
-                identifier == Self.gridID ? .grid : identifier == Self.crosshairID ? .crosshair : .meter
+        case Self.freezeID:
+            item.view = freezeButton
+            item.label = "Freeze Frame"
+            item.menuFormRepresentation = freezeMenuItem
+        case Self.rulerID:
+            item.view = rulerButton
+            item.label = "Ruler"
+            item.menuFormRepresentation = rulerMenuItem
+        case Self.gridID, Self.crosshairID, Self.meterID, Self.referencesID:
+            let toggles: [NSToolbarItem.Identifier: Toggle] = [
+                Self.gridID: .grid, Self.crosshairID: .crosshair, Self.meterID: .meter, Self.referencesID: .references,
+            ]
+            let toggle = toggles[identifier] ?? .grid
             item.view = toggleButtons[toggle]
             item.label = toggle.title
             item.menuFormRepresentation = toggleMenuItems[toggle]

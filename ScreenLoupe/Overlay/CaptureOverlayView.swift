@@ -13,8 +13,9 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 
 /// Draws the Capture Area frame and turns mouse and key events into delegate calls.
 ///
-/// The line is always drawn. The band, the handles and the tab fade in on hover; the muted size
-/// label shows at rest. Subviews never take the mouse, so every event lands here.
+/// The line is always drawn. The band, the handles, the tab and the position box fade in on hover;
+/// the muted size label shows at rest. A pinned frame shows no band or handles. Subviews never take
+/// the mouse, so every event lands here.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
 
@@ -22,13 +23,24 @@ final class CaptureOverlayView: NSView {
     private let decorations = FrameDecorationsView()
     private let tab = GripTabView()
     private let label = SizeLabelView()
+    private let positionBox = PositionBoxView()
+    private let pinButton = PinButtonView()
     private var isDragging = false
     private var isRevealed = false
+
+    /// Pinned: no band or handles, and the tab's pin is filled.
+    var isPinned = false {
+        didSet {
+            pinButton.isPinned = isPinned
+            decorations.alphaValue = decorationsAlpha
+        }
+    }
 
     var style: FrameStyle {
         didSet {
             decorations.style = style
             tab.style = style
+            pinButton.style = style
             label.alphaValue = labelAlpha
             needsDisplay = true
         }
@@ -38,14 +50,17 @@ final class CaptureOverlayView: NSView {
         self.style = style
         decorations.style = style
         tab.style = style
+        pinButton.style = style
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        for subview in [decorations, label, tab] as [NSView] {
+        for subview in [decorations, label, positionBox, tab, pinButton] as [NSView] {
             addSubview(subview)
         }
         decorations.alphaValue = 0
         tab.alphaValue = 0
+        positionBox.alphaValue = 0
+        pinButton.alphaValue = 0
     }
 
     @available(*, unavailable)
@@ -54,7 +69,9 @@ final class CaptureOverlayView: NSView {
     // MARK: State
 
     /// Lays the frame out. Call after the window has taken `layout.windowFrame`.
-    func update(layout: OverlayLayout, tabText: String, labelText: String) {
+    func update(
+        layout: OverlayLayout, tabText: String, labelText: String, positionLines: [(key: String, value: String)]
+    ) {
         let placementChanged = self.layout.map { $0.tabPlacement != layout.tabPlacement } ?? false
         self.layout = layout
 
@@ -65,6 +82,9 @@ final class CaptureOverlayView: NSView {
         }
         label.text = labelText
         label.frame = local(layout.labelRect)
+        positionBox.lines = positionLines
+        positionBox.frame = local(layout.positionRect)
+        pinButton.frame = local(layout.pinRect)
         tab.text = tabText
         tab.showsShadow = layout.tabPlacement == .inside
 
@@ -86,13 +106,16 @@ final class CaptureOverlayView: NSView {
         isRevealed = revealed
         NSAnimationContext.runAnimationGroup { context in
             context.duration = OverlayStyle.revealDuration
-            decorations.animator().alphaValue = revealed ? 1 : 0
+            decorations.animator().alphaValue = decorationsAlpha
             tab.animator().alphaValue = revealed ? 1 : 0
+            positionBox.animator().alphaValue = revealed ? 1 : 0
+            pinButton.animator().alphaValue = revealed ? 1 : 0
             label.animator().alphaValue = labelAlpha
         }
     }
 
     private var labelAlpha: CGFloat { !isRevealed && style.showsLabelAtRest ? 1 : 0 }
+    private var decorationsAlpha: CGFloat { isRevealed && !isPinned ? 1 : 0 }
 
     private func local(_ rect: CGRect) -> CGRect {
         guard let origin = layout?.windowFrame.origin else { return rect }
@@ -144,7 +167,8 @@ final class CaptureOverlayView: NSView {
         window?.makeKey()
         isDragging = true
         let point = NSEvent.mouseLocation
-        if delegate?.overlayView(self, hitTargetAt: point) ?? .move == .move {
+        let target = delegate?.overlayView(self, hitTargetAt: point)
+        if target == .move || (target == nil && !isPinned) {
             NSCursor.closedHand.set()
         }
         delegate?.overlayView(self, mouseDownAt: point)
@@ -248,6 +272,61 @@ private final class GripTabView: NSView {
         let x = OverlayStyle.tabLeading + OverlayStyle.gripWidth + OverlayStyle.tabGap
         (text as NSString).draw(
             at: CGPoint(x: x, y: ((bounds.height - size.height) / 2).rounded()), withAttributes: attributes)
+    }
+}
+
+/// The pin button beside the tab: the tab's colour with an outlined pin, or the accent with a
+/// filled pin while the frame is pinned.
+private final class PinButtonView: NSView {
+    var style: FrameStyle? { didSet { needsDisplay = true } }
+    var isPinned = false { didSet { needsDisplay = true } }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let style else { return }
+        (isPinned ? style.accent : style.tabFill).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        let tint = isPinned ? (style.handleFill == .white ? NSColor.white : .black) : style.onTab
+        let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
+        guard
+            let pin = NSImage(
+                systemSymbolName: isPinned ? "pin.fill" : "pin", accessibilityDescription: isPinned ? "Unpin" : "Pin")?
+                .withSymbolConfiguration(configuration)
+        else { return }
+        pin.draw(
+            in: CGRect(
+                x: ((bounds.width - pin.size.width) / 2).rounded(),
+                y: ((bounds.height - pin.size.height) / 2).rounded(),
+                width: pin.size.width, height: pin.size.height))
+    }
+}
+
+/// The L T R B box beside the frame: keys muted, values right-aligned.
+private final class PositionBoxView: NSView {
+    var lines: [(key: String, value: String)] = [] { didSet { needsDisplay = true } }
+
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        OverlayStyle.labelFill.setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+        let keyAttributes: [NSAttributedString.Key: Any] = [
+            .font: OverlayStyle.labelFont, .foregroundColor: NSColor.white.withAlphaComponent(0.6),
+        ]
+        let valueAttributes: [NSAttributedString.Key: Any] = [
+            .font: OverlayStyle.labelFont, .foregroundColor: NSColor.white,
+        ]
+        let padding = OverlayStyle.positionPadding
+        for (index, line) in lines.enumerated() {
+            let y = padding.height + CGFloat(index) * OverlayStyle.positionLineHeight
+            (line.key as NSString).draw(at: CGPoint(x: padding.width, y: y), withAttributes: keyAttributes)
+            let width = (line.value as NSString).size(withAttributes: valueAttributes).width
+            (line.value as NSString).draw(
+                at: CGPoint(x: bounds.width - padding.width - width, y: y), withAttributes: valueAttributes)
+        }
     }
 }
 

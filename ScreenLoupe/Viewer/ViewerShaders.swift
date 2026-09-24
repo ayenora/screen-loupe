@@ -61,6 +61,33 @@ enum ViewerShaders {
             return color;
         }
 
+        struct ReferenceUniforms {
+            // Where the layer's corners fall in the frame texture: offset (xy) and size (zw) in the
+            // frame's UV, for the difference blend.
+            float4 frameUV;
+            float opacity;
+            // 1: the absolute difference from the live frame; 0: the image as it is.
+            float difference;
+            float2 unused;
+        };
+
+        // A reference layer over the frame. Its texture is premultiplied, in the Viewer's colour
+        // space; blending is premultiplied source-over.
+        fragment float4 referenceFragment(QuadVertex in [[stage_in]], texture2d<float> reference [[texture(0)]],
+                                          texture2d<float> frame [[texture(1)]],
+                                          constant ReferenceUniforms &uniforms [[buffer(0)]]) {
+            constexpr sampler pixels(mag_filter::nearest, min_filter::linear, address::clamp_to_edge);
+            float4 color = reference.sample(pixels, in.uv);
+            if (uniforms.difference > 0.5) {
+                float2 uv = uniforms.frameUV.xy + in.uv * uniforms.frameUV.zw;
+                bool inside = all(uv >= 0.0) && all(uv <= 1.0);
+                float3 live = inside ? frame.sample(pixels, uv).rgb : float3(0.0);
+                float3 straight = color.a > 0.0 ? color.rgb / color.a : float3(0.0);
+                color = float4(abs(straight - live) * color.a, color.a);
+            }
+            return color * uniforms.opacity;
+        }
+
         struct CheckerUniforms {
             float4 first;
             float4 second;

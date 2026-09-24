@@ -121,3 +121,36 @@ struct CaptureAreaEditingTests {
         #expect(CaptureAreaEditing.nudged(rect, key: key, step: 0.5, resize: resize) == expected)
     }
 }
+
+struct OverlayPositionBoxTests {
+    private let box = CGSize(width: 50, height: 60)
+
+    @Test func boxSitsRightOfTheFrameLevelWithItsTop() {
+        let l = OverlayLayout(
+            captureRect: CGRect(x: 100, y: 100, width: 200, height: 100), screenFrame: screen, tabWidth: 180,
+            labelWidth: 60, positionSize: box)
+        #expect(l.positionRect == CGRect(x: 312, y: 140, width: 50, height: 60))
+    }
+
+    @Test func boxFlipsLeftWhenTheRightSideIsOffScreen() {
+        let l = OverlayLayout(
+            captureRect: CGRect(x: 1200, y: 100, width: 220, height: 100), screenFrame: screen, tabWidth: 180,
+            labelWidth: 60, positionSize: box)
+        #expect(l.positionRect.maxX == CGFloat(1200 - 12))
+    }
+
+    @Test func boxStaysOnScreenBelowAFrameAtTheTop() {
+        let l = OverlayLayout(
+            captureRect: CGRect(x: 100, y: 870, width: 200, height: 30), screenFrame: screen, tabWidth: 180,
+            labelWidth: 60, positionSize: box)
+        #expect(l.positionRect.maxY == CGFloat(900 - 6))
+    }
+
+    @Test func pinnedFrameOnlyAnswersThePinButton() {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), pinned: true) == .pin)
+        #expect(l.hitTarget(at: CGPoint(x: l.tabRect.minX + 5, y: l.tabRect.midY), pinned: true) == nil)
+        #expect(l.hitTarget(at: CGPoint(x: 100, y: 100), pinned: true) == nil)
+        #expect(l.hitTarget(at: CGPoint(x: 100, y: 100)) == .resize(.bottomLeft))
+    }
+}

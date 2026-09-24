@@ -86,7 +86,7 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 ### 2.4 Screenshots
 
 - **Capture Source:** the latest frame's `CVPixelBuffer` is converted to a `CGImage` tagged with the frame's color space, then written as PNG or placed on the pasteboard. It is exactly the source pixels the Viewer shows, at native resolution. A new `SCScreenshotManager` capture isn't needed, and it could differ from what's on screen.
-- **Capture View:** CoreGraphics draws the frame into an image of the drawable's size with the placement the renderer uses (`ZoomPanState.imageRect`), the Viewer's background, and no interpolation when magnifying. At integer zoom every source pixel is an exact N×N block (checked pixel by pixel). The pixel grid is included only when the Settings option for it is on.
+- **Capture View:** CoreGraphics draws the frame into an image of the drawable's size with the placement the renderer uses (`ZoomPanState.imageRect`), the Viewer's background, and no interpolation when magnifying. At integer zoom every source pixel is an exact N×N block (checked pixel by pixel). The pixel grid is included only when the Settings option for it is on. Visible reference layers are drawn over the frame as the renderer draws them (§4, References); the crosshair and the ruler are tools and stay out.
 - **Output:** the clipboard gets PNG and TIFF; Save writes a PNG with the source display's color profile embedded, named like macOS screenshots (`Screen Loupe View 2026-09-24 at 14.20.05.png`), into the folder used last (Desktop at first). A short confirmation ("View copied") appears at the bottom of the Viewer.
 - **Commands:** Edit > Copy View `⌘C`, Copy Source `⇧⌘C`; File > Save View… `⌘S`, Save Source… `⇧⌘S`; the Viewer toolbar's Copy and Save buttons; Copy View and Copy Source in the menu bar item. They are enabled while there is a frame.
 
@@ -127,6 +127,7 @@ The Capture Area frame is drawn **outside** the captured rect: the window is the
     - **Grabbing the line:** on hover a translucent 5 pt band appears outside the whole line. The band is the move zone, so the user sees exactly where the frame can be taken.
     - **Tab placement:** above the frame → below it → inside the frame at its top (with a shadow). Horizontally it is centred on the frame but never closer than 6 pt to a screen edge. A change of placement is animated (~150 ms).
     - **At-rest size label:** below the frame on the right; inside the bottom-right corner when there is no room below.
+    - **Position box and pin:** the L T R B box sits right of the frame, or left when it would leave the screen, and fades in with the tab. A square pin button sits right of the tab (left at the screen's edge); a pinned frame hit-tests only that button, so it can't be moved, resized or nudged, and hides its band and handles.
     - Placement, hit zones and resize math are pure functions in `Geometry/OverlayLayout.swift`, covered by tests.
   - It can become key (a borderless window can't by default, so the panel overrides this) for the arrow-key nudges.
   - Minimum size: 64×64 pt. A smaller area saved by an earlier version grows to it on launch.
@@ -144,6 +145,11 @@ The Capture Area frame is drawn **outside** the captured rect: the window is the
 - **Crosshair** (toolbar toggle, on by default): marks the pixel under the real cursor inside the Capture Area — not the mouse over the Viewer, whose pointer already marks the spot. Lines across the Viewer through that pixel and a box around it, white under the accent colour so they read on any content. A transparent `ViewerOverlayView` over the image, placed with `ZoomPanState.imageRect`.
 - **Pixel grid** (toolbar toggle): drawn in the fragment shader from the threshold zoom on (8× by default). The first drawable pixel of every source pixel becomes the line, so lines sit exactly on pixel boundaries and are one pixel wide; dark over light content, light over dark.
 - **Color Meter** (toolbar toggle): a 250 pt panel right of the image — swatch; HEX, CSS `rgb()`, SwiftUI, AppKit, native value and position, each with a copy button; pinned colours (up to 12, newest first, persisted), each copyable and removable; the WCAG contrast of the two newest pins. While it is open the Viewer's cursor is an eyedropper and a click without dragging pins the colour under it; dragging still pans.
+- **Clipping:** the image area clips its subviews (`clipsToBounds`, off by default since macOS 14), so the overlay's reference frame and ruler never draw over the side panels.
+- **Freeze frame:** `FrameStore.isFrozen` drops incoming frames and keeps the frozen one when the stream stops or restarts (a move to another display), so the renderer, the Color Meter and Copy/Save all keep the frame that was showing without any other code knowing about it. The stream keeps running and follows the Capture Area; closing the Viewer unfreezes.
+- **Ruler:** `CornerRuler` (pure, tested) keeps the ruler either in drawable pixels, fixed in the Viewer, or pinned in source pixels with the arm lengths the user set; its placement is always whole source pixels. An arm never looks shorter than 32 pt: the shortest arm in source pixels is recomputed from the zoom, and a pinned ruler keeps its set lengths to return to. `RulerController` hit-tests and drags it; the overlay draws it. An unpinned ruler is fixed in the Viewer but snapped to source pixels, so under a moving image it would jump from cell to cell: it hides on every zoom/pan change and fades back in (ease-out, 0.12 s) 0.12 s after the last one. The pin button and move band stay 0.6 s after the pointer leaves. Its corner is clamped into the viewport, since the drawable-pixel position saved on one display can lie beyond the Viewer on another. Presses go to the ruler first, then to reference layers, then to panning.
+- **References:** `ReferenceStack` (pure, tested) holds the layers top first, with place and scale in source pixels from the Capture Area's top-left, so a layer stays on the pixels it was aligned with. The renderer draws each layer as a quad after the frame, from a texture made by drawing the image into the Viewer's colour space (premultiplied BGRA, remade when either changes), so a matching colour has the same values as the capture. Normal is premultiplied source-over at the layer's opacity. Difference is computed in the fragment shader against the live frame texture, not against the layers below: what it answers is "does the screen match the design". Copy View reproduces both with CoreGraphics (`.difference` in a scratch context holding only the live frame). The panel is SwiftUI in an `NSHostingView`, observing `ReferencesController`; `SidePanelStack` lays the column out by hand, top down, and the hosting view takes the size it is given (`sizingOptions = []`). Images beyond the GPU's 16384 px texture limit are scaled down for the texture only.
+- **Project:** `ProjectStore` keeps `project.json` (the reference stack and the ruler) and copies of the reference images in Application Support, written 0.4 s after the last change and on quit, read at launch. Everything else that persists stays in `Settings`.
 - **Global shortcuts:** Carbon `RegisterEventHotKey`. It works from any app and needs no Accessibility permission, unlike an `NSEvent` global key monitor.
 
 ## 5. Components and project structure
@@ -160,6 +166,10 @@ The app is split into components with one job each; none of them is a catch-all 
 | `ViewerView`, `ViewerRenderer`, `ViewerOverlayView` | Rendering the magnified image and the crosshair |
 | `ZoomPanController` | Zoom/pan state and gestures |
 | `PixelInspector`, `ColorMeterPanel` | The inspected pixel, its colour and the pinned colours |
+| `RulerController`, `CornerRuler` | The corner ruler: state, dragging, pinning |
+| `ReferencesController`, `ReferencesPanel`, `ReferenceStack` | Reference layers: the stack, images, the mouse in the Viewer, the panel |
+| `SidePanelStack` | The Color Meter and References column, one expanded |
+| `ProjectStore` | The working project: references, their images and the ruler |
 | `ScreenshotExporter` | Capture Source / Capture View → clipboard / PNG |
 | `DisplayCoordinateConverter` | All coordinate conversions |
 | `PermissionsManager` | Screen Recording permission |
@@ -169,19 +179,22 @@ The app is split into components with one job each; none of them is a catch-all 
 ScreenLoupe.xcodeproj           file-system-synchronized groups; the app and test targets
 ScreenLoupe/
   App/          AppController, AppDelegate/main, WindowManager, StatusItemController, Settings,
-                GlobalShortcuts, MainMenu
+                GlobalShortcuts, MainMenu, ProjectStore
   Capture/      ScreenCaptureManager, FrameStore, PermissionsManager
   Overlay/      CaptureAreaController, CaptureOverlayWindow, CaptureOverlayView, OverlayStyle
   Viewer/       ViewerWindowController, ViewerView (MTKView), ViewerRenderer, ViewerShaders,
                 ViewerToolbar, ViewerOverlayView, ColorMeterPanel, CaptureStatusView,
-                PermissionView, ZoomPanController, PixelInspector
+                PermissionView, ZoomPanController, PixelInspector, RulerController,
+                ReferencesController, ReferencesPanel (SwiftUI), SidePanelStack
   Export/       ScreenshotExporter
   Settings/     SettingsWindowController, SettingsViews (SwiftUI), ShortcutRecorder
   Geometry/     DisplayCoordinateConverter, DisplayLayout, coordinate types, ZoomPanMath,
-                OverlayLayout (frame layout, hit zones, editing), ColorMath, PixelGrid, SizeText
+                OverlayLayout (frame layout, hit zones, position box, pin), ColorMath, PixelGrid,
+                SizeText, ViewerWindowFit, CornerRuler, ReferenceLayers
   Resources/    Assets.xcassets (the app icon, drawn by scripts/make_icon.swift); Info.plist is generated from build settings, no entitlements file
 ScreenLoupeTests/
-  Geometry/     converter, snapping, display layouts, zoom/pan math, overlay layout, colour math
+  Geometry/     converter, snapping, display layouts, zoom/pan math, overlay layout, colour math,
+                window fit, ruler, reference layers
 ```
 
 `Geometry/` imports only Foundation and CoreGraphics, never AppKit. That keeps it fully unit-testable and stops window state from leaking into the math. The test target is hostless: it compiles the Geometry files itself and never launches the app, so tests never trigger the Screen Recording prompt.
@@ -198,6 +211,9 @@ ScreenLoupeTests/
 | 6 | **Color accuracy of HEX/RGB.** The frames are in the display's color space (for example Display P3), so HEX values differ from sRGB design tokens. HDR/EDR content complicates this further. | Capture SDR. The Inspector converts the pixel to sRGB with ColorSync/`CGColor` conversion and shows the native value next to it. |
 | 7 | **Fractional zoom** (for example 250%) with nearest-neighbor gives alternating 2- and 3-pixel columns. | Accepted: the integer presets are exact, and crispness is promised at integer zoom. |
 | 8 | **Swift 6 concurrency** around ScreenCaptureKit callbacks and `CVPixelBuffer` (not `Sendable`). | Confine the buffers to `FrameStore` behind a lock; mark it `@unchecked Sendable` with a written invariant; everything else is `@MainActor`. |
+| 9 | **A reference that should match doesn't turn black in Difference.** The design export is sRGB, the capture is in the display's colour space; an image exported at another scale lands between pixels. | The texture is drawn into the Viewer's colour space before blending; the layer's place is whole source pixels and its scale is set exactly in the panel. |
+| 10 | **Memory for reference layers.** Up to 10 images, each kept decoded and as a texture. | Accepted for design exports of screen size; textures are dropped as soon as a layer is deleted or hidden. |
+| 11 | **A damaged or foreign `project.json`.** | Decoding failure starts an empty project instead of failing; layers whose image file is gone are dropped at launch. |
 
 ## 7. Verification
 
@@ -227,6 +243,12 @@ There are no UI or timing-based tests. Window behaviour, live capture, permissio
 11. Copy View and paste: exactly the magnified viewport. Copy Source and paste: the source area at native resolution, unmagnified.
 12. Move the Viewer over the Capture Area: the Viewer does not capture itself.
 13. Drag the Capture Area to a second display: capture keeps working correctly.
+14. Hover the frame: the L T R B box sits beside it and flips sides at a screen edge. Pin the frame: it neither moves, resizes nor nudges; unpin it.
+15. Press Space in the Viewer: the image freezes with the blue border; Copy View copies the frozen frame; Space resumes.
+16. Size Window to Area at 800% on a small area: the whole area shows without panning; on a large area the window stops at the screen's edges.
+17. Turn the ruler on, move it, stretch and flip an arm, pin it, zoom and pan: a pinned ruler stays on its pixels and keeps its lengths; an unpinned one stays in place.
+18. Add a PNG export of the inspected UI as a reference, align it, switch to Difference: matching pixels are black. Pin it: a drag pans the image. Copy View includes the layer.
+19. Quit and relaunch: the references, the ruler, the frame's pin and the panels come back.
 
 ## 8. Open
 

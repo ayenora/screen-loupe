@@ -29,15 +29,16 @@ enum ScreenshotExporter {
         return context.makeImage()
     }
 
-    /// Capture View: exactly the Viewer's viewport — its zoom, pan and background, and the pixel grid
-    /// when `grid` is given (docs/product.md, Pixel grid).
+    /// Capture View: exactly the Viewer's viewport — its zoom, pan and background, the pixel grid
+    /// when `grid` is given (docs/product.md, Pixel grid), and the visible reference layers, bottom
+    /// first (docs/product.md, References).
     ///
     /// Drawn with the placement the renderer uses (`ZoomPanState.imageRect`), without interpolation
     /// when magnifying, so every source pixel is an exact N×N block at integer zoom.
     /// `checkerSquare` is in viewport pixels.
     static func viewImage(
         from frame: CapturedFrame, state: ZoomPanState, background: ViewerBackground, checkerSquare: CGFloat,
-        grid: GridLines?, colorSpace: CGColorSpace
+        grid: GridLines?, references: [(layer: ReferenceLayer, image: CGImage)] = [], colorSpace: CGColorSpace
     ) -> CGImage? {
         let width = Int(state.viewportSize.width.rounded())
         let height = Int(state.viewportSize.height.rounded())
@@ -52,13 +53,57 @@ enum ScreenshotExporter {
         // The viewport is y down; CGContext is y up.
         let rect = CGRect(x: placed.minX, y: CGFloat(height) - placed.maxY, width: placed.width, height: placed.height)
         context.draw(image, in: rect)
+        // The grid belongs to the frame: the renderer draws it in the frame's pass, under the layers.
         if let grid, let data = context.data {
             // The context's rows run top to bottom in memory, like the viewport.
             PixelGrid.draw(
                 into: data.assumingMemoryBound(to: UInt8.self), width: width, height: height,
                 bytesPerRow: context.bytesPerRow, imageRect: placed, zoom: state.zoom, lines: grid)
         }
+        for (layer, reference) in references {
+            drawReference(reference, layer: layer, live: image, frame: frame, state: state, into: context)
+        }
         return context.makeImage()
+    }
+
+    /// One layer as the renderer draws it: over what is below, or as its difference from the live
+    /// frame, at the layer's opacity.
+    private static func drawReference(
+        _ reference: CGImage, layer: ReferenceLayer, live: CGImage, frame: CapturedFrame, state: ZoomPanState,
+        into context: CGContext
+    ) {
+        let height = CGFloat(context.height)
+        func flipped(_ rect: CGRect) -> CGRect {
+            CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
+        }
+        let placed = state.imageRect(origin: layer.origin, size: layer.frame.size)
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.setAlpha(CGFloat(layer.opacity))
+        guard layer.blend == .difference else {
+            context.draw(reference, in: flipped(placed))
+            return
+        }
+        // The difference is taken against the live frame alone, only where the layer is on screen.
+        let visible = placed.intersection(CGRect(origin: .zero, size: state.viewportSize)).integral
+        guard !visible.isEmpty, let space = context.colorSpace,
+            let scratch = bitmapContext(width: Int(visible.width), height: Int(visible.height), colorSpace: space)
+        else { return }
+        scratch.interpolationQuality = context.interpolationQuality
+        func local(_ rect: CGRect) -> CGRect {
+            CGRect(x: rect.minX - visible.minX, y: visible.maxY - rect.maxY, width: rect.width, height: rect.height)
+        }
+        let livePlaced = state.imageRect(
+            origin: frame.geometry.imageOrigin, size: CGSize(width: live.width, height: live.height))
+        scratch.draw(live, in: local(livePlaced))
+        scratch.setBlendMode(.difference)
+        scratch.draw(reference, in: local(placed))
+        // Where the reference is transparent the shader adds nothing; keep only its opaque part.
+        scratch.setBlendMode(.destinationIn)
+        scratch.draw(reference, in: local(placed))
+        guard let difference = scratch.makeImage() else { return }
+        context.clip(to: flipped(placed))
+        context.draw(difference, in: flipped(visible))
     }
 
     /// The Viewer's background, squares counted from the top-left corner as the shader does.

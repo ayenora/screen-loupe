@@ -31,6 +31,15 @@ enum SizeText {
         units == .pixels ? points(pixels(size, scale: scale)) : points(size)
     }
 
+    /// The L T R B box: the edges of `rect` (display-local points, top-left origin) in points, or in
+    /// pixels when only pixels are chosen.
+    static func edges(_ rect: CGRect, scale: CGFloat, units: SizeUnits) -> [(key: String, value: String)] {
+        let factor = units == .pixels ? scale : 1
+        return [("L", rect.minX), ("T", rect.minY), ("R", rect.maxX), ("B", rect.maxY)].map {
+            (key: $0.0, value: number(($0.1 * factor * 10).rounded() / 10))
+        }
+    }
+
     private static func pixels(_ size: CGSize, scale: CGFloat) -> CGSize {
         CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
     }

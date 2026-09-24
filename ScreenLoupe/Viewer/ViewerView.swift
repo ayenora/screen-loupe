@@ -17,6 +17,8 @@ final class ViewerView: MTKView {
 
     /// Called when a click (not a drag) should pin the colour under the cursor.
     var onPick: (() -> Void)?
+    /// Space: freezes the live view or resumes it.
+    var onToggleFreeze: (() -> Void)?
 
     /// The eyedropper cursor and click-to-pin, while the Color Meter is open.
     var isPicking = false {
@@ -90,6 +92,12 @@ final class ViewerView: MTKView {
     /// The last area's top-left corner, in pixels of its display, and that display.
     private var lastAreaOrigin: (display: CGDirectDisplayID, origin: CGPoint, size: CGSize)?
 
+    /// After a freeze the area may have moved and been resized in one go; the first live frame then
+    /// keeps the framing, as for a move, instead of taking the whole move for an edge drag.
+    func forgetAreaOrigin() {
+        lastAreaOrigin = nil
+    }
+
     /// How far the area's top-left corner moved, in source pixels, when the area was resized by its
     /// left or top edge. Zero for a move (the Viewer keeps its framing and shows the new place) and
     /// across displays.
@@ -162,10 +170,45 @@ final class ViewerView: MTKView {
 
     override func mouseMoved(with event: NSEvent) {
         inspectPixel(at: event)
+        updateRulerHover(event)
     }
 
     override func mouseExited(with event: NSEvent) {
         inspector.setViewerPixel(nil)
+        ruler?.hover(at: nil, scale: drawableScale)
+    }
+
+    // MARK: Ruler
+
+    /// The corner ruler takes presses on its parts before the reference layers, and they before
+    /// panning (docs/product.md, Ruler and References).
+    var ruler: RulerController?
+    var references: ReferencesController? {
+        didSet {
+            renderer?.references = { [weak references] in references?.drawable ?? [] }
+        }
+    }
+    private enum Press { case ruler, reference }
+    /// Who the current press belongs to; `nil` for panning or picking.
+    private var toolPress: Press?
+
+    private func updateRulerHover(_ event: NSEvent) {
+        let point = drawablePoint(event)
+        let scale = drawableScale
+        if let ruler, ruler.isOn {
+            ruler.hover(at: point, scale: scale)
+            if let cursor = RulerController.cursor(for: ruler.part(at: point, scale: scale), dragging: ruler.isDragging)
+            {
+                return cursor.set()
+            }
+        }
+        if let references,
+            let cursor = ReferencesController.cursor(
+                for: references.part(at: point, scale: scale), dragging: references.isDragging)
+        {
+            return cursor.set()
+        }
+        restingCursor.set()
     }
 
     /// Tells the inspector which Capture Area pixel is under the mouse.
@@ -180,11 +223,26 @@ final class ViewerView: MTKView {
     private var isPanning = false
 
     override func mouseDown(with event: NSEvent) {
+        if let ruler, ruler.press(at: drawablePoint(event), scale: drawableScale) {
+            toolPress = .ruler
+            updateRulerHover(event)
+            return
+        }
+        if let references, references.press(at: drawablePoint(event), scale: drawableScale) {
+            toolPress = .reference
+            updateRulerHover(event)
+            return
+        }
         pressLocation = event.locationInWindow
         isPanning = false
     }
 
     override func mouseDragged(with event: NSEvent) {
+        switch toolPress {
+        case .ruler?: return ruler?.drag(to: drawablePoint(event), scale: drawableScale) ?? ()
+        case .reference?: return references?.drag(to: drawablePoint(event)) ?? ()
+        case nil: break
+        }
         if !isPanning, let start = pressLocation {
             let moved = hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y)
             guard moved >= Self.dragThreshold else { return }
@@ -203,6 +261,13 @@ final class ViewerView: MTKView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if toolPress != nil {
+            toolPress = nil
+            ruler?.endDrag()
+            references?.endDrag()
+            updateRulerHover(event)
+            return
+        }
         if isPanning {
             // Popping would bring back whatever was on the cursor stack (the arrow), not the cursor
             // of this view's cursor rect.
@@ -240,6 +305,7 @@ final class ViewerView: MTKView {
         case "+", "=": zoomPan.stepZoom(1, around: cursorPoint)
         case "-", "_": zoomPan.stepZoom(-1, around: cursorPoint)
         case "0": zoomPan.fit()
+        case " ": onToggleFreeze?()
         default: super.keyDown(with: event)
         }
     }
