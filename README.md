@@ -12,7 +12,14 @@ Place a **Capture Area** rectangle over any part of the screen and inspect it in
 
 Built with Swift, AppKit, ScreenCaptureKit and Metal, with no third-party dependencies.
 
-> Status: in development. The specification is in [TASK.md](TASK.md).
+> Status: in development.
+
+## Documentation
+
+- [Product](docs/product.md) — who it is for, principles, features, how it compares
+- [Technical design](docs/design.md) — pipeline, coordinate systems, architecture, risks, verification
+- [Roadmap](docs/roadmap.md) — what comes next
+- [Release plan](docs/release.md) — Developer ID download and the Mac App Store
 
 ## Requirements
 

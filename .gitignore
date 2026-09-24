@@ -32,3 +32,6 @@ xcuserdata/
 
 # Scratch folder for handing files back and forth; nothing in it is part of the project
 /tmp/
+
+# Local agent guidance; the repository is public
+CLAUDE.md
