@@ -31,8 +31,8 @@ final class ScreenCaptureManager: NSObject {
     /// Called when a problem appears (`CaptureProblem`) or goes away (`nil`).
     var onProblem: ((CaptureProblem?) -> Void)?
 
-    private let log = Logger(subsystem: "com.ayenora.screenloupe", category: "capture")
-    private let sampleQueue = DispatchQueue(label: "com.ayenora.screenloupe.capture", qos: .userInteractive)
+    private let log = Logger(category: "capture")
+    private let sampleQueue = DispatchQueue(label: "\(Logger.subsystem).capture", qos: .userInteractive)
 
     private var stream: SCStream?
     /// The running stream's output. Each stream gets its own, removed again when the stream stops.
@@ -81,9 +81,9 @@ final class ScreenCaptureManager: NSObject {
     /// Tries the current geometry again now: Try Now while reconnecting, Try Again after giving up.
     func retry() {
         retryTask?.cancel()
-        if case .reconnecting(let reason, let attempt, let maxAttempts, _)? = problem {
+        if case .reconnecting? = problem {
             // Try Now: this is the attempt the countdown was waiting for.
-            problem = .reconnecting(reason: reason, attempt: attempt, maxAttempts: maxAttempts, nextAttempt: nil)
+            markAttemptRunning()
         } else {
             if case .failed? = problem { userRetried = true }
             consecutiveFailures = 0
@@ -182,11 +182,16 @@ final class ScreenCaptureManager: NSObject {
         retryTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled, let self else { return }
-            if case .reconnecting(let reason, let attempt, let maxAttempts, _)? = problem {
-                problem = .reconnecting(reason: reason, attempt: attempt, maxAttempts: maxAttempts, nextAttempt: nil)
-            }
+            markAttemptRunning()
             invalidate()
             processUpdates()
+        }
+    }
+
+    /// While reconnecting: the attempt the countdown was waiting for starts now.
+    private func markAttemptRunning() {
+        if case .reconnecting(let reason, let attempt, let maxAttempts, _)? = problem {
+            problem = .reconnecting(reason: reason, attempt: attempt, maxAttempts: maxAttempts, nextAttempt: nil)
         }
     }
 
@@ -336,11 +341,12 @@ extension ScreenCaptureManager: SCStreamDelegate {
     // MARK: Debug menu
 
     extension ScreenCaptureManager {
-        /// Stops the stream as if the capture service's connection had dropped. The next
-        /// `failingAttempts` attempts to restore it fail too, so every state of the reconnecting panel
-        /// can be checked by hand.
-        func simulateInterruption(failingAttempts: Int) {
-            debugFailuresRemaining = failingAttempts
+        /// Stops the stream as if the capture service's connection had dropped, so every state of the
+        /// reconnecting panel can be checked by hand. When it `recovers`, the first attempt to restore
+        /// it fails and the next one works. Otherwise every automatic attempt fails, and so does the
+        /// first Try Again, which brings up the relaunch suggestion.
+        func simulateInterruption(recovers: Bool) {
+            debugFailuresRemaining = recovers ? 1 : 2 * Self.maxAttempts
             Task {
                 await stop()
                 restartAfterSystemStop(reason: "Simulated interruption (Debug menu).")

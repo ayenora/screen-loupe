@@ -9,6 +9,14 @@ import MetalKit
 /// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel (or a
 /// bare mouse wheel, per Settings), `+`/`-`; `0` fits (docs/product.md, Zoom and pan). With the Color Meter open the cursor is an eyedropper and a
 /// click (without dragging) pins the colour under it.
+extension MTKView {
+    /// Drawable pixels per point: the unit `ZoomPanState` works in, over the view's points. Everything
+    /// drawn over the image or exported from it converts with this.
+    var drawableScale: CGFloat {
+        bounds.width > 0 ? drawableSize.width / bounds.width : (window?.backingScaleFactor ?? 1)
+    }
+}
+
 final class ViewerView: MTKView {
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
@@ -22,12 +30,13 @@ final class ViewerView: MTKView {
 
     /// The eyedropper cursor and click-to-pin, while the Color Meter is open.
     var isPicking = false {
-        didSet { window?.invalidateCursorRects(for: self) }
+        didSet { if isPicking != oldValue { window?.invalidateCursorRects(for: self) } }
     }
 
     var style: ViewerStyle {
         get { renderer?.style ?? ViewerStyle() }
         set {
+            guard newValue != style else { return }
             renderer?.style = newValue
             clearColor = newValue.background.clearColor
             requestDraw()
@@ -53,6 +62,7 @@ final class ViewerView: MTKView {
         layer?.contentsGravity = .topLeft
         renderer = ViewerRenderer(view: self, frameStore: frameStore, zoomPan: zoomPan)
         delegate = renderer
+        renderer?.onTextureReady = { [weak self] in self?.requestDraw() }
     }
 
     @available(*, unavailable)
@@ -83,35 +93,17 @@ final class ViewerView: MTKView {
         if let frame = frameStore.latestFrame {
             let geometry = frame.geometry
             let area = CGSize(width: geometry.areaSize.width, height: geometry.areaSize.height)
-            zoomPan.setContent(area, originShift: originShift(for: geometry, size: area))
+            zoomPan.setContent(area, originShift: resizeTracker.originShift(for: geometry))
             matchColorSpace(ofDisplay: geometry.display.id)
         }
         requestDraw()
     }
 
-    /// The last area's top-left corner, in pixels of its display, and that display.
-    private var lastAreaOrigin: (display: CGDirectDisplayID, origin: CGPoint, size: CGSize)?
+    private var resizeTracker = AreaResizeTracker()
 
-    /// After a freeze the area may have moved and been resized in one go; the first live frame then
-    /// keeps the framing, as for a move, instead of taking the whole move for an edge drag.
+    /// The first live frame after a freeze keeps the framing (`AreaResizeTracker.forget`).
     func forgetAreaOrigin() {
-        lastAreaOrigin = nil
-    }
-
-    /// How far the area's top-left corner moved, in source pixels, when the area was resized by its
-    /// left or top edge. Zero for a move (the Viewer keeps its framing and shows the new place) and
-    /// across displays.
-    private func originShift(for geometry: CaptureGeometry, size: CGSize) -> CGPoint {
-        let scale = geometry.display.scale
-        let source = geometry.sourceRect.rect
-        let origin = CGPoint(
-            x: (source.minX * scale).rounded() - geometry.imageOrigin.x,
-            y: (source.minY * scale).rounded() - geometry.imageOrigin.y)
-        defer { lastAreaOrigin = (geometry.display.id, origin, size) }
-        guard let last = lastAreaOrigin, last.display == geometry.display.id, last.size != size else {
-            return .zero
-        }
-        return CGPoint(x: origin.x - last.origin.x, y: origin.y - last.origin.y)
+        resizeTracker.forget()
     }
 
     private var colorSpaceDisplayID: CGDirectDisplayID?
@@ -141,10 +133,6 @@ final class ViewerView: MTKView {
         guard bounds.contains(point) else { return nil }
         let scale = drawableScale
         return CGPoint(x: point.x * scale, y: (bounds.height - point.y) * scale)
-    }
-
-    var drawableScale: CGFloat {
-        bounds.width > 0 ? drawableSize.width / bounds.width : (window?.backingScaleFactor ?? 1)
     }
 
     // MARK: Input

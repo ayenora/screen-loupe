@@ -221,7 +221,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     // MARK: Actions
 
     @objc private func onTopClicked() { onToggleAlwaysOnTop?() }
-    @objc private func freezeClicked() { onToggleFreeze?() }
+    /// The push-on-push-off button flips itself on click; it shows the frozen state only from
+    /// `setFrozen`, since there may be nothing to freeze yet.
+    @objc private func freezeClicked() {
+        freezeButton.state = freezeMenuItem.state
+        onToggleFreeze?()
+    }
     @objc private func rulerClicked() { onToggleRuler?() }
     @objc private func copyClicked() { onCopy?() }
     @objc private func saveClicked() { onSave?() }

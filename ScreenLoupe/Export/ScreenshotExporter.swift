@@ -21,11 +21,7 @@ enum ScreenshotExporter {
         guard let context = bitmapContext(width: area.width, height: area.height, colorSpace: colorSpace) else {
             return nil
         }
-        // CGContext is y up; the image origin is y down from the area's top-left.
-        let rect = CGRect(
-            x: geometry.imageOrigin.x, y: CGFloat(area.height) - geometry.imageOrigin.y - CGFloat(image.height),
-            width: CGFloat(image.width), height: CGFloat(image.height))
-        context.draw(image, in: rect)
+        context.draw(image, in: geometry.imageRectInAreaImage)
         return context.makeImage()
     }
 

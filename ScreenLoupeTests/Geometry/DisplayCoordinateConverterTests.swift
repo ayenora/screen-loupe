@@ -165,4 +165,59 @@ struct DisplayCoordinateConverterTests {
         #expect(geometry.areaSize == PixelSize(width: 100, height: 100))
         #expect(geometry.imageOrigin == CGPoint(x: 0, y: 20))
     }
+
+    @Test func areaOriginCountsFromTheCapturingDisplaysTopLeft() throws {
+        // 40 pt of the area lie left of the right display, which captures it at 1×.
+        let area = GlobalRect(rect: CGRect(x: 1400, y: 100, width: 100, height: 100))
+        let geometry = try #require(converter.captureGeometry(for: area))
+        #expect(geometry.areaOrigin == CGPoint(x: -40, y: 700))
+    }
+
+    @Test(arguments: [
+        // Straddling the primary and the right display: the image is the right part.
+        (CGRect(x: 1400, y: 100, width: 100, height: 100), CGRect(x: 40, y: 0, width: 60, height: 100)),
+        // Hanging off the top of the display above: the image is the lower part, at the bottom in y-up.
+        (CGRect(x: 100, y: 1842, width: 50, height: 50), CGRect(x: 0, y: 0, width: 100, height: 80)),
+        // Hanging off the bottom of the primary: the image is the upper part.
+        (CGRect(x: 100, y: -10, width: 50, height: 50), CGRect(x: 0, y: 20, width: 100, height: 80)),
+    ])
+    func capturedImageSitsInTheAreaImage(area: CGRect, expected: CGRect) throws {
+        let geometry = try #require(converter.captureGeometry(for: GlobalRect(rect: area)))
+        #expect(geometry.imageRectInAreaImage == expected)
+    }
+}
+
+struct AreaResizeTrackerTests {
+    let converter = Fixture.converter
+    let start = CGRect(x: 100, y: 100, width: 200, height: 100)
+
+    private func shift(from first: CGRect, to second: CGRect, forgetting: Bool = false) throws -> CGPoint {
+        var tracker = AreaResizeTracker()
+        _ = tracker.originShift(for: try #require(converter.captureGeometry(for: GlobalRect(rect: first))))
+        if forgetting { tracker.forget() }
+        return tracker.originShift(for: try #require(converter.captureGeometry(for: GlobalRect(rect: second))))
+    }
+
+    @Test func aMoveKeepsTheFraming() throws {
+        #expect(try shift(from: start, to: start.offsetBy(dx: 10, dy: -5)) == .zero)
+    }
+
+    @Test func dragsOfTheRightOrBottomEdgeKeepTheFraming() throws {
+        #expect(try shift(from: start, to: CGRect(x: 100, y: 100, width: 210, height: 100)) == .zero)
+        #expect(try shift(from: start, to: CGRect(x: 100, y: 90, width: 200, height: 110)) == .zero)
+    }
+
+    @Test func dragsOfTheLeftOrTopEdgeShiftTheOriginInPixels() throws {
+        // The primary is 2×: 10 pt are 20 px. Global y is up, so the top edge is `maxY`.
+        #expect(try shift(from: start, to: CGRect(x: 90, y: 100, width: 210, height: 100)) == CGPoint(x: -20, y: 0))
+        #expect(try shift(from: start, to: CGRect(x: 100, y: 100, width: 200, height: 110)) == CGPoint(x: 0, y: -20))
+    }
+
+    @Test func aResizeOnAnotherDisplayKeepsTheFraming() throws {
+        #expect(try shift(from: start, to: CGRect(x: -500, y: 100, width: 150, height: 100)) == .zero)
+    }
+
+    @Test func afterForgettingAResizeKeepsTheFraming() throws {
+        #expect(try shift(from: start, to: CGRect(x: 90, y: 100, width: 210, height: 100), forgetting: true) == .zero)
+    }
 }

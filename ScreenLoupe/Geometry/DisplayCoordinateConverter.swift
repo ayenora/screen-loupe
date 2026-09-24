@@ -15,6 +15,46 @@ struct CaptureGeometry: Equatable, Sendable {
     var imageOrigin: CGPoint
 }
 
+extension CaptureGeometry {
+    /// The whole area's top-left corner in pixels of its display, from the display's top-left.
+    var areaOrigin: CGPoint {
+        let scale = display.scale
+        return CGPoint(
+            x: (sourceRect.rect.minX * scale).rounded() - imageOrigin.x,
+            y: (sourceRect.rect.minY * scale).rounded() - imageOrigin.y)
+    }
+
+    /// Where the captured image goes in an image of the whole area, in that image's pixels with
+    /// CoreGraphics' bottom-left origin (Copy Source).
+    var imageRectInAreaImage: CGRect {
+        CGRect(
+            x: imageOrigin.x, y: CGFloat(areaSize.height) - imageOrigin.y - CGFloat(outputSize.height),
+            width: CGFloat(outputSize.width), height: CGFloat(outputSize.height))
+    }
+}
+
+/// Tells a Capture Area resized by its left or top edge from one that moved, frame to frame, so the
+/// Viewer keeps showing the same pixels (docs/product.md, "Nothing moves unless you move it").
+struct AreaResizeTracker {
+    private var last: (display: CGDirectDisplayID, origin: CGPoint, size: PixelSize)?
+
+    /// After a freeze the area may have moved and been resized in one go; the next frame then keeps
+    /// the framing, as for a move, instead of taking the whole move for an edge drag.
+    mutating func forget() {
+        last = nil
+    }
+
+    /// How far the area's top-left corner moved, in source pixels, if it was resized: non-zero when
+    /// the left or top edge was dragged. Zero for a move (the Viewer keeps its framing and shows the
+    /// new place) and across displays.
+    mutating func originShift(for geometry: CaptureGeometry) -> CGPoint {
+        let origin = geometry.areaOrigin
+        defer { last = (geometry.display.id, origin, geometry.areaSize) }
+        guard let last, last.display == geometry.display.id, last.size != geometry.areaSize else { return .zero }
+        return CGPoint(x: origin.x - last.origin.x, y: origin.y - last.origin.y)
+    }
+}
+
 /// All conversions between the global, Quartz, display-local and pixel coordinate systems.
 struct DisplayCoordinateConverter: Sendable {
     let layout: DisplayLayout

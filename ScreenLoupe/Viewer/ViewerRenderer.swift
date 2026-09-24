@@ -12,6 +12,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     var style = ViewerStyle()
     /// The visible reference layers, bottom first (docs/product.md, References).
     var references: () -> [(layer: ReferenceLayer, image: CGImage)] = { [] }
+    /// Called when a reference texture made off the main thread is ready to draw.
+    var onTextureReady: (() -> Void)?
 
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
@@ -20,10 +22,12 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     private let device: MTLDevice
     /// Each layer's image as a texture in the Viewer's colour space, remade when either changes.
     private var referenceTextures: [UUID: (image: CGImage, space: CGColorSpace, texture: MTLTexture)] = [:]
+    /// Layers whose texture is being made.
+    private var pendingTextures: Set<UUID> = []
     private let textureCache: CVMetalTextureCache
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
-    private let log = Logger(subsystem: "com.ayenora.screenloupe", category: "viewer")
+    private let log = Logger(category: "viewer")
 
     init?(view: MTKView, frameStore: FrameStore, zoomPan: ZoomPanController) {
         guard let device = view.device,
@@ -33,7 +37,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         do {
             library = try device.makeLibrary(source: ViewerShaders.source, options: nil)
         } catch {
-            Logger(subsystem: "com.ayenora.screenloupe", category: "viewer")
+            Logger(category: "viewer")
                 .error("Shader compilation failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
@@ -112,8 +116,9 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         drawReferences(encoder, view: view, frame: frame, frameTexture: frameTexture)
         encoder.endEncoding()
         commands.present(drawable)
-        // The CVMetalTexture must outlive the GPU work that samples it.
-        let retained = RetainedTexture(texture: texture)
+        // The CVMetalTexture must outlive the GPU work that samples it; only held, never used, on the
+        // completion handler's thread.
+        let retained = UncheckedSendable(value: texture)
         commands.addCompletedHandler { _ in withExtendedLifetime(retained) {} }
         commands.commit()
         // The cache holds textures for buffers that are gone; the header asks for periodic flushes.
@@ -157,12 +162,34 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    /// The image drawn into the Viewer's colour space, premultiplied BGRA, so a pixel that matches
-    /// the screen has the same values as the capture.
+    /// The layer's texture, or `nil` until it is first made. Drawing a large image into a bitmap
+    /// takes a while, so a missing or outdated texture is made off the main thread; the outdated one
+    /// (after a move to a display with another colour space) is drawn meanwhile.
     private func referenceTexture(_ id: UUID, image: CGImage, space: CGColorSpace) -> MTLTexture? {
-        if let cached = referenceTextures[id], cached.image === image, cached.space == space {
+        let cached = referenceTextures[id]
+        if let cached, cached.image === image, cached.space == space {
             return cached.texture
         }
+        if pendingTextures.insert(id).inserted {
+            let input = UncheckedSendable(value: (image: image, space: space, device: device))
+            Task {
+                let texture = await Self.makeTexture(input)
+                pendingTextures.remove(id)
+                guard let texture else { return }
+                referenceTextures[id] = (image, space, texture.value)
+                onTextureReady?()
+            }
+        }
+        return cached?.texture
+    }
+
+    /// The image drawn into `space`, premultiplied BGRA, so a pixel that matches the screen has the
+    /// same values as the capture.
+    @concurrent
+    nonisolated private static func makeTexture(
+        _ input: UncheckedSendable<(image: CGImage, space: CGColorSpace, device: MTLDevice)>
+    ) async -> UncheckedSendable<MTLTexture>? {
+        let (image, space, device) = input.value
         // An image beyond the GPU's texture limit is scaled down to fit; the quad keeps the layer's
         // size, so it only loses detail.
         let limit = 16384
@@ -183,8 +210,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.replace(
             region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: data, bytesPerRow: width * 4)
-        referenceTextures[id] = (image, space, texture)
-        return texture
+        return UncheckedSendable(value: texture)
     }
 
     /// The shader's grid value: 0 none, 1 auto, 2 dark, 3 light lines.
@@ -198,7 +224,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     }
 
     private func drawCheckerboard(_ encoder: MTLRenderCommandEncoder, view: MTKView) {
-        let scale = view.bounds.width > 0 ? view.drawableSize.width / view.bounds.width : 1
+        let scale = view.drawableScale
         func color(_ c: SIMD3<Double>) -> SIMD4<Float> { SIMD4(Float(c.x), Float(c.y), Float(c.z), 1) }
         var uniforms = [
             color(ViewerBackground.checkerboard.components), color(ViewerBackground.checkerDarkComponents),
@@ -265,10 +291,4 @@ extension ViewerBackground {
     var clearColor: MTLClearColor {
         MTLClearColor(red: components.x, green: components.y, blue: components.z, alpha: 1)
     }
-}
-
-/// Keeps a frame's texture alive until the GPU is done with it. Only held, never used, on the
-/// completion handler's thread.
-private struct RetainedTexture: @unchecked Sendable {
-    let texture: CVMetalTexture?
 }

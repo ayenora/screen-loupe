@@ -6,7 +6,9 @@ final class CaptureAreaController {
     /// The captured rect, in AppKit global coordinates, snapped to its display's pixel grid.
     private(set) var captureRect: CGRect = .zero
     /// Called whenever `captureRect` changes.
-    var onChange: ((CGRect) -> Void)?
+    var onChange: (() -> Void)?
+    /// Called when the mouse moves anywhere on screen while the frame is shown.
+    var onMouseMoved: (() -> Void)?
 
     /// What to capture for the current rect, or `nil` when it is on no display.
     var captureGeometry: CaptureGeometry? {
@@ -167,7 +169,7 @@ final class CaptureAreaController {
         if persist {
             settings.update { $0.captureArea = rect }
         }
-        onChange?(rect)
+        onChange?()
     }
 
     private func applyEdited(_ rect: CGRect, snap: Snap, persist: Bool) {
@@ -180,7 +182,7 @@ final class CaptureAreaController {
 
     private func startMonitoringMouse() {
         guard eventMonitors.isEmpty else { return }
-        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
         if let monitor = NSEvent.addGlobalMonitorForEvents(
             matching: mask,
             handler: { [weak self] _ in
@@ -208,6 +210,7 @@ final class CaptureAreaController {
     private func mouseMovedAnywhere() {
         isHovering = layout?.isInHoverZone(NSEvent.mouseLocation) ?? false
         updateReveal()
+        onMouseMoved?()
     }
 
     /// The handles and tab show while the cursor is near the frame, while dragging, and while the

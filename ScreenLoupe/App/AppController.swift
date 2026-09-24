@@ -103,12 +103,11 @@ final class AppController: NSObject {
 
     #if DEBUG
         @objc func simulateInterruptionThatRecovers(_ sender: Any?) {
-            windows.simulateCaptureInterruption(failingAttempts: 1)
+            windows.simulateCaptureInterruption(recovers: true)
         }
 
-        /// Fails every automatic attempt and the first Try Again, to show the relaunch suggestion.
         @objc func simulateInterruptionThatFails(_ sender: Any?) {
-            windows.simulateCaptureInterruption(failingAttempts: 8)
+            windows.simulateCaptureInterruption(recovers: false)
         }
     #endif
 
@@ -157,10 +156,19 @@ extension AppController: NSMenuItemValidation {
             return windows.isFrozen || windows.canExport
         case #selector(sizeViewerToArea(_:)):
             return windows.viewer.canSizeToArea
-        case #selector(copyView(_:)), #selector(copySource(_:)), #selector(saveView(_:)), #selector(saveSource(_:)):
+        case #selector(copyView(_:)), #selector(NSText.copy(_:)), #selector(copySource(_:)), #selector(saveView(_:)),
+            #selector(saveSource(_:)):
             return windows.canExport
         default:
             return true
         }
+    }
+}
+
+extension AppController: NSMenuDelegate {
+    /// Edit › Copy copies the text of a focused text field, and the view otherwise; its title says which.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        let editsText = NSApp.keyWindow?.firstResponder is NSText
+        menu.items.first { $0.action == #selector(NSText.copy(_:)) }?.title = editsText ? "Copy" : "Copy View"
     }
 }

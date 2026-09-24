@@ -20,6 +20,7 @@
 				Geometry/CornerRuler.swift,
 				Geometry/DisplayCoordinateConverter.swift,
 				Geometry/DisplayLayout.swift,
+				Geometry/LenientDecoding.swift,
 				Geometry/OverlayLayout.swift,
 				Geometry/PixelGrid.swift,
 				Geometry/ReferenceLayers.swift,

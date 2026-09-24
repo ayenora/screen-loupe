@@ -21,4 +21,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.reopen()
         return true
     }
+
+    /// Edit › Copy View (⌘C) when no text field has the focus: the app delegate ends the responder
+    /// chain, so a text field with the focus copies its text first.
+    @objc func copy(_ sender: Any?) {
+        controller.copyView(sender)
+    }
+}
+
+extension AppDelegate: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        controller.validateMenuItem(menuItem)
+    }
 }
