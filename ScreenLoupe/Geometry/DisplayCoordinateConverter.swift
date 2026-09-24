@@ -98,6 +98,21 @@ struct DisplayCoordinateConverter: Sendable {
         PixelSize(width: Int((size.width * scale).rounded()), height: Int((size.height * scale).rounded()))
     }
 
+    // MARK: Cursor
+
+    /// The pixel of the Capture Area under a global point, counted from the area's top-left corner in
+    /// pixels of its display; `nil` outside the area.
+    static func areaPixel(at point: CGPoint, inArea area: CGRect, scale: CGFloat) -> (x: Int, y: Int)? {
+        guard area.contains(point) else { return nil }
+        // Global coordinates are y up; area pixels are y down from the top edge.
+        let x = Int(((point.x - area.minX) * scale).rounded(.down))
+        let y = Int(((area.maxY - point.y) * scale).rounded(.down))
+        let width = Int((area.width * scale).rounded())
+        let height = Int((area.height * scale).rounded())
+        guard x >= 0, y >= 0, x < width, y < height else { return nil }
+        return (x, y)
+    }
+
     // MARK: Capture
 
     /// What to capture for a Capture Area. `nil` when the area is on no display.

@@ -56,6 +56,11 @@ struct ZoomPanState: Equatable, Sendable {
 
     // MARK: Operations
 
+    /// Whether the zoom is the one that fits the whole image, as the Fit preset does.
+    var isFit: Bool {
+        abs(zoom - fitZoom) < 0.0001
+    }
+
     /// Zoom that fits the whole image into the viewport.
     var fitZoom: CGFloat {
         guard contentSize.width > 0, contentSize.height > 0 else { return 1 }
@@ -83,14 +88,44 @@ struct ZoomPanState: Equatable, Sendable {
         return Self.ladder.last { $0 < zoom - 0.0001 } ?? Self.zoomRange.lowerBound
     }
 
+    /// Fit: the zoom that shows the whole image, centred.
+    func fitted() -> ZoomPanState {
+        var next = self
+        next.zoom = fitZoom
+        return next.centered()
+    }
+
+    /// The image centred on both axes. Only on request (Fit, the first frame): centring on every
+    /// change would move the image by itself (docs/product.md, "Nothing moves unless you move it").
+    func centered() -> ZoomPanState {
+        var next = self
+        next.offset = CGPoint(
+            x: ((viewportSize.width - scaledContentSize.width) / 2).rounded(.down),
+            y: ((viewportSize.height - scaledContentSize.height) / 2).rounded(.down)
+        )
+        return next
+    }
+
+    /// The Capture Area was resized to `size` and its top-left corner moved by `originShift` source
+    /// pixels. The zoom stays, and so do the pixels that were already visible: dragging the right or
+    /// bottom edge reveals more to the right or below, dragging the left or top edge reveals more to
+    /// the left or above, and nothing already on screen shifts.
+    func resizingContent(to size: CGSize, originShift: CGPoint) -> ZoomPanState {
+        var next = self
+        next.contentSize = size
+        next.offset = CGPoint(x: offset.x + originShift.x * zoom, y: offset.y + originShift.y * zoom)
+        return next.clamped()
+    }
+
     func panned(by delta: CGPoint) -> ZoomPanState {
         var next = self
         next.offset = CGPoint(x: offset.x + delta.x, y: offset.y + delta.y)
         return next.clamped()
     }
 
-    /// Keeps the image in view: an image smaller than the viewport is centred on that axis, a larger
-    /// one can't be panned past its edges. The offset is rounded to whole pixels.
+    /// Keeps the image in view without moving it more than needed: an image smaller than the viewport
+    /// stays wholly inside it, a larger one can't be panned past its edges. The offset is rounded to
+    /// whole pixels.
     func clamped() -> ZoomPanState {
         var next = self
         next.offset = CGPoint(
@@ -102,7 +137,7 @@ struct ZoomPanState: Equatable, Sendable {
 
     private static func clampAxis(_ offset: CGFloat, content: CGFloat, viewport: CGFloat) -> CGFloat {
         if content <= viewport {
-            return ((viewport - content) / 2).rounded(.down)
+            return min(max(offset, 0), viewport - content).rounded(.down)
         }
         return min(0, max(viewport - content, offset)).rounded()
     }

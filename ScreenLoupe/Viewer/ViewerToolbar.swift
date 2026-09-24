@@ -1,7 +1,7 @@
 import AppKit
 
-/// The Viewer's toolbar (TASK.md §15): zoom presets and the current zoom on the left; Copy, Save and
-/// the keep-on-top pin on the right.
+/// The Viewer's toolbar (TASK.md §15): zoom presets and the current zoom on the left; the Grid,
+/// Crosshair and Color Meter toggles, Copy, Save and the keep-on-top pin on the right.
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
 /// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the pin a checkmark.
@@ -9,6 +9,9 @@ import AppKit
 final class ViewerToolbar: NSObject, NSToolbarDelegate {
     private static let presetsID = NSToolbarItem.Identifier("zoomPresets")
     private static let zoomLabelID = NSToolbarItem.Identifier("zoomLabel")
+    private static let gridID = NSToolbarItem.Identifier("grid")
+    private static let crosshairID = NSToolbarItem.Identifier("crosshair")
+    private static let meterID = NSToolbarItem.Identifier("colorMeter")
     private static let copyID = NSToolbarItem.Identifier("copyView")
     private static let saveID = NSToolbarItem.Identifier("saveView")
     private static let onTopID = NSToolbarItem.Identifier("alwaysOnTop")
@@ -16,6 +19,30 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     var onToggleAlwaysOnTop: (() -> Void)?
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
+
+    enum Toggle: CaseIterable {
+        case grid, crosshair, meter
+
+        var title: String {
+            switch self {
+            case .grid: "Pixel Grid"
+            case .crosshair: "Crosshair"
+            case .meter: "Color Meter"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .grid: "grid"
+            case .crosshair: "scope"
+            case .meter: "eyedropper"
+            }
+        }
+    }
+
+    var onToggle: ((Toggle) -> Void)?
+    private var toggleButtons: [Toggle: NSButton] = [:]
+    private var toggleMenuItems: [Toggle: NSMenuItem] = [:]
 
     /// Segment 0 is Fit; the rest are `ZoomPanState.presets`.
     private static let presetTitles = ["Fit"] + ZoomPanState.presets.map { "\(Int($0))×" }
@@ -50,6 +77,17 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         configure(saveButton, symbol: "square.and.arrow.down", title: "Save View…", action: #selector(saveClicked))
         configure(onTopButton, symbol: "pin", title: "Keep on Top", action: #selector(onTopClicked))
         onTopButton.setButtonType(.pushOnPushOff)
+        for toggle in Toggle.allCases {
+            let button = NSButton()
+            configure(button, symbol: toggle.symbol, title: toggle.title, action: #selector(toggleClicked(_:)))
+            button.setButtonType(.pushOnPushOff)
+            button.tag = Toggle.allCases.firstIndex(of: toggle) ?? 0
+            toggleButtons[toggle] = button
+            let item = NSMenuItem(title: toggle.title, action: #selector(toggleClicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = button.tag
+            toggleMenuItems[toggle] = item
+        }
         onTopButton.alternateImage = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Keep on Top")
 
         let presetsMenu = NSMenu()
@@ -97,6 +135,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
+    func setToggle(_ toggle: Toggle, isOn: Bool) {
+        toggleButtons[toggle]?.state = isOn ? .on : .off
+        toggleMenuItems[toggle]?.state = isOn ? .on : .off
+    }
+
+    @objc private func toggleClicked(_ sender: Any) {
+        let tag = (sender as? NSButton)?.tag ?? (sender as? NSMenuItem)?.tag ?? 0
+        onToggle?(Toggle.allCases[tag])
+    }
+
     func setAlwaysOnTop(_ isOn: Bool) {
         onTopButton.state = isOn ? .on : .off
         onTopMenuItem.state = isOn ? .on : .off
@@ -127,7 +175,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     // MARK: NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.copyID, Self.saveID, Self.onTopID]
+        [
+            Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.gridID, Self.crosshairID, Self.meterID, .space,
+            Self.copyID, Self.saveID, Self.onTopID,
+        ]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -147,6 +198,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         case Self.zoomLabelID:
             item.view = zoomLabel
             item.menuFormRepresentation = zoomLabelMenuItem
+        case Self.gridID, Self.crosshairID, Self.meterID:
+            let toggle: Toggle =
+                identifier == Self.gridID ? .grid : identifier == Self.crosshairID ? .crosshair : .meter
+            item.view = toggleButtons[toggle]
+            item.label = toggle.title
+            item.menuFormRepresentation = toggleMenuItems[toggle]
         case Self.copyID:
             item.view = copyButton
             item.label = "Copy View"

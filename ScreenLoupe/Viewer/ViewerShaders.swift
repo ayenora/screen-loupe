@@ -30,11 +30,33 @@ enum ViewerShaders {
             return out;
         }
 
-        fragment float4 quadFragment(QuadVertex in [[stage_in]], texture2d<float> frame [[texture(0)]]) {
+        struct FragmentUniforms {
+            // The captured image in source pixels.
+            float2 imageSize;
+            // Drawable pixels per source pixel.
+            float zoom;
+            // 1 draws the pixel grid.
+            float grid;
+        };
+
+        fragment float4 quadFragment(QuadVertex in [[stage_in]], texture2d<float> frame [[texture(0)]],
+                                     constant FragmentUniforms &uniforms [[buffer(0)]]) {
             // Magnification is always nearest-neighbor, so source pixels stay crisp squares; zooming
-            // out below 1:1 is filtered so it doesn't shimmer (docs/design.md §2.3).
+            // out below 1:1 is linearly filtered (docs/design.md §2.3).
             constexpr sampler pixels(mag_filter::nearest, min_filter::linear, address::clamp_to_edge);
-            return frame.sample(pixels, in.uv);
+            float4 color = frame.sample(pixels, in.uv);
+            if (uniforms.grid > 0.5) {
+                // How far into its source pixel this drawable pixel is, in drawable pixels. The first
+                // drawable pixel of every source pixel (left and top edge) becomes the grid line, so
+                // lines sit exactly on pixel boundaries and are one drawable pixel wide.
+                float2 into = fract(in.uv * uniforms.imageSize) * uniforms.zoom;
+                if (into.x < 1.0 || into.y < 1.0) {
+                    float luma = dot(color.rgb, float3(0.2126, 0.7152, 0.0722));
+                    float3 line = luma > 0.5 ? float3(0.0) : float3(1.0);
+                    color.rgb = mix(color.rgb, line, 0.22);
+                }
+            }
+            return color;
         }
         """
 }

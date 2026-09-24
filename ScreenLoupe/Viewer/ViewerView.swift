@@ -7,15 +7,34 @@ import MetalKit
 /// arriving.
 ///
 /// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel,
-/// `+`/`-`; `0` fits (TASK.md §4–§6).
+/// `+`/`-`; `0` fits (TASK.md §4–§6). With the Color Meter open the cursor is an eyedropper and a
+/// click (without dragging) pins the colour under it.
 final class ViewerView: MTKView {
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
+    private let inspector: PixelInspector
     private var renderer: ViewerRenderer?
 
-    init(frameStore: FrameStore, zoomPan: ZoomPanController) {
+    /// Called when a click (not a drag) should pin the colour under the cursor.
+    var onPick: (() -> Void)?
+
+    /// The eyedropper cursor and click-to-pin, while the Color Meter is open.
+    var isPicking = false {
+        didSet { window?.invalidateCursorRects(for: self) }
+    }
+
+    var showsGrid: Bool {
+        get { renderer?.showsGrid ?? false }
+        set {
+            renderer?.showsGrid = newValue
+            requestDraw()
+        }
+    }
+
+    init(frameStore: FrameStore, zoomPan: ZoomPanController, inspector: PixelInspector) {
         self.frameStore = frameStore
         self.zoomPan = zoomPan
+        self.inspector = inspector
         super.init(frame: .zero, device: MTLCreateSystemDefaultDevice())
         colorPixelFormat = .bgra8Unorm
         clearColor = ViewerRenderer.backgroundColor
@@ -52,11 +71,31 @@ final class ViewerView: MTKView {
     /// A new frame is in the store.
     func frameArrived() {
         if let frame = frameStore.latestFrame {
-            let area = frame.geometry.areaSize
-            zoomPan.setContent(CGSize(width: area.width, height: area.height))
-            matchColorSpace(ofDisplay: frame.geometry.display.id)
+            let geometry = frame.geometry
+            let area = CGSize(width: geometry.areaSize.width, height: geometry.areaSize.height)
+            zoomPan.setContent(area, originShift: originShift(for: geometry, size: area))
+            matchColorSpace(ofDisplay: geometry.display.id)
         }
         requestDraw()
+    }
+
+    /// The last area's top-left corner, in pixels of its display, and that display.
+    private var lastAreaOrigin: (display: CGDirectDisplayID, origin: CGPoint, size: CGSize)?
+
+    /// How far the area's top-left corner moved, in source pixels, when the area was resized by its
+    /// left or top edge. Zero for a move (the Viewer keeps its framing and shows the new place) and
+    /// across displays.
+    private func originShift(for geometry: CaptureGeometry, size: CGSize) -> CGPoint {
+        let scale = geometry.display.scale
+        let source = geometry.sourceRect.rect
+        let origin = CGPoint(
+            x: (source.minX * scale).rounded() - geometry.imageOrigin.x,
+            y: (source.minY * scale).rounded() - geometry.imageOrigin.y)
+        defer { lastAreaOrigin = (geometry.display.id, origin, size) }
+        guard let last = lastAreaOrigin, last.display == geometry.display.id, last.size != size else {
+            return .zero
+        }
+        return CGPoint(x: origin.x - last.origin.x, y: origin.y - last.origin.y)
     }
 
     private var colorSpaceDisplayID: CGDirectDisplayID?
@@ -88,7 +127,7 @@ final class ViewerView: MTKView {
         return CGPoint(x: point.x * scale, y: (bounds.height - point.y) * scale)
     }
 
-    private var drawableScale: CGFloat {
+    var drawableScale: CGFloat {
         bounds.width > 0 ? drawableSize.width / bounds.width : (window?.backingScaleFactor ?? 1)
     }
 
@@ -98,20 +137,69 @@ final class ViewerView: MTKView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .openHand)
+        addCursorRect(bounds, cursor: isPicking ? .eyedropper : .openHand)
     }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        inspectPixel(at: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        inspector.setViewerPixel(nil)
+    }
+
+    /// Tells the inspector which Capture Area pixel is under the mouse.
+    private func inspectPixel(at event: NSEvent) {
+        let pixel = zoomPan.state.sourcePixel(atViewportPoint: drawablePoint(event))
+        inspector.setViewerPixel(pixel)
+    }
+
+    /// A press becomes a pan once the mouse moves this far; otherwise it is a click.
+    private static let dragThreshold: CGFloat = 3
+    private var pressLocation: CGPoint?
+    private var isPanning = false
+
     override func mouseDown(with event: NSEvent) {
-        NSCursor.closedHand.push()
+        pressLocation = event.locationInWindow
+        isPanning = false
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if !isPanning, let start = pressLocation {
+            let moved = hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y)
+            guard moved >= Self.dragThreshold else { return }
+            isPanning = true
+            NSCursor.closedHand.push()
+            // Catch up with the distance covered before the pan started.
+            let scale = drawableScale
+            zoomPan.pan(
+                by: CGPoint(
+                    x: (event.locationInWindow.x - start.x) * scale, y: (start.y - event.locationInWindow.y) * scale))
+            return
+        }
         let scale = drawableScale
         zoomPan.pan(by: CGPoint(x: event.deltaX * scale, y: event.deltaY * scale))
+        inspectPixel(at: event)
     }
 
     override func mouseUp(with event: NSEvent) {
-        NSCursor.pop()
+        if isPanning {
+            NSCursor.pop()
+        } else if isPicking {
+            inspectPixel(at: event)
+            onPick?()
+        }
+        pressLocation = nil
+        isPanning = false
     }
 
     override func scrollWheel(with event: NSEvent) {
