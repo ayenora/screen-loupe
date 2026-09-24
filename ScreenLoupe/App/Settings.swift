@@ -7,6 +7,8 @@ struct Settings: Codable, Equatable {
     var captureArea: CGRect?
     /// Keep the Viewer above the windows of other apps.
     var viewerAlwaysOnTop = false
+    /// Where Save View / Save Source last saved.
+    var screenshotDirectory: String?
 
     init() {}
 
@@ -16,6 +18,7 @@ struct Settings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         captureArea = try container.decodeIfPresent(CGRect.self, forKey: .captureArea)
         viewerAlwaysOnTop = try container.decodeIfPresent(Bool.self, forKey: .viewerAlwaysOnTop) ?? false
+        screenshotDirectory = try container.decodeIfPresent(String.self, forKey: .screenshotDirectory)
     }
 }
 

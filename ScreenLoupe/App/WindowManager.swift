@@ -8,10 +8,12 @@ final class WindowManager {
     let viewer: ViewerWindowController
     private let capture = ScreenCaptureManager()
     private let zoomPan = ZoomPanController()
+    private let settings: SettingsStore
     /// Tracked here: during `windowWillClose` the window still reports itself visible.
     private var isViewerOpen = false
 
     init(settings: SettingsStore, permissions: PermissionsManager) {
+        self.settings = settings
         captureArea = CaptureAreaController(settings: settings)
         viewer = ViewerWindowController(
             permissions: permissions, settings: settings, frameStore: capture.frameStore, zoomPan: zoomPan)
@@ -21,6 +23,8 @@ final class WindowManager {
         capture.onUserStopped = { [weak self] in self?.viewer.close() }
         capture.onProblem = { [weak self] problem in self?.viewer.setCaptureProblem(problem) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
+        viewer.onCopyView = { [weak self] in self?.copyView() }
+        viewer.onSaveView = { [weak self] in self?.saveView() }
         captureArea.onChange = { [weak self] _ in self?.updateCapture() }
         viewer.onPermissionChange = { [weak self] in self?.updateCapture() }
         // Closing the Viewer hides the Capture Area too; the app stays in the menu bar.
@@ -51,6 +55,78 @@ final class WindowManager {
 
     func resetZoom() {
         zoomPan.fit()
+    }
+
+    #if DEBUG
+        func simulateCaptureInterruption(failingAttempts: Int) {
+            capture.simulateInterruption(failingAttempts: failingAttempts)
+        }
+    #endif
+
+    // MARK: Screenshots (TASK.md §7)
+
+    /// Whether there is a frame to copy or save.
+    var canExport: Bool { viewer.showsCapture && capture.frameStore.latestFrame != nil }
+
+    func copyView() {
+        guard let image = viewImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
+        viewer.showToast("View copied")
+    }
+
+    func copySource() {
+        guard let image = sourceImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
+        viewer.showToast("Source copied")
+    }
+
+    func saveView() {
+        save(viewImage(), kind: "View")
+    }
+
+    func saveSource() {
+        save(sourceImage(), kind: "Source")
+    }
+
+    private func viewImage() -> CGImage? {
+        guard let frame = capture.frameStore.latestFrame else { return nil }
+        let colorSpace = NSScreen.colorSpace(forDisplay: frame.geometry.display.id)
+        let clear = ViewerRenderer.backgroundColor
+        guard
+            let background = CGColor(
+                colorSpace: colorSpace,
+                components: [clear.red, clear.green, clear.blue, clear.alpha].map { CGFloat($0) })
+        else { return nil }
+        return ScreenshotExporter.viewImage(
+            from: frame, state: zoomPan.state, background: background, colorSpace: colorSpace)
+    }
+
+    private func sourceImage() -> CGImage? {
+        guard let frame = capture.frameStore.latestFrame else { return nil }
+        return ScreenshotExporter.sourceImage(
+            from: frame, colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
+    }
+
+    /// The image is taken when the command is given, before the save panel opens.
+    private func save(_ image: CGImage?, kind: String) {
+        guard let image, let png = ScreenshotExporter.pngData(image), let window = viewer.window else {
+            return NSSound.beep()
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = ScreenshotExporter.fileName(kind: kind)
+        panel.directoryURL =
+            settings.settings.screenshotDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try png.write(to: url, options: .atomic)
+                self?.settings.update { $0.screenshotDirectory = url.deletingLastPathComponent().path }
+                self?.viewer.showToast("Saved \(url.lastPathComponent)")
+            } catch {
+                NSAlert(error: error).beginSheetModal(for: window)
+            }
+        }
     }
 
     func displaysChanged() {

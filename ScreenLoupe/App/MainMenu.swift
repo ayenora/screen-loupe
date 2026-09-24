@@ -6,11 +6,15 @@ enum MainMenu {
     static func make(target: AppController) -> NSMenu {
         let menu = NSMenu()
         menu.addItem(submenuItem(appMenu()))
-        menu.addItem(submenuItem(fileMenu()))
+        menu.addItem(submenuItem(fileMenu(target: target)))
+        menu.addItem(submenuItem(editMenu(target: target)))
         menu.addItem(submenuItem(viewMenu(target: target)))
         let window = windowMenu(target: target)
         menu.addItem(submenuItem(window))
         NSApp.windowsMenu = window
+        #if DEBUG
+            menu.addItem(submenuItem(debugMenu(target: target)))
+        #endif
         return menu
     }
 
@@ -32,9 +36,28 @@ enum MainMenu {
         return menu
     }
 
-    private static func fileMenu() -> NSMenu {
+    private static func fileMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "File")
+        let saveView = menu.addItem(
+            withTitle: "Save View…", action: #selector(AppController.saveView(_:)), keyEquivalent: "s")
+        saveView.target = target
+        let saveSource = menu.addItem(
+            withTitle: "Save Source…", action: #selector(AppController.saveSource(_:)), keyEquivalent: "S")
+        saveSource.target = target
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        return menu
+    }
+
+    /// ⌘C copies what the Viewer shows; ⇧⌘C the Capture Area without zoom (TASK.md §7).
+    private static func editMenu(target: AppController) -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+        let copyView = menu.addItem(
+            withTitle: "Copy View", action: #selector(AppController.copyView(_:)), keyEquivalent: "c")
+        copyView.target = target
+        let copySource = menu.addItem(
+            withTitle: "Copy Source", action: #selector(AppController.copySource(_:)), keyEquivalent: "C")
+        copySource.target = target
         return menu
     }
 
@@ -71,6 +94,22 @@ enum MainMenu {
             withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         return menu
     }
+
+    #if DEBUG
+        /// Only in Debug builds: states that are hard to reach by hand.
+        private static func debugMenu(target: AppController) -> NSMenu {
+            let menu = NSMenu(title: "Debug")
+            let recovers = menu.addItem(
+                withTitle: "Simulate Interruption (Recovers)",
+                action: #selector(AppController.simulateInterruptionThatRecovers(_:)), keyEquivalent: "")
+            recovers.target = target
+            let fails = menu.addItem(
+                withTitle: "Simulate Interruption (Fails)",
+                action: #selector(AppController.simulateInterruptionThatFails(_:)), keyEquivalent: "")
+            fails.target = target
+            return menu
+        }
+    #endif
 
     private static func submenuItem(_ submenu: NSMenu) -> NSMenuItem {
         let item = NSMenuItem()

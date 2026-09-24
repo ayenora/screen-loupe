@@ -103,9 +103,9 @@ struct CaptureAreaEditingTests {
 
     @Test func resizingStopsAtTheMinimumSize() {
         let narrow = CaptureAreaEditing.resized(rect, handle: .right, by: CGVector(dx: -500, dy: 0))
-        #expect(narrow == CGRect(x: 100, y: 100, width: 8, height: 100))
+        #expect(narrow == CGRect(x: 100, y: 100, width: 64, height: 100))
         let short = CaptureAreaEditing.resized(rect, handle: .bottom, by: CGVector(dx: 0, dy: 500))
-        #expect(short == CGRect(x: 100, y: 192, width: 200, height: 8))
+        #expect(short == CGRect(x: 100, y: 136, width: 200, height: 64))
     }
 
     @Test(arguments: [

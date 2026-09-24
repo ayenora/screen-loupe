@@ -130,7 +130,7 @@ struct OverlayLayout: Equatable, Sendable {
 
 /// Moving and resizing the Capture Area. Global coordinates, y up; results are not snapped.
 enum CaptureAreaEditing {
-    static let minimumSize = CGSize(width: 8, height: 8)
+    static let minimumSize = CGSize(width: 64, height: 64)
 
     /// `rect` with the edges `handle` controls moved by `delta`. The opposite edges stay put and the
     /// size never drops below `minimumSize`.

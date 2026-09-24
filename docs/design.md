@@ -51,6 +51,7 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 - **Moving or resizing the Capture Area** calls `updateConfiguration` with the new `sourceRect`, `width` and `height`. The calls are coalesced so that at most one update is in flight, and the newest rect wins when it completes.
 - **Moving the Capture Area to another display** replaces the stream with a new one for that display. Swapping the filter of a running stream would apply the old display's source rect to the new display until the configuration update follows.
 - **Frame bookkeeping:** `FrameStore` tags each frame with the geometry the stream is configured for and drops frames whose pixel size doesn't match it (frames from before a resize). While the area moves without resizing, a frame produced just before a reconfiguration can carry the new geometry for one frame; that is invisible in the Viewer and settled by the time anything is copied.
+- **Timeouts and retries:** every ScreenCaptureKit call has a 5 s timeout. When the connection to the capture service drops, a call in flight may never return, and without the timeout it would block every later update. A broken capture is restored automatically in up to four attempts: the first at once, then after 2, 4 and 6 s. Meanwhile the Viewer shows "Capture interrupted" with a spinner, "Reconnecting — attempt 2 of 4 in 3 s" counting down, the system's reason and Try Now. Success shows "Capture restored" for a moment. When all attempts fail the panel says "Capture stopped" with Try Again; if that Try Again fails too, it suggests quitting and reopening the app and offers Restart Screen Loupe. Debug builds have a Debug menu that simulates an interruption that recovers or one that keeps failing, to check these states by hand.
 - **Update bookkeeping:** when the system stops the stream or the displays change while an update is in flight, a generation counter makes that update's result void, so the next pass rebuilds the stream instead of believing it is running. A display AppKit knows but ScreenCaptureKit doesn't list yet is retried after a second, not in a loop.
 - **Failures** are shown, never left as an empty Viewer: `SCStreamError.userDeclined` switches the Viewer to the permission explanation (until relaunch, because the preflight check can stay stale); any other error shows "Capture stopped" with the reason and Try Again.
 - **Display changes:** `SCShareableContent` is cached and refreshed on `NSApplication.didChangeScreenParametersNotification`. If the system stops the stream (for example, the display was unplugged), it is rebuilt from the current display list.
@@ -74,8 +75,9 @@ MTKView (drawn on each new frame and on every zoom/pan change)
 ### 2.4 Screenshots
 
 - **Capture Source:** the latest frame's `CVPixelBuffer` is converted to a `CGImage` tagged with the frame's color space, then written as PNG or placed on the pasteboard. It is exactly the source pixels the Viewer shows, at native resolution. A new `SCScreenshotManager` capture isn't needed, and it could differ from what's on screen.
-- **Capture View:** the same render pass runs once more into an offscreen texture of the drawable's size, and that texture becomes a `CGImage`. This guarantees what-you-see-is-what-you-get for zoom, pan and viewport. The grid is included only when `Include pixel grid in screenshot` is on.
-- **Shortcuts:** `Cmd+C` (Copy View), `Cmd+Shift+C` (Copy Source) and `Cmd+S` (Save View) are main-menu key equivalents, active while the Viewer is key.
+- **Capture View:** CoreGraphics draws the frame into an image of the drawable's size with the placement the renderer uses (`ZoomPanState.imageRect`), the Viewer's background, and no interpolation when magnifying. At integer zoom every source pixel is an exact N×N block (checked pixel by pixel). The grid, once it exists, is included only when `Include pixel grid in screenshot` is on.
+- **Output:** the clipboard gets PNG and TIFF; Save writes a PNG with the source display's color profile embedded, named like macOS screenshots (`Screen Loupe View 2026-09-24 at 14.20.05.png`), into the folder used last (Desktop at first). A short confirmation ("View copied") appears at the bottom of the Viewer.
+- **Commands:** Edit > Copy View `⌘C`, Copy Source `⇧⌘C`; File > Save View… `⌘S`, Save Source… `⇧⌘S`; the Viewer toolbar's Copy and Save buttons; Copy View and Copy Source in the menu bar item. They are enabled while there is a frame.
 
 ## 3. Coordinate-system strategy
 
@@ -124,7 +126,7 @@ The unit tests cover:
     - **At-rest size label:** below the frame on the right; inside the bottom-right corner when there is no room below.
     - Placement, hit zones and resize math are pure functions in `Geometry/OverlayLayout.swift`, covered by tests.
   - It can become key (a borderless window can't by default, so the panel overrides this) for the arrow-key nudges of TASK.md §10.
-  - Minimum size: 8×8 pt.
+  - Minimum size: 64×64 pt. A smaller area saved by an earlier version grows to it on launch.
 - **Viewer:** a regular titled, resizable `NSWindow` with an `NSToolbar` (presets, zoom value) and full-screen support.
   - **Pan:** drag, two-finger scroll and horizontal scroll.
   - **Zoom:** `Cmd` + wheel, pinch, `+`/`-`, around the cursor.

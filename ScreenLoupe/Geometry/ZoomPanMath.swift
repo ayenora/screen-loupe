@@ -38,6 +38,13 @@ struct ZoomPanState: Equatable, Sendable {
         CGPoint(x: s.x * zoom + offset.x, y: s.y * zoom + offset.y)
     }
 
+    /// Where a captured image of `size` source pixels, placed at `origin` inside the Capture Area,
+    /// lands in the viewport. Both the Viewer and Copy View use this, so a copy matches the screen.
+    func imageRect(origin: CGPoint, size: CGSize) -> CGRect {
+        let topLeft = viewportPoint(forSourcePoint: origin)
+        return CGRect(x: topLeft.x, y: topLeft.y, width: size.width * zoom, height: size.height * zoom)
+    }
+
     /// The whole source pixel under a viewport point, or `nil` outside the image.
     func sourcePixel(atViewportPoint p: CGPoint) -> (x: Int, y: Int)? {
         let s = sourcePoint(forViewportPoint: p)

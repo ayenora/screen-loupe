@@ -84,7 +84,9 @@ final class CaptureAreaController {
     }
 
     private func initialRect() -> CGRect {
-        if let saved = settings.settings.captureArea, converter?.owningDisplay(for: GlobalRect(rect: saved)) != nil {
+        if var saved = settings.settings.captureArea, converter?.owningDisplay(for: GlobalRect(rect: saved)) != nil {
+            let minimum = CaptureAreaEditing.minimumSize
+            saved.size = CGSize(width: max(saved.width, minimum.width), height: max(saved.height, minimum.height))
             return saved
         }
         return defaultRect()

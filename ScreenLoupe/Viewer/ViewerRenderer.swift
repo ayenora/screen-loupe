@@ -91,13 +91,13 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     /// The frame's quad in NDC: left, top, right, bottom.
     private func quadRect(for frame: CapturedFrame, drawableSize: CGSize) -> SIMD4<Float>? {
         guard drawableSize.width > 0, drawableSize.height > 0 else { return nil }
-        let state = zoomPan.state
-        let origin = state.viewportPoint(forSourcePoint: frame.geometry.imageOrigin)
         let size = frame.pixelSize
-        let left = origin.x
-        let top = origin.y
-        let right = left + CGFloat(size.width) * state.zoom
-        let bottom = top + CGFloat(size.height) * state.zoom
+        let rect = zoomPan.state.imageRect(
+            origin: frame.geometry.imageOrigin, size: CGSize(width: size.width, height: size.height))
+        let left = rect.minX
+        let top = rect.minY
+        let right = rect.maxX
+        let bottom = rect.maxY
         func ndcX(_ x: CGFloat) -> Float { Float(x / drawableSize.width * 2 - 1) }
         func ndcY(_ y: CGFloat) -> Float { Float(1 - y / drawableSize.height * 2) }
         return SIMD4(ndcX(left), ndcY(top), ndcX(right), ndcY(bottom))

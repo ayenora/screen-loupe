@@ -67,6 +67,15 @@ struct ZoomPanStateTests {
         #expect(state.sourcePixel(atViewportPoint: CGPoint(x: 80, y: 0)) == nil)
     }
 
+    @Test func imageRectPlacesAPartialImageInsideTheArea() {
+        // A 100×60 area at 4×, panned by (-40, -8); the captured part starts 40 px into the area.
+        let state = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: -40, y: -8), contentSize: CGSize(width: 100, height: 60),
+            viewportSize: CGSize(width: 200, height: 100))
+        let rect = state.imageRect(origin: CGPoint(x: 40, y: 0), size: CGSize(width: 60, height: 60))
+        #expect(rect == CGRect(x: 120, y: -8, width: 240, height: 240))
+    }
+
     @Test func fitZoomFitsTheLimitingAxis() {
         let state = ZoomPanState(
             contentSize: CGSize(width: 400, height: 300), viewportSize: CGSize(width: 800, height: 450))

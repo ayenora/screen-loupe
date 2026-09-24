@@ -7,7 +7,12 @@ enum CaptureProblem: Equatable {
     /// ScreenCaptureKit refused for lack of Screen Recording access, even if the preflight check said
     /// otherwise (it can be stale until the app relaunches).
     case permissionDenied
-    case failed(String)
+    /// The capture broke and is being restored automatically. `nextAttempt` is `nil` while attempt
+    /// number `attempt` is running, else when it starts.
+    case reconnecting(reason: String, attempt: Int, maxAttempts: Int, nextAttempt: Date?)
+    /// Every automatic attempt failed; only the user's Try Again starts over. `afterUserRetry`: that
+    /// Try Again didn't help either, so a relaunch is the next thing to suggest.
+    case failed(reason: String, afterUserRetry: Bool)
 }
 
 /// Streams the Capture Area with ScreenCaptureKit into a `FrameStore` (docs/design.md §2.1).
@@ -48,6 +53,17 @@ final class ScreenCaptureManager: NSObject {
         didSet { if problem != oldValue { onProblem?(problem) } }
     }
     private var retryTask: Task<Void, Never>?
+    /// Failures in a row. The first few are retried on their own, with growing pauses: the capture
+    /// service can take a moment to come back after its connection drops.
+    private var consecutiveFailures = 0
+    /// Attempts to restore a broken capture before giving up, the first one immediately.
+    private static let maxAttempts = 4
+    /// What broke the capture, shown while reconnecting.
+    private var failureReason = ""
+    /// The user pressed Try Again after the automatic attempts gave up.
+    private var userRetried = false
+    /// How long a ScreenCaptureKit call may take before it counts as failed.
+    private static let callTimeout: Double = 5
 
     /// Captures `geometry`, or stops when it is `nil`.
     func capture(_ geometry: CaptureGeometry?) {
@@ -62,8 +78,16 @@ final class ScreenCaptureManager: NSObject {
         processUpdates()
     }
 
-    /// Tries the current geometry again after a failure.
+    /// Tries the current geometry again now: Try Now while reconnecting, Try Again after giving up.
     func retry() {
+        retryTask?.cancel()
+        if case .reconnecting(let reason, let attempt, let maxAttempts, _)? = problem {
+            // Try Now: this is the attempt the countdown was waiting for.
+            problem = .reconnecting(reason: reason, attempt: attempt, maxAttempts: maxAttempts, nextAttempt: nil)
+        } else {
+            if case .failed? = problem { userRetried = true }
+            consecutiveFailures = 0
+        }
         invalidate()
         processUpdates()
     }
@@ -98,19 +122,27 @@ final class ScreenCaptureManager: NSObject {
         }
         let started = ContinuousClock.now
         do {
+            #if DEBUG
+                if debugFailuresRemaining > 0 {
+                    debugFailuresRemaining -= 1
+                    throw NSError(
+                        domain: "ScreenLoupe.Debug", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Simulated failure (Debug menu)."])
+                }
+            #endif
             let content = try await shareableContent()
             guard let display = content.displays.first(where: { $0.displayID == geometry.display.id }) else {
                 // AppKit can know a new display before ScreenCaptureKit lists it. Give it a second
                 // rather than asking again at once.
                 log.error("Display \(geometry.display.id) not in shareable content yet")
                 applied = geometry
-                retryLater()
+                retryLater(after: 1)
                 return
             }
             let configuration = Self.configuration(for: geometry)
             if let stream, streamDisplayID == display.displayID {
                 frameStore.setGeometry(geometry)
-                try await stream.updateConfiguration(configuration)
+                try await withTimeout(seconds: Self.callTimeout) { try await stream.updateConfiguration(configuration) }
             } else {
                 // A new display gets a new stream: swapping the filter of a running stream would apply
                 // the old display's source rect to the new display until the configuration follows.
@@ -120,31 +152,47 @@ final class ScreenCaptureManager: NSObject {
             }
             applied = geometry
             problem = nil
+            consecutiveFailures = 0
+            userRetried = false
             let elapsed = ContinuousClock.now - started
             log.debug("Stream updated in \(elapsed.formatted(.units(allowed: [.milliseconds])), privacy: .public)")
         } catch {
             log.error("Capture update failed: \(error.localizedDescription, privacy: .public)")
             await stop()
             applied = geometry
-            problem = Self.problem(for: error)
+            consecutiveFailures += 1
+            failureReason = error.localizedDescription
+            if Self.isPermissionError(error) {
+                problem = .permissionDenied
+            } else if consecutiveFailures < Self.maxAttempts {
+                let delay = Double(consecutiveFailures * 2)
+                log.info("Retrying capture in \(delay) s")
+                problem = .reconnecting(
+                    reason: failureReason, attempt: consecutiveFailures + 1, maxAttempts: Self.maxAttempts,
+                    nextAttempt: Date().addingTimeInterval(delay))
+                retryLater(after: delay)
+            } else {
+                problem = .failed(reason: failureReason, afterUserRetry: userRetried)
+            }
         }
     }
 
-    private func retryLater() {
+    private func retryLater(after seconds: Double) {
         retryTask?.cancel()
         retryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            self?.retry()
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, let self else { return }
+            if case .reconnecting(let reason, let attempt, let maxAttempts, _)? = problem {
+                problem = .reconnecting(reason: reason, attempt: attempt, maxAttempts: maxAttempts, nextAttempt: nil)
+            }
+            invalidate()
+            processUpdates()
         }
     }
 
-    private static func problem(for error: any Error) -> CaptureProblem {
+    private static func isPermissionError(_ error: any Error) -> Bool {
         let nsError = error as NSError
-        if nsError.domain == SCStreamErrorDomain, nsError.code == SCStreamError.userDeclined.rawValue {
-            return .permissionDenied
-        }
-        return .failed(error.localizedDescription)
+        return nsError.domain == SCStreamErrorDomain && nsError.code == SCStreamError.userDeclined.rawValue
     }
 
     private func start(
@@ -158,7 +206,7 @@ final class ScreenCaptureManager: NSObject {
         self.stream = stream
         self.output = output
         streamDisplayID = display.displayID
-        try await stream.startCapture()
+        try await withTimeout(seconds: Self.callTimeout) { try await stream.startCapture() }
         log.info("Stream started on display \(display.displayID)")
         #if DEBUG
             startStatsLog()
@@ -185,13 +233,15 @@ final class ScreenCaptureManager: NSObject {
             statsTimer = nil
         #endif
         if stopCapture {
-            try? await stream.stopCapture()
+            try? await withTimeout(seconds: Self.callTimeout) { try await stream.stopCapture() }
         }
     }
 
     private func shareableContent() async throws -> SCShareableContent {
         if let content { return content }
-        let fresh = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        let fresh = try await withTimeout(seconds: Self.callTimeout) {
+            try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        }
         content = fresh
         return fresh
     }
@@ -226,6 +276,8 @@ final class ScreenCaptureManager: NSObject {
     // MARK: Debug statistics
 
     #if DEBUG
+        /// Attempts `simulateInterruption` still makes fail.
+        fileprivate var debugFailuresRemaining = 0
         private var statsTimer: Timer?
 
         /// Once a second while streaming: how many frames came in, were kept and were drawn.
@@ -262,14 +314,40 @@ extension ScreenCaptureManager: SCStreamDelegate {
                 self.onUserStopped?()
                 return
             }
-            // Stopped by the system, typically a display was unplugged: start over from the current
-            // display list, even if an update is in flight right now.
-            self.log.error("Stream stopped: \(error.localizedDescription, privacy: .public)")
-            self.invalidate()
-            self.processUpdates()
+            self.restartAfterSystemStop(reason: error.localizedDescription)
         }
     }
+
+    /// Stopped by the system, typically a display was unplugged or the capture service's connection
+    /// dropped: start over from the current display list, even if an update is in flight right now.
+    /// The first attempt runs at once.
+    fileprivate func restartAfterSystemStop(reason: String) {
+        log.error("Stream stopped: \(reason, privacy: .public)")
+        failureReason = reason
+        consecutiveFailures = 0
+        userRetried = false
+        problem = .reconnecting(reason: reason, attempt: 1, maxAttempts: Self.maxAttempts, nextAttempt: nil)
+        invalidate()
+        processUpdates()
+    }
 }
+
+#if DEBUG
+    // MARK: Debug menu
+
+    extension ScreenCaptureManager {
+        /// Stops the stream as if the capture service's connection had dropped. The next
+        /// `failingAttempts` attempts to restore it fail too, so every state of the reconnecting panel
+        /// can be checked by hand.
+        func simulateInterruption(failingAttempts: Int) {
+            debugFailuresRemaining = failingAttempts
+            Task {
+                await stop()
+                restartAfterSystemStop(reason: "Simulated interruption (Debug menu).")
+            }
+        }
+    }
+#endif
 
 /// Receives sample buffers on the capture queue and keeps the latest complete frame.
 private final class StreamOutput: NSObject, SCStreamOutput, @unchecked Sendable {

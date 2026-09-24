@@ -51,9 +51,34 @@ final class AppController: NSObject {
         windows.resetZoom()
     }
 
-    // Implemented in stage 7 and after the MVP (docs/design.md §7); disabled until then.
-    @objc func copyView(_ sender: Any?) {}
-    @objc func copySource(_ sender: Any?) {}
+    @objc func copyView(_ sender: Any?) {
+        windows.copyView()
+    }
+
+    @objc func copySource(_ sender: Any?) {
+        windows.copySource()
+    }
+
+    @objc func saveView(_ sender: Any?) {
+        windows.saveView()
+    }
+
+    @objc func saveSource(_ sender: Any?) {
+        windows.saveSource()
+    }
+
+    #if DEBUG
+        @objc func simulateInterruptionThatRecovers(_ sender: Any?) {
+            windows.simulateCaptureInterruption(failingAttempts: 1)
+        }
+
+        /// Fails every automatic attempt and the first Try Again, to show the relaunch suggestion.
+        @objc func simulateInterruptionThatFails(_ sender: Any?) {
+            windows.simulateCaptureInterruption(failingAttempts: 8)
+        }
+    #endif
+
+    // Comes after the MVP (docs/design.md §7); disabled until then.
     @objc func showPreferences(_ sender: Any?) {}
 }
 
@@ -66,7 +91,9 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleViewerAlwaysOnTop(_:)):
             menuItem.state = windows.viewer.isAlwaysOnTop ? .on : .off
             return true
-        case #selector(copyView(_:)), #selector(copySource(_:)), #selector(showPreferences(_:)):
+        case #selector(copyView(_:)), #selector(copySource(_:)), #selector(saveView(_:)), #selector(saveSource(_:)):
+            return windows.canExport
+        case #selector(showPreferences(_:)):
             return false
         default:
             return true
