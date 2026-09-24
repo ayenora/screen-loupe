@@ -71,6 +71,9 @@ final class CaptureAreaController {
 
     /// Rebuilds the display layout and keeps the area on a connected display.
     func screenParametersChanged() {
+        // During a reconfiguration the screen list can be briefly empty; keep the old layout rather
+        // than judging the area off-screen and overwriting the saved placement.
+        guard DisplayLayout.current() != nil else { return }
         refreshDisplays()
         let onScreen = converter?.owningDisplay(for: GlobalRect(rect: captureRect)) != nil
         apply(onScreen ? captureRect : defaultRect(), persist: true)
@@ -91,8 +94,10 @@ final class CaptureAreaController {
         let screen =
             (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
         let size = Self.defaultSize
+        // Left of centre, so the Viewer fits beside it on first launch (TASK.md §25.3).
+        let centerX = screen.minX + screen.width * 0.3
         return CGRect(
-            x: screen.midX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height)
+            x: centerX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height)
     }
 
     // MARK: Applying a rect

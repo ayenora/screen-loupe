@@ -19,6 +19,8 @@ final class WindowManager {
         capture.onFrame = { [weak self] in self?.viewer.frameArrived() }
         // Stop Sharing in the system menu acts like closing the Viewer: both windows go away.
         capture.onUserStopped = { [weak self] in self?.viewer.close() }
+        capture.onProblem = { [weak self] problem in self?.viewer.setCaptureProblem(problem) }
+        viewer.onRetry = { [weak self] in self?.capture.retry() }
         captureArea.onChange = { [weak self] _ in self?.updateCapture() }
         viewer.onPermissionChange = { [weak self] in self?.updateCapture() }
         // Closing the Viewer hides the Capture Area too; the app stays in the menu bar.
@@ -28,6 +30,7 @@ final class WindowManager {
             captureArea.hide()
             updateCapture()
         }
+        viewer.placeOnFirstLaunch(beside: captureArea.captureRect)
     }
 
     /// Brings the Viewer forward. A Viewer that was closed comes back together with its Capture Area.
@@ -44,6 +47,10 @@ final class WindowManager {
 
     func toggleCaptureArea() {
         captureArea.toggle()
+    }
+
+    func resetZoom() {
+        zoomPan.fit()
     }
 
     func displaysChanged() {

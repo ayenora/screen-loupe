@@ -14,8 +14,4 @@ struct DisplayLayout: Equatable, Sendable {
         self.displays = displays
         self.primary = primary
     }
-
-    func display(withID id: CGDirectDisplayID) -> DisplayInfo? {
-        displays.first { $0.id == id }
-    }
 }

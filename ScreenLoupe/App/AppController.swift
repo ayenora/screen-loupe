@@ -47,10 +47,13 @@ final class AppController: NSObject {
         windows.viewer.toggleAlwaysOnTop()
     }
 
-    // Implemented in stages 6–7 and after the MVP (docs/design.md §7); disabled until then.
+    @objc func resetZoom(_ sender: Any?) {
+        windows.resetZoom()
+    }
+
+    // Implemented in stage 7 and after the MVP (docs/design.md §7); disabled until then.
     @objc func copyView(_ sender: Any?) {}
     @objc func copySource(_ sender: Any?) {}
-    @objc func resetZoom(_ sender: Any?) {}
     @objc func showPreferences(_ sender: Any?) {}
 }
 
@@ -63,8 +66,7 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleViewerAlwaysOnTop(_:)):
             menuItem.state = windows.viewer.isAlwaysOnTop ? .on : .off
             return true
-        case #selector(copyView(_:)), #selector(copySource(_:)), #selector(resetZoom(_:)),
-            #selector(showPreferences(_:)):
+        case #selector(copyView(_:)), #selector(copySource(_:)), #selector(showPreferences(_:)):
             return false
         default:
             return true

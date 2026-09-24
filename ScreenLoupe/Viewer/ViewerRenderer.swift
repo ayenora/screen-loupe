@@ -54,7 +54,9 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        frameStore.count { $0.drawCalls += 1 }
+        #if DEBUG
+            frameStore.count { $0.drawCalls += 1 }
+        #endif
         guard let pass = view.currentRenderPassDescriptor,
             let drawable = view.currentDrawable,
             let commands = queue.makeCommandBuffer(),
@@ -63,10 +65,9 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
 
         var texture: CVMetalTexture?
         let frame = frameStore.latestFrame
-        frameStore.count {
-            $0.draws += 1
-            if frame != nil { $0.drawsWithFrame += 1 }
-        }
+        #if DEBUG
+            frameStore.count { $0.draws += 1 }
+        #endif
         if let frame, let quad = quadRect(for: frame, drawableSize: view.drawableSize) {
             texture = makeTexture(frame.pixelBuffer)
             if let texture, let metalTexture = CVMetalTextureGetTexture(texture) {
@@ -83,6 +84,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         let retained = RetainedTexture(texture: texture)
         commands.addCompletedHandler { _ in withExtendedLifetime(retained) {} }
         commands.commit()
+        // The cache holds textures for buffers that are gone; the header asks for periodic flushes.
+        CVMetalTextureCacheFlush(textureCache, 0)
     }
 
     /// The frame's quad in NDC: left, top, right, bottom.
