@@ -5,13 +5,12 @@ import AppKit
 ///
 /// Only for the real cursor: when the mouse is over the Viewer, the mouse pointer already marks the
 /// spot. Lines run across the whole view through that pixel, and a box outlines it; white under
-/// orange reads on any content. Never takes the mouse.
+/// the colour (orange by default) reads on any content. Never takes the mouse.
 final class ViewerOverlayView: NSView {
     private let zoomPan: ZoomPanController
     private let inspector: PixelInspector
     var showsCrosshair = true { didSet { needsDisplay = true } }
-
-    private static let accent = NSColor(srgbRed: 1, green: 0.42, blue: 0, alpha: 1)
+    var color = SettingsColor.orange.nsColor { didSet { needsDisplay = true } }
 
     init(zoomPan: ZoomPanController, inspector: PixelInspector) {
         self.zoomPan = zoomPan
@@ -48,7 +47,7 @@ final class ViewerOverlayView: NSView {
         lines.stroke()
         box.lineWidth = 3
         box.stroke()
-        Self.accent.setStroke()
+        color.setStroke()
         lines.lineWidth = 1
         lines.stroke()
         box.lineWidth = 1.5

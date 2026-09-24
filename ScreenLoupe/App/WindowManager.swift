@@ -16,6 +16,7 @@ final class WindowManager {
 
     init(settings: SettingsStore, permissions: PermissionsManager) {
         self.settings = settings
+        zoomPan.restoredZoom = settings.settings.viewerZoom.map { CGFloat($0) }
         inspector = PixelInspector(frameStore: capture.frameStore, settings: settings)
         captureArea = CaptureAreaController(settings: settings)
         viewer = ViewerWindowController(
@@ -37,6 +38,7 @@ final class WindowManager {
         viewer.onClose = { [weak self] in
             guard let self else { return }
             isViewerOpen = false
+            saveViewerState()
             captureArea.hide()
             updateCapture()
             stopTrackingCursor()
@@ -51,7 +53,7 @@ final class WindowManager {
     // MARK: The real cursor over the Capture Area
 
     /// Follows the real cursor while the Viewer is open, so the crosshair and the Color Meter show
-    /// the pixel it points at inside the Capture Area (docs/product.md, "Cursor in the Viewer").
+    /// the pixel it points at inside the Capture Area (docs/product.md, Crosshair).
     private func startTrackingCursor() {
         guard mouseMonitors.isEmpty else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
@@ -109,8 +111,25 @@ final class WindowManager {
         captureArea.toggle()
     }
 
+    /// The global Show / Hide Viewer shortcut. Hiding closes the Viewer, which hides the frame too.
+    /// A Viewer that is open but can't be seen (minimized, the app hidden, another Space) comes
+    /// forward instead.
+    func toggleViewer() {
+        if isViewerOpen, !NSApp.isHidden, let window = viewer.window, window.isVisible, window.isOnActiveSpace {
+            viewer.close()
+        } else {
+            showViewer()
+        }
+    }
+
     func resetZoom() {
         zoomPan.fit()
+    }
+
+    /// The zoom is kept between launches (docs/product.md, Kept between launches); the Viewer's frame is kept by AppKit.
+    func saveViewerState() {
+        guard zoomPan.state.contentSize.width > 0 else { return }
+        settings.update { $0.viewerZoom = Double(zoomPan.state.zoom) }
     }
 
     #if DEBUG
@@ -119,7 +138,7 @@ final class WindowManager {
         }
     #endif
 
-    // MARK: Screenshots (TASK.md §7)
+    // MARK: Screenshots (docs/product.md, Screenshots)
 
     /// Whether there is a frame to copy or save.
     var canExport: Bool { viewer.showsCapture && capture.frameStore.latestFrame != nil }
@@ -144,15 +163,15 @@ final class WindowManager {
 
     private func viewImage() -> CGImage? {
         guard let frame = capture.frameStore.latestFrame else { return nil }
-        let colorSpace = NSScreen.colorSpace(forDisplay: frame.geometry.display.id)
-        let clear = ViewerRenderer.backgroundColor
-        guard
-            let background = CGColor(
-                colorSpace: colorSpace,
-                components: [clear.red, clear.green, clear.blue, clear.alpha].map { CGFloat($0) })
-        else { return nil }
+        let current = settings.settings
+        // The grid as the Viewer shows it, when Settings › Screenshots includes it.
+        let showsGrid =
+            current.gridEnabled && current.gridInCopyView && zoomPan.state.zoom >= CGFloat(current.gridMinimumZoom)
         return ScreenshotExporter.viewImage(
-            from: frame, state: zoomPan.state, background: background, colorSpace: colorSpace)
+            from: frame, state: zoomPan.state, background: current.viewerBackground,
+            checkerSquare: ViewerBackground.checkerSquare * (viewer.window?.backingScaleFactor ?? 1),
+            grid: showsGrid ? current.gridLines : nil,
+            colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
     }
 
     private func sourceImage() -> CGImage? {
@@ -169,7 +188,7 @@ final class WindowManager {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = ScreenshotExporter.fileName(kind: kind)
+        panel.nameFieldStringValue = ScreenshotExporter.fileName(kind: kind, style: settings.settings.fileNameStyle)
         panel.directoryURL =
             settings.settings.screenshotDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
@@ -179,6 +198,9 @@ final class WindowManager {
                 try png.write(to: url, options: .atomic)
                 self?.settings.update { $0.screenshotDirectory = url.deletingLastPathComponent().path }
                 self?.viewer.showToast("Saved \(url.lastPathComponent)")
+                if self?.settings.settings.revealsSavedFile == true {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
             } catch {
                 NSAlert(error: error).beginSheetModal(for: window)
             }

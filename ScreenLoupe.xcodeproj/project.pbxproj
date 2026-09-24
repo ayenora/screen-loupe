@@ -20,6 +20,7 @@
 				Geometry/DisplayCoordinateConverter.swift,
 				Geometry/DisplayLayout.swift,
 				Geometry/OverlayLayout.swift,
+				Geometry/PixelGrid.swift,
 				Geometry/SizeText.swift,
 				Geometry/ZoomPanMath.swift,
 			);

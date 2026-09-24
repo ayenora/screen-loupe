@@ -23,8 +23,21 @@ final class CaptureOverlayView: NSView {
     private let tab = GripTabView()
     private let label = SizeLabelView()
     private var isDragging = false
+    private var isRevealed = false
 
-    init() {
+    var style: FrameStyle {
+        didSet {
+            decorations.style = style
+            tab.style = style
+            label.alphaValue = labelAlpha
+            needsDisplay = true
+        }
+    }
+
+    init(style: FrameStyle) {
+        self.style = style
+        decorations.style = style
+        tab.style = style
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
@@ -70,13 +83,16 @@ final class CaptureOverlayView: NSView {
 
     /// Shows the band, handles and tab (hover), or the muted size label (rest).
     func setRevealed(_ revealed: Bool) {
+        isRevealed = revealed
         NSAnimationContext.runAnimationGroup { context in
             context.duration = OverlayStyle.revealDuration
             decorations.animator().alphaValue = revealed ? 1 : 0
             tab.animator().alphaValue = revealed ? 1 : 0
-            label.animator().alphaValue = revealed ? 0 : 1
+            label.animator().alphaValue = labelAlpha
         }
     }
+
+    private var labelAlpha: CGFloat { !isRevealed && style.showsLabelAtRest ? 1 : 0 }
 
     private func local(_ rect: CGRect) -> CGRect {
         guard let origin = layout?.windowFrame.origin else { return rect }
@@ -88,14 +104,15 @@ final class CaptureOverlayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let layout else { return }
         let rect = local(layout.captureRect)
+        let width = style.lineWidth
         // The line sits just outside the captured rect, so every captured pixel stays visible.
-        let halo = NSBezierPath(rect: rect.insetBy(dx: -1.5, dy: -1.5))
+        let halo = NSBezierPath(rect: rect.insetBy(dx: -width - 0.5, dy: -width - 0.5))
         halo.lineWidth = 1
         OverlayStyle.halo(for: effectiveAppearance).setStroke()
         halo.stroke()
-        let line = NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5))
-        line.lineWidth = 1
-        OverlayStyle.accent.setStroke()
+        let line = NSBezierPath(rect: rect.insetBy(dx: -width / 2, dy: -width / 2))
+        line.lineWidth = width
+        style.accent.setStroke()
         line.stroke()
     }
 
@@ -161,24 +178,26 @@ final class CaptureOverlayView: NSView {
 private final class FrameDecorationsView: NSView {
     var captureRect: CGRect = .zero { didSet { needsDisplay = true } }
     var handleRects: [CGRect] = [] { didSet { needsDisplay = true } }
+    var style: FrameStyle? { didSet { needsDisplay = true } }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        let metrics = OverlayMetrics.standard
+        guard let style else { return }
+        let metrics = style.metrics
         let outer = metrics.lineWidth + metrics.bandWidth
         let band = NSBezierPath(rect: captureRect.insetBy(dx: -outer, dy: -outer))
-        band.append(NSBezierPath(rect: captureRect.insetBy(dx: -metrics.lineWidth, dy: -metrics.lineWidth)))
+        band.append(NSBezierPath(rect: captureRect.insetBy(dx: -style.lineWidth, dy: -style.lineWidth)))
         band.windingRule = .evenOdd
-        OverlayStyle.band.setFill()
+        style.band.setFill()
         band.fill()
 
         for rect in handleRects {
-            NSColor.white.setFill()
+            style.handleFill.setFill()
             rect.fill()
             let outline = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
             outline.lineWidth = 1
-            OverlayStyle.accent.setStroke()
+            style.accent.setStroke()
             outline.stroke()
         }
     }
@@ -187,6 +206,7 @@ private final class FrameDecorationsView: NSView {
 /// The pill above the frame: a grip and the size in points and pixels. Dragging it moves the frame.
 private final class GripTabView: NSView {
     var text = "" { didSet { if text != oldValue { needsDisplay = true } } }
+    var style: FrameStyle? { didSet { needsDisplay = true } }
     var showsShadow = false {
         didSet {
             layer?.shadowOpacity = showsShadow ? 0.45 : 0
@@ -208,12 +228,13 @@ private final class GripTabView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard let style else { return }
         let radius = bounds.height / 2
-        OverlayStyle.tabFill.setFill()
+        style.tabFill.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
 
         // Grip: two columns of three dots in an 8 × 12 box.
-        NSColor.white.setFill()
+        style.onTab.setFill()
         let gripOrigin = CGPoint(x: OverlayStyle.tabLeading, y: (bounds.height - 12) / 2)
         for column in 0..<2 {
             for row in 0..<3 {
@@ -222,7 +243,7 @@ private final class GripTabView: NSView {
             }
         }
 
-        let attributes: [NSAttributedString.Key: Any] = [.font: OverlayStyle.tabFont, .foregroundColor: NSColor.white]
+        let attributes: [NSAttributedString.Key: Any] = [.font: OverlayStyle.tabFont, .foregroundColor: style.onTab]
         let size = (text as NSString).size(withAttributes: attributes)
         let x = OverlayStyle.tabLeading + OverlayStyle.gripWidth + OverlayStyle.tabGap
         (text as NSString).draw(

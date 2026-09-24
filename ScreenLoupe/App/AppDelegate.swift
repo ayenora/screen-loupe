@@ -8,7 +8,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.start()
     }
 
-    /// Closing the Viewer keeps the app running in the menu bar (TASK.md §16).
+    func applicationWillTerminate(_ notification: Notification) {
+        controller.willTerminate()
+    }
+
+    /// Closing the Viewer keeps the app running in the menu bar (docs/product.md, Menu bar and app mode).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }

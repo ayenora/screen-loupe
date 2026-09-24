@@ -1,5 +1,10 @@
 import CoreGraphics
 
+/// Which units the frame's size strings show (Settings › Capture Area).
+enum SizeUnits: String, Codable, CaseIterable, Sendable {
+    case pointsAndPixels, points, pixels
+}
+
 /// The size strings shown on the Capture Area frame.
 enum SizeText {
     /// `220 × 150`: points, with one decimal when the size sits on a half-point (2× displays).
@@ -9,8 +14,25 @@ enum SizeText {
 
     /// `220 × 150 pt · 440 × 300 px`.
     static func pointsAndPixels(_ size: CGSize, scale: CGFloat) -> String {
-        let pixels = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
-        return "\(points(size)) pt · \(points(pixels)) px"
+        "\(points(size)) pt · \(points(pixels(size, scale: scale))) px"
+    }
+
+    /// The grip tab: `220 × 150 pt · 440 × 300 px`, `220 × 150 pt` or `440 × 300 px`.
+    static func tab(_ size: CGSize, scale: CGFloat, units: SizeUnits) -> String {
+        switch units {
+        case .pointsAndPixels: pointsAndPixels(size, scale: scale)
+        case .points: "\(points(size)) pt"
+        case .pixels: "\(points(pixels(size, scale: scale))) px"
+        }
+    }
+
+    /// The muted label at rest, without units: points, or pixels when only pixels are chosen.
+    static func label(_ size: CGSize, scale: CGFloat, units: SizeUnits) -> String {
+        units == .pixels ? points(pixels(size, scale: scale)) : points(size)
+    }
+
+    private static func pixels(_ size: CGSize, scale: CGFloat) -> CGSize {
+        CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
     }
 
     private static func number(_ value: CGFloat) -> String {

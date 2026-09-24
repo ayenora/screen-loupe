@@ -1,7 +1,7 @@
 import AppKit
 
 /// Shown over the Viewer while capturing is interrupted, so the window is never an unexplained empty
-/// rectangle (TASK.md §14).
+/// rectangle (docs/product.md, Permissions).
 ///
 /// Reconnecting: a spinner, the attempt number, a countdown to the next try and Try Now.
 /// Failed (all automatic attempts used up): the reason and Try Again.

@@ -3,7 +3,7 @@ import CoreVideo
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Capture Source and Capture View images, the clipboard and PNG files (TASK.md §7).
+/// Capture Source and Capture View images, the clipboard and PNG files (docs/product.md, Screenshots).
 enum ScreenshotExporter {
     // MARK: Images
 
@@ -29,28 +29,62 @@ enum ScreenshotExporter {
         return context.makeImage()
     }
 
-    /// Capture View: exactly the Viewer's viewport — its zoom, pan and background.
+    /// Capture View: exactly the Viewer's viewport — its zoom, pan and background, and the pixel grid
+    /// when `grid` is given (docs/product.md, Pixel grid).
     ///
     /// Drawn with the placement the renderer uses (`ZoomPanState.imageRect`), without interpolation
     /// when magnifying, so every source pixel is an exact N×N block at integer zoom.
+    /// `checkerSquare` is in viewport pixels.
     static func viewImage(
-        from frame: CapturedFrame, state: ZoomPanState, background: CGColor, colorSpace: CGColorSpace
+        from frame: CapturedFrame, state: ZoomPanState, background: ViewerBackground, checkerSquare: CGFloat,
+        grid: GridLines?, colorSpace: CGColorSpace
     ) -> CGImage? {
         let width = Int(state.viewportSize.width.rounded())
         let height = Int(state.viewportSize.height.rounded())
         guard width > 0, height > 0,
             let image = frameImage(frame.pixelBuffer, colorSpace: colorSpace),
-            let context = bitmapContext(width: width, height: height, colorSpace: colorSpace)
+            let context = bitmapContext(width: width, height: height, colorSpace: colorSpace),
+            fill(context, background: background, checkerSquare: checkerSquare, colorSpace: colorSpace)
         else { return nil }
-        context.setFillColor(background)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.interpolationQuality = state.zoom >= 1 ? .none : .high
         let placed = state.imageRect(
             origin: frame.geometry.imageOrigin, size: CGSize(width: image.width, height: image.height))
         // The viewport is y down; CGContext is y up.
         let rect = CGRect(x: placed.minX, y: CGFloat(height) - placed.maxY, width: placed.width, height: placed.height)
         context.draw(image, in: rect)
+        if let grid, let data = context.data {
+            // The context's rows run top to bottom in memory, like the viewport.
+            PixelGrid.draw(
+                into: data.assumingMemoryBound(to: UInt8.self), width: width, height: height,
+                bytesPerRow: context.bytesPerRow, imageRect: placed, zoom: state.zoom, lines: grid)
+        }
         return context.makeImage()
+    }
+
+    /// The Viewer's background, squares counted from the top-left corner as the shader does.
+    private static func fill(
+        _ context: CGContext, background: ViewerBackground, checkerSquare: CGFloat, colorSpace: CGColorSpace
+    ) -> Bool {
+        func color(_ c: SIMD3<Double>) -> CGColor? {
+            CGColor(colorSpace: colorSpace, components: [CGFloat(c.x), CGFloat(c.y), CGFloat(c.z), 1])
+        }
+        guard let first = color(background.components), let second = color(ViewerBackground.checkerDarkComponents)
+        else { return false }
+        let width = CGFloat(context.width)
+        let height = CGFloat(context.height)
+        context.setFillColor(first)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        guard background == .checkerboard, checkerSquare > 0 else { return true }
+        context.setFillColor(second)
+        for row in 0..<Int((height / checkerSquare).rounded(.up)) {
+            for column in 0..<Int((width / checkerSquare).rounded(.up)) where (row + column) % 2 == 1 {
+                context.fill(
+                    CGRect(
+                        x: CGFloat(column) * checkerSquare, y: height - CGFloat(row + 1) * checkerSquare,
+                        width: checkerSquare, height: checkerSquare))
+            }
+        }
+        return true
     }
 
     /// The frame's BGRA bytes as a `CGImage`, copied so the capture buffer can be reused.
@@ -104,11 +138,18 @@ enum ScreenshotExporter {
         return true
     }
 
-    /// `Screen Loupe View 2026-09-24 at 14.20.05.png`, in the style of macOS screenshots.
-    static func fileName(kind: String, date: Date = Date()) -> String {
+    /// `Screen Loupe View 2026-09-24 at 14.20.05.png`, in the style of macOS screenshots, or
+    /// `ScreenLoupe-View-20260924-142005.png`.
+    static func fileName(kind: String, style: FileNameStyle, date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        return "Screen Loupe \(kind) \(formatter.string(from: date)).png"
+        switch style {
+        case .macOS:
+            formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+            return "Screen Loupe \(kind) \(formatter.string(from: date)).png"
+        case .compact:
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            return "ScreenLoupe-\(kind)-\(formatter.string(from: date)).png"
+        }
     }
 }

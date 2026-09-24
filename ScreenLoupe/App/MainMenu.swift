@@ -5,7 +5,7 @@ import AppKit
 enum MainMenu {
     static func make(target: AppController) -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(submenuItem(appMenu()))
+        menu.addItem(submenuItem(appMenu(target: target)))
         menu.addItem(submenuItem(fileMenu(target: target)))
         menu.addItem(submenuItem(editMenu(target: target)))
         menu.addItem(submenuItem(viewMenu(target: target)))
@@ -18,12 +18,16 @@ enum MainMenu {
         return menu
     }
 
-    private static func appMenu() -> NSMenu {
+    private static func appMenu(target: AppController) -> NSMenu {
         let name = ProcessInfo.processInfo.processName
         let menu = NSMenu(title: name)
         menu.addItem(
             withTitle: "About \(name)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: "")
+        menu.addItem(.separator())
+        let settings = menu.addItem(
+            withTitle: "Settings…", action: #selector(AppController.showSettings(_:)), keyEquivalent: ",")
+        settings.target = target
         menu.addItem(.separator())
         menu.addItem(withTitle: "Hide \(name)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = menu.addItem(
@@ -49,7 +53,7 @@ enum MainMenu {
         return menu
     }
 
-    /// ⌘C copies what the Viewer shows; ⇧⌘C the Capture Area without zoom (TASK.md §7).
+    /// ⌘C copies what the Viewer shows; ⇧⌘C the Capture Area without zoom (docs/product.md, Screenshots).
     private static func editMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "Edit")
         let copyView = menu.addItem(
