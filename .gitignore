@@ -1,0 +1,34 @@
+# Miscellaneous
+*.log
+*.swp
+.DS_Store
+.history
+
+# Build output (make build uses build/DerivedData)
+/build/
+DerivedData/
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Archives and symbols
+*.xcarchive
+*.dSYM
+*.dSYM.zip
+
+# Editors — local configuration, not shared
+.idea/
+.vscode/
+
+# Claude Code local settings
+.claude/
+
+# Scratch folder for handing files back and forth; nothing in it is part of the project
+/tmp/
