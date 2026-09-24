@@ -5,7 +5,7 @@ SCHEME := ScreenLoupe
 CONFIGURATION ?= Debug
 DERIVED_DATA := build/DerivedData
 APP := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/$(SCHEME).app
-DESTINATION := platform=macOS
+DESTINATION := platform=macOS,arch=$(shell uname -m)
 
 # Source roots swift-format walks. Only the ones that exist, so format/lint
 # stay usable before the Xcode project is created.
@@ -25,7 +25,7 @@ help:
 	@echo "  make build      - Debug build into $(DERIVED_DATA)"
 	@echo "  make run        - Build and open the app"
 	@echo "  make test       - Run the whole unit-test suite"
-	@echo "  make test-one T=ScreenLoupeTests/SomeTests/testSomething"
+	@echo "  make test-one T=ScreenLoupeTests/SomeTests[/'someTest()']"
 	@echo "                  - Run one test class or method"
 	@echo "  make format     - Format Swift sources in place (swift-format)"
 	@echo "  make lint       - Lint Swift sources, warnings are errors"
@@ -42,13 +42,13 @@ run: build
 	open "$(APP)"
 
 test:
-	$(XCODEBUILD) test
+	@$(XCODEBUILD) test || { python3 scripts/test_failures.py; exit 1; }
 
 test-one:
 ifndef T
 	$(error Pass the test id: make test-one T=ScreenLoupeTests/SomeTests[/testSomething])
 endif
-	$(XCODEBUILD) test -only-testing:$(T)
+	@$(XCODEBUILD) test '-only-testing:$(T)' || { python3 scripts/test_failures.py; exit 1; }
 
 format:
 ifeq ($(SWIFT_DIRS),)
