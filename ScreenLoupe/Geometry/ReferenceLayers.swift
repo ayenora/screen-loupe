@@ -26,8 +26,6 @@ struct ReferenceLayer: Codable, Equatable, Identifiable, Sendable {
     var isVisible = true
     /// Pinned: the mouse in the Viewer passes through it to the layer below, or to the image.
     var isPinned = false
-    /// The panel shows the layer's settings, not only its row.
-    var isExpanded = true
 
     var frame: CGRect {
         CGRect(origin: origin, size: CGSize(width: imageSize.width * scale, height: imageSize.height * scale))
@@ -58,7 +56,6 @@ struct ReferenceLayer: Codable, Equatable, Identifiable, Sendable {
         blend = try container.decodeIfPresent(ReferenceBlend.self, forKey: .blend) ?? .normal
         isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
-        isExpanded = try container.decodeIfPresent(Bool.self, forKey: .isExpanded) ?? true
     }
 }
 

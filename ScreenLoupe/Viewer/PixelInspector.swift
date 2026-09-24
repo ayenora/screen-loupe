@@ -35,7 +35,7 @@ final class PixelInspector {
         var sample: ColorSample?
     }
 
-    static let maxPins = 12
+    static let maxPins = 8
 
     private(set) var probe: Probe?
     private(set) var pins: [PinnedColor]
@@ -49,7 +49,8 @@ final class PixelInspector {
     init(frameStore: FrameStore, settings: SettingsStore) {
         self.frameStore = frameStore
         self.settings = settings
-        pins = settings.settings.pinnedColors
+        // An older version kept more; the newest stay.
+        pins = Array(settings.settings.pinnedColors.prefix(Self.maxPins))
     }
 
     // MARK: Pointing
@@ -130,12 +131,6 @@ final class PixelInspector {
     func clearPins() {
         pins.removeAll()
         pinsChanged()
-    }
-
-    /// Contrast between the two most recent pins.
-    var contrast: ContrastRating? {
-        guard pins.count >= 2 else { return nil }
-        return ContrastRating(ratio: ColorSample.contrastRatio(pins[0].sample, pins[1].sample))
     }
 
     private func pinsChanged() {

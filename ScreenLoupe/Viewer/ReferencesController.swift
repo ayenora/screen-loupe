@@ -21,6 +21,15 @@ final class ReferencesController {
         didSet { if isActive != oldValue { onChange?() } }
     }
 
+    /// Off while the eyedropper is active: it comes first, so layers neither take the mouse nor
+    /// show their handles.
+    @ObservationIgnored var takesMouse = true {
+        didSet { if takesMouse != oldValue { onChange?() } }
+    }
+
+    /// The panel's content scale, 1 at 250 pt wide (docs/product.md, References).
+    var scale: CGFloat = 1
+
     var stack: ReferenceStack { project.project.references }
 
     @ObservationIgnored var onChange: (() -> Void)?
@@ -113,7 +122,7 @@ final class ReferencesController {
 
     /// The selected layer's corner handles, in drawable pixels.
     func handles(scale: CGFloat) -> [(corner: ReferenceCorner, rect: CGRect)] {
-        guard isActive, let layer = stack.selected, layer.isMovable else { return [] }
+        guard isActive, takesMouse, let layer = stack.selected, layer.isMovable else { return [] }
         let rect = zoomPan.state.imageRect(origin: layer.origin, size: layer.frame.size)
         let size = Self.handleSize * scale
         return ReferenceCorner.allCases.map { corner in
@@ -123,7 +132,7 @@ final class ReferencesController {
     }
 
     func part(at point: CGPoint, scale: CGFloat) -> Part? {
-        guard isActive else { return nil }
+        guard isActive, takesMouse else { return nil }
         let grab = 4 * scale
         if let selected = stack.selectedID,
             let handle = handles(scale: scale).first(where: { $0.rect.insetBy(dx: -grab, dy: -grab).contains(point) })

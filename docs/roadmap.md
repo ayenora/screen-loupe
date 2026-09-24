@@ -6,6 +6,29 @@ What comes after the current version. Every item is measured against the princip
 
 - **First public release.** A signed, notarized download and possibly the Mac App Store; the plan is in [release.md](release.md).
 
+## The version after: colour
+
+Screen Loupe already reads exact colours off any screen. The next version could turn that into work designers and brand managers do by hand today. Two directions, both to be researched before they are designed.
+
+**First, find out:** what brand managers and designers use today to build and keep palettes and themes, where it hurts, and what they hand over to developers. Talk to people, not only read about tools. The aim is to automate the tedious part, not to add another palette toy.
+
+### Colour studio
+
+A generator that builds a complete, balanced colour system from a few colours, with a live preview.
+
+- **Seeds** from anywhere on screen: pick them with the Color Meter.
+- **Presets as starting moods:** deep, standard, pastel, corporate, gold on black, and more.
+- **Light and dark themes together,** tints and shades balanced by perceived lightness rather than by numbers, text and background pairs chosen so they stay readable in both. Contrast checking lives here, next to a text preview — not as a bare ratio in the Color Meter.
+- **Previews that look like real UI:** text at several sizes, cards, buttons, surfaces, shadows, in both themes side by side.
+- **Export:** CSS custom properties and an HTML preview page first; later design tokens and native colour sets.
+
+### Colour skins over live UI
+
+Apply a palette to a running app or website as a skin: its colours remapped live in the Viewer — a brand swap, a dark theme, a seasonal theme — to see a redesign on the real product before anyone builds it.
+
+- **The bar is Apple's:** perceptual colour mapping that keeps hierarchy, contrast and gradients, no banding, crisp text. Not a photo filter laid over the screen.
+- **Open questions:** telling UI colours from photos and illustrations, which should stay as they are; whether the skin stays in the Viewer or can cover the app itself; saving and sharing a skin; how it connects to the colour studio's palettes.
+
 ## Candidates
 
 Ordered by how much each strengthens the core experience.

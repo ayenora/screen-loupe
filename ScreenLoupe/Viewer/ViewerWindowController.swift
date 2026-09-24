@@ -110,6 +110,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
             self?.overlay.needsDisplay = true
         }
         sidePanels.onExpand = { panel in settings.update { $0.expandedSidePanel = panel } }
+        sidePanels.onScale = { [weak references] scale in references?.scale = scale }
+        sidePanels.width = CGFloat(settings.settings.sidePanelWidth)
+        sidePanels.onResize = { width in settings.update { $0.sidePanelWidth = Double(width) } }
         // The ruler may come back from the project.
         toolbar.setRuler(ruler.isOn)
         ruler.onChange = { [weak self] in
@@ -191,6 +194,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         // The eyedropper works only while the Color Meter is open and not collapsed to its strip.
         viewerView.isPicking =
             current.meterVisible && (!current.referencesVisible || current.expandedSidePanel == .colorMeter)
+        references.takesMouse = !viewerView.isPicking
         toolbar.setToggle(.grid, isOn: current.gridEnabled)
         toolbar.setToggle(.crosshair, isOn: current.crosshairEnabled)
         toolbar.setToggle(.meter, isOn: current.meterVisible)

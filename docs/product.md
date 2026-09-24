@@ -98,20 +98,20 @@ A panel beside the image for the pixel under the cursor — in the Viewer, or un
 
 - Position in Capture Area pixels, not in the magnified image.
 - HEX and CSS `rgb()` in sRGB, matching design tools; SwiftUI `Color` and AppKit `NSColor`; the native display value (for example Display P3). Each has a copy button.
-- Click a pixel to pin its colour (up to 12, kept between launches); the WCAG contrast ratio of the two newest pins.
+- Click a pixel to pin its colour: the last 8 stay, newest first, kept between launches.
 
 ### References
 
 Images laid over the live pixels — a design export, an earlier screenshot — for an exact check of the screen against them. PNG, JPEG, TIFF, HEIC, BMP and GIF are accepted. The toolbar's References button opens the panel; the layers show and take the mouse only while it is open.
 
-- Up to 10 layers, top first, like layers in an image editor: drag a row to reorder, the eye hides a layer, Delete removes it.
-- Each layer is one row (eye, thumbnail, name, opacity, pin, chevron) or, expanded, a block with its settings: opacity, Normal or Difference, X and Y of its top-left corner in pixels from the Capture Area's top-left, scale, Reset Position and Delete. The panel scrolls.
+- Up to 10 layers, top first, one row each like layers in an image editor: grip ⠿, eye, thumbnail, name, opacity, pin. A row drags as a whole to reorder, and the others make room. The list scrolls.
+- Below the list, the Layer section holds the selected layer's settings, where nothing drags: opacity, Normal or Difference, X and Y of the top-left corner in pixels from the Capture Area's top-left, scale, a reset of position and scale, and Delete.
 - Difference shows the absolute difference from the live capture: pixels that match turn black. The image is converted to the display's colour space first, so a design colour that renders exactly matches exactly.
-- In the Viewer, dragging a layer moves it in whole pixels; the selected layer has corner handles that scale it with its proportions kept. Exact values go in the panel.
+- In the Viewer, dragging a layer moves it in whole pixels; the selected layer has corner handles that scale it with its proportions kept. Exact values go in the panel: type them, or drag a field's caption (X, Y, Scale) left or right, one pixel or percent per point, Shift ×10, Option ×0.1.
 - A pinned layer lets the mouse through: a drag takes the next unpinned layer under it, or pans the image.
 - Copy View and Save View include the layers as shown.
 
-The Color Meter and References share the column at the right, top down in that order. With both open one is expanded and fills the height, and the other is a strip at its place; clicking the strip expands it and collapses the other. The eyedropper works only while the Color Meter is expanded.
+The Color Meter and References share the column at the right, top down in that order. With both open one is expanded and fills the height, and the other is a strip at its place; clicking the strip expands it and collapses the other. The eyedropper works only while the Color Meter is expanded, and then it comes first: reference layers don't take the mouse or show their handles. Dragging the column's left edge widens it from 250 to 320 pt, and everything in it grows in proportion; the width is kept between launches.
 
 ### Project
 
@@ -180,7 +180,7 @@ Checked against the vendors' documentation in September 2026. "Not documented" m
 | **Real cursor shown** in the magnified view while you work in the region | Yes, crosshair | Not documented | Is the pointer | — | Not documented | — |
 | **Copy / save the zoomed view** exactly as shown | Yes | Not documented | — | Colour values and a colour swatch [3] | Not documented | Colour values |
 | **Copy the source region** at native resolution | Yes | — | — | — | — | — |
-| Pixel colour | HEX, `rgb()`, SwiftUI, AppKit, native value; pinned colours; WCAG contrast | RGB, HSB, HEX, CSS; swatches [2] | — | Yes, several colour spaces [3] | — | Yes, many formats [4] |
+| Pixel colour | HEX, `rgb()`, SwiftUI, AppKit, native value; pinned colours | RGB, HSB, HEX, CSS; swatches [2] | — | Yes, several colour spaces [3] | — | Yes, many formats [4] |
 | **Pixel grid** on exact pixel boundaries | Yes | Gridlines [2] | — | — | — | — |
 | Price | Free, open source (MIT) | $49.99 [2] | Built into macOS | Built into macOS | Free to $19.99 [5] | Free to a few dollars [4] |
 | Main purpose | Inspecting UI while working | Designer measurement toolkit | Accessibility | Colour sampling | Sharing part of the screen in calls | Colour picking |
