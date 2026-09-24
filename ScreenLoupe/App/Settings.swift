@@ -6,6 +6,8 @@ import Observation
 struct Settings: Codable, Equatable {
     /// Capture Area in AppKit global coordinates.
     var captureArea: CGRect?
+    /// A pinned Capture Area neither moves nor resizes.
+    var captureAreaPinned = false
     /// Keep the Viewer above the windows of other apps.
     var viewerAlwaysOnTop = false
     /// Where screenshots are saved; the Desktop when unset.
@@ -14,6 +16,9 @@ struct Settings: Codable, Equatable {
     var gridEnabled = false
     var crosshairEnabled = true
     var meterVisible = false
+    var referencesVisible = false
+    /// With both side panels open, the one that is expanded.
+    var expandedSidePanel = SidePanel.colorMeter
     var pinnedColors: [PinnedColor] = []
     /// The Viewer's zoom when the app last quit or the Viewer closed.
     var viewerZoom: Double?
@@ -55,11 +60,15 @@ struct Settings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = Settings()
         captureArea = try container.decodeIfPresent(CGRect.self, forKey: .captureArea)
+        captureAreaPinned = try container.decodeIfPresent(Bool.self, forKey: .captureAreaPinned) ?? false
         viewerAlwaysOnTop = try container.decodeIfPresent(Bool.self, forKey: .viewerAlwaysOnTop) ?? false
         screenshotDirectory = try container.decodeIfPresent(String.self, forKey: .screenshotDirectory)
         gridEnabled = try container.decodeIfPresent(Bool.self, forKey: .gridEnabled) ?? false
         crosshairEnabled = try container.decodeIfPresent(Bool.self, forKey: .crosshairEnabled) ?? true
         meterVisible = try container.decodeIfPresent(Bool.self, forKey: .meterVisible) ?? false
+        referencesVisible = try container.decodeIfPresent(Bool.self, forKey: .referencesVisible) ?? false
+        expandedSidePanel =
+            try container.decodeIfPresent(SidePanel.self, forKey: .expandedSidePanel) ?? fallback.expandedSidePanel
         pinnedColors = try container.decodeIfPresent([PinnedColor].self, forKey: .pinnedColors) ?? []
         viewerZoom = try container.decodeIfPresent(Double.self, forKey: .viewerZoom)
         showsDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showsDockIcon) ?? fallback.showsDockIcon
@@ -125,6 +134,11 @@ struct SettingsColor: Codable, Hashable, Sendable {
 
     static let blue = SettingsColor(10, 132, 255)
     static let orange = SettingsColor(255, 107, 0)
+}
+
+/// A panel at the right of the Viewer.
+enum SidePanel: String, Codable, Sendable {
+    case colorMeter, references
 }
 
 /// What the Viewer shows around the image and where nothing is captured.

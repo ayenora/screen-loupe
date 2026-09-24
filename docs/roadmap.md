@@ -12,13 +12,9 @@ Ordered by how much each strengthens the core experience.
 
 ### The designer's daily loop
 
-- **Freeze frame.** Pause the live view (Space) to study a transient state — a hover, a pressed button, a frame of an animation — then resume.
-- **Measure in the Viewer.** Drag between two points to get the distance in px and pt, snapping to colour edges, at full magnification.
-- **Overlay a reference.** Drop a design export (PNG from Figma) onto the Viewer and see it over the live pixels with opacity or a difference blend: an exact design-vs-implementation check. No existing loupe does this live.
+- **Drop images onto the Viewer** to add them as references, besides Add… in the panel.
 - **Attach the area to a window.** The Capture Area follows a window when it moves (the iOS Simulator, a browser window).
 - **Several Capture Areas**, each with its own Viewer, for comparing two places.
-- **Viewer that fits the area.** A command that sizes the Viewer to *area × zoom*, so the whole magnified area is visible without panning.
-- **Position readout.** X and Y of the Capture Area next to its size, for placing it by numbers.
 
 ### Each needs its own decision
 

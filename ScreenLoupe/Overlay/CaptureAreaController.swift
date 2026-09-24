@@ -38,6 +38,7 @@ final class CaptureAreaController {
         view = CaptureOverlayView(style: Self.style(settings.settings))
         window.contentView = view
         view.delegate = self
+        view.isPinned = settings.settings.captureAreaPinned
         refreshDisplays()
         apply(initialRect(), persist: false)
 
@@ -66,6 +67,9 @@ final class CaptureAreaController {
         }
         if old.sizeUnits != new.sizeUnits {
             apply(captureRect, persist: false)
+        }
+        if old.captureAreaPinned != new.captureAreaPinned {
+            view.isPinned = new.captureAreaPinned
         }
     }
 
@@ -144,15 +148,21 @@ final class CaptureAreaController {
         let units = settings.settings.sizeUnits
         let tabText = SizeText.tab(rect.size, scale: scale, units: units)
         let labelText = SizeText.label(rect.size, scale: scale, units: units)
+        // L T R B from the top-left corner of the display the area is on.
+        let local = display.flatMap { display in
+            converter?.displayLocalRect(GlobalRect(rect: rect), on: display).rect
+        }
+        let positionLines = local.map { SizeText.edges($0, scale: scale, units: units) } ?? []
         let layout = OverlayLayout(
             captureRect: rect,
             screenFrame: screenFrame,
             tabWidth: OverlayStyle.tabWidth(for: tabText),
-            labelWidth: OverlayStyle.labelWidth(for: labelText)
+            labelWidth: OverlayStyle.labelWidth(for: labelText),
+            positionSize: positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines)
         )
         self.layout = layout
         window.setFrame(layout.windowFrame, display: false)
-        view.update(layout: layout, tabText: tabText, labelText: labelText)
+        view.update(layout: layout, tabText: tabText, labelText: labelText, positionLines: positionLines)
 
         if persist {
             settings.update { $0.captureArea = rect }
@@ -232,14 +242,22 @@ final class CaptureAreaController {
 // MARK: - Mouse and keys
 
 extension CaptureAreaController: CaptureOverlayViewDelegate {
+    private var isPinned: Bool { settings.settings.captureAreaPinned }
+
     func overlayView(_ view: CaptureOverlayView, hitTargetAt point: CGPoint) -> OverlayHitTarget? {
-        layout?.hitTarget(at: point, metrics: view.style.metrics)
+        layout?.hitTarget(at: point, metrics: view.style.metrics, pinned: isPinned)
     }
 
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint) {
-        // The window only receives presses on its drawn pixels; anything that isn't a handle moves it.
-        let target = layout?.hitTarget(at: point) ?? .move
-        drag = Drag(target: target, startMouse: point, startRect: captureRect)
+        let target = layout?.hitTarget(at: point, metrics: view.style.metrics, pinned: isPinned)
+        if target == .pin {
+            settings.update { $0.captureAreaPinned.toggle() }
+            return
+        }
+        // A pinned frame stays put. Otherwise the window only receives presses on its drawn pixels,
+        // and anything that isn't a handle moves it.
+        guard !isPinned else { return }
+        drag = Drag(target: target ?? .move, startMouse: point, startRect: captureRect)
         updateReveal()
     }
 
@@ -252,6 +270,8 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
         case .resize(let handle):
             applyEdited(
                 CaptureAreaEditing.resized(drag.startRect, handle: handle, by: delta), snap: .edges, persist: false)
+        case .pin:
+            break
         }
     }
 
@@ -263,6 +283,7 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
     }
 
     func overlayView(_ view: CaptureOverlayView, keyDown event: NSEvent) -> Bool {
+        guard !isPinned else { return false }
         let key: CaptureAreaEditing.ArrowKey
         switch event.specialKey {
         case .leftArrow?: key = .left

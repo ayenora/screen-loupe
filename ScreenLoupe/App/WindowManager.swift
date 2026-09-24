@@ -8,6 +8,7 @@ final class WindowManager {
     let viewer: ViewerWindowController
     private let capture = ScreenCaptureManager()
     private let zoomPan = ZoomPanController()
+    private let project = ProjectStore()
     private let settings: SettingsStore
     private let inspector: PixelInspector
     private var mouseMonitors: [Any] = []
@@ -21,7 +22,7 @@ final class WindowManager {
         captureArea = CaptureAreaController(settings: settings)
         viewer = ViewerWindowController(
             permissions: permissions, settings: settings, frameStore: capture.frameStore, zoomPan: zoomPan,
-            inspector: inspector)
+            inspector: inspector, project: project)
 
         capture.onFrame = { [weak self] in
             self?.viewer.frameArrived()
@@ -34,10 +35,12 @@ final class WindowManager {
         viewer.onCopyView = { [weak self] in self?.copyView() }
         viewer.onSaveView = { [weak self] in self?.saveView() }
         viewer.onPermissionChange = { [weak self] in self?.updateCapture() }
+        viewer.onToggleFreeze = { [weak self] in self?.toggleFreeze() }
         // Closing the Viewer hides the Capture Area too; the app stays in the menu bar.
         viewer.onClose = { [weak self] in
             guard let self else { return }
             isViewerOpen = false
+            setFrozen(false)
             saveViewerState()
             captureArea.hide()
             updateCapture()
@@ -122,11 +125,35 @@ final class WindowManager {
         }
     }
 
+    // MARK: Freeze frame
+
+    var isFrozen: Bool { capture.frameStore.isFrozen }
+
+    /// Space in the Viewer, the toolbar's pause button, View › Freeze Frame.
+    func toggleFreeze() {
+        guard isFrozen || canExport else {
+            // Nothing to freeze yet; the toolbar button has already flipped itself.
+            viewer.setFrozen(false)
+            return NSSound.beep()
+        }
+        setFrozen(!isFrozen)
+    }
+
+    private func setFrozen(_ frozen: Bool) {
+        capture.frameStore.isFrozen = frozen
+        viewer.setFrozen(frozen)
+    }
+
     func resetZoom() {
         zoomPan.fit()
     }
 
     /// The zoom is kept between launches (docs/product.md, Kept between launches); the Viewer's frame is kept by AppKit.
+    /// Writes the project now, before the app quits.
+    func saveProject() {
+        project.saveNow()
+    }
+
     func saveViewerState() {
         guard zoomPan.state.contentSize.width > 0 else { return }
         settings.update { $0.viewerZoom = Double(zoomPan.state.zoom) }
@@ -170,7 +197,7 @@ final class WindowManager {
         return ScreenshotExporter.viewImage(
             from: frame, state: zoomPan.state, background: current.viewerBackground,
             checkerSquare: ViewerBackground.checkerSquare * (viewer.window?.backingScaleFactor ?? 1),
-            grid: showsGrid ? current.gridLines : nil,
+            grid: showsGrid ? current.gridLines : nil, references: viewer.referencesForExport,
             colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
     }
 

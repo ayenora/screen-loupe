@@ -10,10 +10,16 @@ import OSLog
 @MainActor
 final class ViewerRenderer: NSObject, MTKViewDelegate {
     var style = ViewerStyle()
+    /// The visible reference layers, bottom first (docs/product.md, References).
+    var references: () -> [(layer: ReferenceLayer, image: CGImage)] = { [] }
 
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private let checkerPipeline: MTLRenderPipelineState
+    private let referencePipeline: MTLRenderPipelineState
+    private let device: MTLDevice
+    /// Each layer's image as a texture in the Viewer's colour space, remade when either changes.
+    private var referenceTextures: [UUID: (image: CGImage, space: CGColorSpace, texture: MTLTexture)] = [:]
     private let textureCache: CVMetalTextureCache
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
@@ -38,10 +44,19 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         descriptor.colorAttachments[0].pixelFormat = view.colorPixelFormat
         let checkerDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
         checkerDescriptor.fragmentFunction = library.makeFunction(name: "checkerFragment")
+        let referenceDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
+        referenceDescriptor.fragmentFunction = library.makeFunction(name: "referenceFragment")
+        let blending = referenceDescriptor.colorAttachments[0]!
+        blending.isBlendingEnabled = true
+        blending.sourceRGBBlendFactor = .one
+        blending.sourceAlphaBlendFactor = .one
+        blending.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        blending.destinationAlphaBlendFactor = .oneMinusSourceAlpha
 
         var cache: CVMetalTextureCache?
         guard let pipeline = try? device.makeRenderPipelineState(descriptor: descriptor),
             let checkerPipeline = try? device.makeRenderPipelineState(descriptor: checkerDescriptor),
+            let referencePipeline = try? device.makeRenderPipelineState(descriptor: referenceDescriptor),
             CVMetalTextureCacheCreate(nil, nil, device, nil, &cache) == kCVReturnSuccess,
             let cache
         else { return nil }
@@ -49,6 +64,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         self.queue = queue
         self.pipeline = pipeline
         self.checkerPipeline = checkerPipeline
+        self.referencePipeline = referencePipeline
+        self.device = device
         self.textureCache = cache
         self.frameStore = frameStore
         self.zoomPan = zoomPan
@@ -72,6 +89,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             drawCheckerboard(encoder, view: view)
         }
         var texture: CVMetalTexture?
+        var frameTexture: MTLTexture?
         let frame = frameStore.latestFrame
         #if DEBUG
             frameStore.count { $0.draws += 1 }
@@ -79,6 +97,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         if let frame, let quad = quadRect(for: frame, drawableSize: view.drawableSize) {
             texture = makeTexture(frame.pixelBuffer)
             if let texture, let metalTexture = CVMetalTextureGetTexture(texture) {
+                frameTexture = metalTexture
                 var uniforms = quad
                 let zoom = zoomPan.state.zoom
                 var fragment = SIMD4<Float>(
@@ -90,6 +109,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }
         }
+        drawReferences(encoder, view: view, frame: frame, frameTexture: frameTexture)
         encoder.endEncoding()
         commands.present(drawable)
         // The CVMetalTexture must outlive the GPU work that samples it.
@@ -98,6 +118,73 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         commands.commit()
         // The cache holds textures for buffers that are gone; the header asks for periodic flushes.
         CVMetalTextureCacheFlush(textureCache, 0)
+    }
+
+    private func drawReferences(
+        _ encoder: MTLRenderCommandEncoder, view: MTKView, frame: CapturedFrame?, frameTexture: MTLTexture?
+    ) {
+        let layers = references()
+        let space = view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        referenceTextures = referenceTextures.filter { entry in layers.contains { $0.layer.id == entry.key } }
+        guard !layers.isEmpty else { return }
+        let state = zoomPan.state
+        let size = view.drawableSize
+        guard size.width > 0, size.height > 0 else { return }
+        encoder.setRenderPipelineState(referencePipeline)
+        for (layer, image) in layers {
+            guard let texture = referenceTexture(layer.id, image: image, space: space) else { continue }
+            let rect = state.imageRect(origin: layer.origin, size: layer.frame.size)
+            var quad = SIMD4<Float>(
+                Float(rect.minX / size.width * 2 - 1), Float(1 - rect.minY / size.height * 2),
+                Float(rect.maxX / size.width * 2 - 1), Float(1 - rect.maxY / size.height * 2))
+            // The layer's corners in the frame's UV: the frame covers its pixel size from its origin.
+            var frameUV = SIMD4<Float>(0, 0, 0, 0)
+            let difference = layer.blend == .difference && frameTexture != nil
+            if difference, let frame {
+                let pixels = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
+                let origin = frame.geometry.imageOrigin
+                frameUV = SIMD4(
+                    Float((layer.origin.x - origin.x) / pixels.width),
+                    Float((layer.origin.y - origin.y) / pixels.height),
+                    Float(layer.frame.width / pixels.width), Float(layer.frame.height / pixels.height))
+            }
+            var uniforms = (frameUV, SIMD4<Float>(Float(layer.opacity), difference ? 1 : 0, 0, 0))
+            encoder.setVertexBytes(&quad, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 0)
+            encoder.setFragmentTexture(texture, index: 0)
+            encoder.setFragmentTexture(frameTexture ?? texture, index: 1)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        }
+    }
+
+    /// The image drawn into the Viewer's colour space, premultiplied BGRA, so a pixel that matches
+    /// the screen has the same values as the capture.
+    private func referenceTexture(_ id: UUID, image: CGImage, space: CGColorSpace) -> MTLTexture? {
+        if let cached = referenceTextures[id], cached.image === image, cached.space == space {
+            return cached.texture
+        }
+        // An image beyond the GPU's texture limit is scaled down to fit; the quad keeps the layer's
+        // size, so it only loses detail.
+        let limit = 16384
+        let shrink = min(1, CGFloat(limit) / CGFloat(max(image.width, image.height)))
+        let width = max(1, Int((CGFloat(image.width) * shrink).rounded(.down)))
+        let height = max(1, Int((CGFloat(image.height) * shrink).rounded(.down)))
+        guard image.width > 0, image.height > 0,
+            let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+            let data = context.data
+        else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+        texture.replace(
+            region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: data, bytesPerRow: width * 4)
+        referenceTextures[id] = (image, space, texture)
+        return texture
     }
 
     /// The shader's grid value: 0 none, 1 auto, 2 dark, 3 light lines.

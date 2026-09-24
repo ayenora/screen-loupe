@@ -62,6 +62,20 @@ enum OverlayStyle {
         return (tabLeading + gripWidth + tabGap + textWidth + tabTrailing).rounded(.up)
     }
 
+    /// The L T R B box: a key column and a right-aligned value column, snug.
+    static let positionPadding = CGSize(width: 6, height: 4)
+    static let positionColumnGap: CGFloat = 6
+    static let positionLineHeight: CGFloat = 13
+
+    static func positionSize(for lines: [(key: String, value: String)]) -> CGSize {
+        let attributes: [NSAttributedString.Key: Any] = [.font: labelFont]
+        let key = lines.map { ($0.key as NSString).size(withAttributes: attributes).width }.max() ?? 0
+        let value = lines.map { ($0.value as NSString).size(withAttributes: attributes).width }.max() ?? 0
+        return CGSize(
+            width: (positionPadding.width * 2 + key + positionColumnGap + value).rounded(.up),
+            height: positionPadding.height * 2 + positionLineHeight * CGFloat(lines.count))
+    }
+
     static func labelWidth(for text: String) -> CGFloat {
         let textWidth = (text as NSString).size(withAttributes: [.font: labelFont]).width
         return (textWidth + labelPadding * 2).rounded(.up)
@@ -70,6 +84,7 @@ enum OverlayStyle {
     static func cursor(for target: OverlayHitTarget?) -> NSCursor {
         switch target {
         case nil: return .arrow
+        case .pin: return .pointingHand
         case .move: return .openHand
         case .resize(let handle): return resizeCursor(for: handle)
         }

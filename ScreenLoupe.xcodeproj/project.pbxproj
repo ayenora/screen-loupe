@@ -17,11 +17,14 @@
 			membershipExceptions = (
 				Geometry/ColorMath.swift,
 				Geometry/CoordinateTypes.swift,
+				Geometry/CornerRuler.swift,
 				Geometry/DisplayCoordinateConverter.swift,
 				Geometry/DisplayLayout.swift,
 				Geometry/OverlayLayout.swift,
 				Geometry/PixelGrid.swift,
+				Geometry/ReferenceLayers.swift,
 				Geometry/SizeText.swift,
+				Geometry/ViewerWindowFit.swift,
 				Geometry/ZoomPanMath.swift,
 			);
 			target = 5C3000000000000000000002 /* ScreenLoupeTests */;

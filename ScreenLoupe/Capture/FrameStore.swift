@@ -21,6 +21,14 @@ final class FrameStore: @unchecked Sendable {
     private let lock = NSLock()
     private var frame: CapturedFrame?
     private var geometry: CaptureGeometry?
+    private var frozen = false
+
+    /// While frozen, new frames are dropped, so the Viewer, the Color Meter and Copy/Save all keep
+    /// the frame that was showing (docs/product.md, Freeze frame).
+    var isFrozen: Bool {
+        get { lock.withLock { frozen } }
+        set { lock.withLock { frozen = newValue } }
+    }
 
     var latestFrame: CapturedFrame? {
         lock.withLock { frame }
@@ -30,16 +38,18 @@ final class FrameStore: @unchecked Sendable {
     func setGeometry(_ geometry: CaptureGeometry?) {
         lock.withLock {
             self.geometry = geometry
-            if geometry == nil { frame = nil }
+            // A frozen frame outlives a stream that stops or restarts under it.
+            if geometry == nil, !frozen { frame = nil }
         }
     }
 
-    /// Stores a buffer from the stream. Returns `false` when no geometry is set (the stream is
-    /// stopping) or the buffer doesn't match it (a frame from before the last reconfiguration).
+    /// Stores a buffer from the stream. Returns `false` while frozen, when no geometry is set (the
+    /// stream is stopping) or the buffer doesn't match it (a frame from before the last
+    /// reconfiguration).
     func store(_ pixelBuffer: CVPixelBuffer) -> Bool {
         lock.withLock {
             let size = PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
-            guard let geometry, size == geometry.outputSize else {
+            guard !frozen, let geometry, size == geometry.outputSize else {
                 #if DEBUG
                     stats.rejected += 1
                 #endif

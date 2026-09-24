@@ -70,6 +70,18 @@ enum MainMenu {
         let reset = menu.addItem(
             withTitle: "Reset Zoom", action: #selector(AppController.resetZoom(_:)), keyEquivalent: "0")
         reset.target = target
+        let sizeToArea = menu.addItem(
+            withTitle: "Size Window to Area", action: #selector(AppController.sizeViewerToArea(_:)),
+            keyEquivalent: "0")
+        sizeToArea.keyEquivalentModifierMask = [.command, .option]
+        sizeToArea.target = target
+        // Space in the Viewer also freezes; a bare-Space key equivalent would steal it from text fields.
+        let freeze = menu.addItem(
+            withTitle: "Freeze Frame", action: #selector(AppController.toggleFreeze(_:)), keyEquivalent: "")
+        freeze.target = target
+        let ruler = menu.addItem(
+            withTitle: "Ruler", action: #selector(AppController.toggleRuler(_:)), keyEquivalent: "r")
+        ruler.target = target
         menu.addItem(.separator())
         // AppKit retitles this item "Exit Full Screen" on its own while the window is full screen.
         let fullScreen = menu.addItem(

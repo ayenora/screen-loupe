@@ -15,6 +15,8 @@ enum OverlayHandle: CaseIterable, Sendable {
 enum OverlayHitTarget: Equatable, Sendable {
     case move
     case resize(OverlayHandle)
+    /// The pin button beside the tab.
+    case pin
 }
 
 enum TabPlacement: Equatable, Sendable {
@@ -35,6 +37,10 @@ struct OverlayMetrics: Sendable {
     var tabInsideInset: CGFloat = 12
     var labelGap: CGFloat = 6
     var labelHeight: CGFloat = 16
+    /// The square pin button beside the tab, as tall as the tab.
+    var pinGap: CGFloat = 4
+    /// The position box beside the frame, outside the band and handles.
+    var positionGap: CGFloat = 12
     var screenMargin: CGFloat = 6
     /// How close to the line the cursor has to come for the handles and the tab to appear.
     var hoverReach: CGFloat = 14
@@ -50,12 +56,15 @@ struct OverlayLayout: Equatable, Sendable {
     var tabRect: CGRect
     var tabPlacement: TabPlacement
     var labelRect: CGRect
-    /// The overlay window's frame: the frame, its band and handles, the tab and the label.
+    var pinRect: CGRect
+    /// The L T R B box: right of the frame, or left of it when there is no room on the right.
+    var positionRect: CGRect
+    /// The overlay window's frame: the frame, its band and handles, the tab, the label and the box.
     var windowFrame: CGRect
 
     init(
         captureRect: CGRect, screenFrame: CGRect, tabWidth: CGFloat, labelWidth: CGFloat,
-        metrics m: OverlayMetrics = .standard
+        positionSize: CGSize = .zero, metrics m: OverlayMetrics = .standard
     ) {
         self.captureRect = captureRect
         let r = captureRect
@@ -76,6 +85,12 @@ struct OverlayLayout: Equatable, Sendable {
         let tabX = Self.clamp(
             r.midX - tabWidth / 2, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - tabWidth)
         tabRect = CGRect(x: tabX.rounded(), y: tabY.rounded(), width: tabWidth, height: m.tabHeight)
+        // Pin button: right of the tab, or left of it at the screen's right edge.
+        var pinX = tabRect.maxX + m.pinGap
+        if pinX + m.tabHeight > screen.maxX - m.screenMargin {
+            pinX = tabRect.minX - m.pinGap - m.tabHeight
+        }
+        pinRect = CGRect(x: pinX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
 
         // At-rest label: below on the right, or inside the bottom-right corner.
         let labelY: CGFloat
@@ -88,10 +103,25 @@ struct OverlayLayout: Equatable, Sendable {
             r.maxX - labelWidth, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - labelWidth)
         labelRect = CGRect(x: labelX.rounded(), y: labelY.rounded(), width: labelWidth, height: m.labelHeight)
 
+        // Position box: its top level with the frame's top, kept on screen.
+        var boxX = r.maxX + m.positionGap
+        if boxX + positionSize.width > screen.maxX - m.screenMargin {
+            boxX = r.minX - m.positionGap - positionSize.width
+        }
+        boxX = Self.clamp(
+            boxX, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - positionSize.width)
+        let boxY = Self.clamp(
+            r.maxY - positionSize.height, lower: screen.minY + m.screenMargin,
+            upper: screen.maxY - m.screenMargin - positionSize.height)
+        positionRect = CGRect(
+            x: boxX.rounded(), y: boxY.rounded(), width: positionSize.width, height: positionSize.height)
+
         windowFrame =
             r.insetBy(dx: -m.windowPadding, dy: -m.windowPadding)
             .union(tabRect.insetBy(dx: -8, dy: -8))
             .union(labelRect.insetBy(dx: -8, dy: -8))
+            .union(positionRect.insetBy(dx: -8, dy: -8))
+            .union(pinRect.insetBy(dx: -8, dy: -8))
             .integral
     }
 
@@ -103,8 +133,12 @@ struct OverlayLayout: Equatable, Sendable {
         return CGRect(x: x - size / 2, y: y - size / 2, width: size, height: size)
     }
 
-    /// What pressing at `point` does, or `nil` when the press belongs to the app underneath.
-    func hitTarget(at point: CGPoint, metrics m: OverlayMetrics = .standard) -> OverlayHitTarget? {
+    /// What pressing at `point` does, or `nil` when the press belongs to the app underneath. A pinned
+    /// frame only answers its pin button.
+    func hitTarget(at point: CGPoint, metrics m: OverlayMetrics = .standard, pinned: Bool = false) -> OverlayHitTarget?
+    {
+        if pinRect.contains(point) { return .pin }
+        if pinned { return nil }
         for handle in OverlayHandle.allCases where handleRect(handle, size: m.handleHitSize).contains(point) {
             return .resize(handle)
         }
@@ -116,7 +150,11 @@ struct OverlayLayout: Equatable, Sendable {
 
     /// Whether the cursor is close enough to the frame to reveal the handles and the tab.
     func isInHoverZone(_ point: CGPoint, metrics m: OverlayMetrics = .standard) -> Bool {
-        if tabRect.contains(point) || labelRect.contains(point) { return true }
+        if tabRect.contains(point) || labelRect.contains(point) || positionRect.contains(point)
+            || pinRect.contains(point)
+        {
+            return true
+        }
         let outer = captureRect.insetBy(dx: -m.hoverReach, dy: -m.hoverReach)
         let inner = captureRect.insetBy(dx: m.hoverReach / 2, dy: m.hoverReach / 2)
         return outer.contains(point) && (inner.isNull || !inner.contains(point))
