@@ -97,6 +97,13 @@ final class ReferencesController {
         update { $0.update(id, change) }
     }
 
+    /// The Capture Area's top-left corner moved by `shift` source pixels: the layers stay on their
+    /// pixels (`ReferenceStack.followAreaOrigin`).
+    func areaOriginMoved(by shift: CGPoint) {
+        guard shift != .zero, !stack.layers.isEmpty else { return }
+        update { $0.followAreaOrigin(shift: shift) }
+    }
+
     func select(_ id: UUID?) {
         update { $0.selectedID = id }
     }

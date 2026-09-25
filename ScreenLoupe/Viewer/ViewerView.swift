@@ -93,9 +93,13 @@ final class ViewerView: MTKView {
         if let frame = frameStore.latestFrame {
             let geometry = frame.geometry
             let area = CGSize(width: geometry.areaSize.width, height: geometry.areaSize.height)
+            // Everything placed from the area's top-left follows its corner, so it stays on its
+            // screen pixels as the image does.
             let shift = resizeTracker.originShift(for: geometry)
             zoomPan.setContent(area, originShift: shift)
             selection?.areaOriginMoved(by: shift)
+            ruler?.areaOriginMoved(by: shift)
+            references?.areaOriginMoved(by: shift)
             matchColorSpace(ofDisplay: geometry.display.id)
         }
         requestDraw()

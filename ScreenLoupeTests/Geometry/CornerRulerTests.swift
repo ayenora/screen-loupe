@@ -88,6 +88,28 @@ struct CornerRulerTests {
         #expect(!ruler.isPinned)
         #expect(ruler.placement(in: state, minimum: minimum) == before)
     }
+
+    @Test func aPinnedRulerStaysOnItsPixelsWhenTheAreasLeftOrTopEdgeIsDragged() {
+        // The left edge dragged 3 px right and the top edge 2 px down: the image's pixels stay on
+        // screen, now counted from the new corner.
+        let shift = CGPoint(x: 3, y: 2)
+        var after = state
+        after.contentSize = CGSize(width: 197, height: 98)
+        after.offset = CGPoint(x: shift.x * state.zoom, y: shift.y * state.zoom)
+        var pinned = CornerRuler(anchor: .image(corner: CGPoint(x: 10, y: 6), arms: CGSize(width: 12, height: -9)))
+        pinned.followAreaOrigin(shift: shift)
+        let placed = pinned.placement(in: after, minimum: minimum)
+        #expect(placed.corner == CGPoint(x: 7, y: 4))
+        #expect(placed.arms == CGSize(width: 12, height: -9))
+        #expect(
+            after.viewportPoint(forSourcePoint: placed.corner)
+                == state.viewportPoint(forSourcePoint: CGPoint(x: 10, y: 6)))
+
+        let fixed = CornerRuler(anchor: .viewer(corner: CGPoint(x: 80, y: 80), arms: CGSize(width: 160, height: 160)))
+        var moved = fixed
+        moved.followAreaOrigin(shift: shift)
+        #expect(moved == fixed)
+    }
 }
 
 struct CornerRulerReviewTests {

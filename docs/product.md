@@ -96,7 +96,7 @@ A corner ruler over the image, for measuring in screen pixels at any zoom. The t
 - No arm looks shorter than 32 pt, so its handles never touch.
 - Unpinned, the ruler stays where it is in the Viewer while the image pans and zooms under it.
 - On hover a translucent band shows along the line — the part that moves the ruler — and a pin button outside the corner; both stay a moment after the pointer leaves. While the image pans or zooms, an unpinned ruler hides, since it would jump from pixel to pixel, and eases back in once the image settles.
-- The pin button pins the ruler to the pixels under it. Panning and zooming then carry it along, and it can't be moved, only its arms stretched. Zooming out lengthens an arm that would look too short, and zooming back in returns it to the length it was set to.
+- The pin button pins the ruler to the pixels under it. Panning and zooming then carry it along, and so does resizing the Capture Area by its left or top edge; it can't be moved, only its arms stretched. Zooming out lengthens an arm that would look too short, and zooming back in returns it to the length it was set to.
 
 ### Crosshair
 
@@ -115,7 +115,7 @@ A panel beside the image for the pixel under the cursor — in the Viewer, or un
 Images laid over the live pixels — a design export, an earlier screenshot — for an exact check of the screen against them. PNG, JPEG, TIFF, HEIC, BMP and GIF are accepted. An image over the same 16-megapixel limit keeps its top-left part, as a copy does (Screenshots). The toolbar's References button opens the panel; the layers show and take the mouse only while it is open.
 
 - Up to 10 layers, top first, one row each like layers in an image editor: grip ⠿, eye, thumbnail, name, opacity, pin. A row drags as a whole to reorder, and the others make room. The list scrolls.
-- Below the list, the Layer section holds the selected layer's settings, where nothing drags: opacity, Normal or Difference, X and Y of the top-left corner in pixels from the Capture Area's top-left, scale, a reset of position and scale, and Delete.
+- Below the list, the Layer section holds the selected layer's settings, where nothing drags: opacity, Normal or Difference, X and Y of the top-left corner in pixels from the Capture Area's top-left (resizing the area by its left or top edge keeps the layer on its pixels and changes these), scale, a reset of position and scale, and Delete.
 - Difference shows the absolute difference from the live capture: pixels that match turn black. The image is converted to the display's colour space first, so a design colour that renders exactly matches exactly.
 - In the Viewer, dragging a layer moves it in whole pixels; the selected layer has corner handles that scale it with its proportions kept. Exact values go in the panel: type them, or drag a field's caption (X, Y, Scale) left or right, one pixel or percent per point, Shift ×10, Option ×0.1.
 - A pinned layer lets the mouse through: a drag takes the next unpinned layer under it, or pans the image.

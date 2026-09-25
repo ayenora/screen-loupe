@@ -66,6 +66,14 @@ struct CornerRuler: Equatable, Sendable, Codable {
 
     // MARK: Editing
 
+    /// The Capture Area's top-left corner moved by `shift` source pixels (its left or top edge was
+    /// dragged). A pinned ruler stays on its pixels, as the image does; one fixed in the Viewer stays
+    /// where it is, and so does the image under it.
+    mutating func followAreaOrigin(shift: CGPoint) {
+        guard case .image(let corner, let arms) = anchor else { return }
+        anchor = .image(corner: CGPoint(x: corner.x - shift.x, y: corner.y - shift.y), arms: arms)
+    }
+
     /// Pins the ruler where it is drawn now, or unpins it where it is drawn now.
     mutating func togglePin(in state: ZoomPanState, minimum: CGFloat) {
         let placed = placement(in: state, minimum: minimum)
