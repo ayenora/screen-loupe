@@ -206,8 +206,8 @@ final class ViewerContentView: NSStackView {
 
     /// Keeps the picture `image` was just made from as a recent capture (docs/product.md, Recent
     /// Captures): the returned call adds it, now for a copy, once written for a save. The frame and
-    /// how the Viewer shows it are taken now; a selection or a region keeps just its pixels, framed
-    /// as it was. `nil` while a recent capture shows: copies made from one add none.
+    /// how the Viewer shows it are taken now; a view, a selection or a region keeps just its pixels,
+    /// framed as it was, and only a source copy keeps the whole area. `nil` while a recent capture shows: copies made from one add none.
     func captureKeeper(_ kind: CaptureKind, image: CGImage) -> (() -> Void)? {
         guard !isShowingCapture, let frame = frameStore.latestFrame else { return nil }
         let state = zoomPan.state
@@ -215,8 +215,12 @@ final class ViewerContentView: NSStackView {
         let area: CGRect?
         switch kind {
         case .view:
-            area = selection.selection
-            name = area != nil ? "Selection" : "View · \(Int((state.zoom * 100).rounded()))%"
+            // The selection, or else the source pixels the window shows, as an Option-drag over it.
+            let selected = selection.selection
+            area =
+                selected ?? ViewRegion.sourceRect(of: CGRect(origin: .zero, size: state.viewportSize), in: state)
+            name = selected != nil ? "Selection" : "View · \(Int((state.zoom * 100).rounded()))%"
+            guard area != nil else { return nil }
         case .source:
             area = nil
             name = "Source"

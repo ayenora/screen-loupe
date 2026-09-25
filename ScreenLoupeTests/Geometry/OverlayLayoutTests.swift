@@ -146,27 +146,30 @@ struct OverlayPositionBoxTests {
         #expect(l.positionRect.maxY == CGFloat(900 - 6))
     }
 
-    @Test func pinnedFrameOnlyAnswersThePinButton() {
+    @Test func pinnedFrameOnlyAnswersItsButtons() {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), pinned: true) == .pin)
         #expect(l.hitTarget(at: CGPoint(x: l.tabRect.minX + 5, y: l.tabRect.midY), pinned: true) == nil)
         #expect(l.hitTarget(at: CGPoint(x: 100, y: 100), pinned: true) == nil)
         #expect(l.hitTarget(at: CGPoint(x: 100, y: 100)) == .resize(.bottomLeft))
         #expect(l.hitTarget(at: CGPoint(x: l.raiseRect.midX, y: l.raiseRect.midY), pinned: true) == .raiseViewer)
+        #expect(l.hitTarget(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY), pinned: true) == .pickWindow)
     }
 
-    @Test func theRaiseButtonSitsBesideThePinAwayFromTheTab() {
+    @Test func theButtonsFollowThePinAwayFromTheTab() {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.pinRect.minX == l.tabRect.maxX + 4)
         #expect(l.raiseRect.minX == l.pinRect.maxX + 4)
-        #expect(l.raiseRect.minY == l.tabRect.minY)
+        #expect(l.pickRect.minX == l.raiseRect.maxX + 4)
+        #expect(l.pickRect.minY == l.tabRect.minY)
     }
 
-    @Test func atTheRightEdgeBothButtonsMoveLeftOfTheTab() {
+    @Test func atTheRightEdgeAllButtonsMoveLeftOfTheTab() {
         // The tab hugs the right margin: no room for the buttons on its right.
         let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
         #expect(l.pinRect.maxX == l.tabRect.minX - 4)
         #expect(l.raiseRect.maxX == l.pinRect.minX - 4)
-        #expect(l.windowFrame.contains(l.raiseRect))
+        #expect(l.pickRect.maxX == l.raiseRect.minX - 4)
+        #expect(l.windowFrame.contains(l.pickRect))
     }
 }
