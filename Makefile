@@ -15,7 +15,7 @@ SWIFT_DIRS := $(wildcard $(APP_DIR) $(TESTS_DIR))
 
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 
-# make release: a notarized Developer ID DMG (docs/internal/release.md, Channel A).
+# make release: a signed, notarized Developer ID DMG (docs/internal/release.md, Channel A).
 RELEASE_DIR := build/release
 NOTARY_PROFILE := screenloupe-notary
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -83,8 +83,9 @@ version:
 icon:
 	swift scripts/make_icon.swift ScreenLoupe/Resources/Assets.xcassets/AppIcon.appiconset
 
-# The build number is the commit count, so a release builds a clean, committed tree. The exported
-# app is unregistered at the end, so LaunchServices keeps opening the debug build.
+# The build number is the commit count, so a release builds a clean, committed tree. The copies
+# made on the way are unregistered and the staging folders removed, so only the DMG and the archive
+# stay and macOS doesn't offer extra copies of the app.
 release:
 	@test -z "$$(git status --porcelain)" || { echo "Commit first: the build number is the commit count."; exit 1; }
 	@version=$$(xcodebuild -project $(PROJECT) -scheme $(SCHEME) -showBuildSettings 2>/dev/null | awk '/ MARKETING_VERSION =/ {print $$3; exit}'); \
@@ -99,9 +100,11 @@ release:
 	cp -R $(RELEASE_DIR)/export/$(SCHEME).app $(RELEASE_DIR)/dmg/; \
 	ln -s /Applications $(RELEASE_DIR)/dmg/Applications; \
 	hdiutil create -quiet -volname "Screen Loupe" -srcfolder $(RELEASE_DIR)/dmg -ov -format UDZO $$dmg; \
+	codesign --sign "Developer ID Application" --timestamp $$dmg; \
 	xcrun notarytool submit $$dmg --keychain-profile $(NOTARY_PROFILE) --wait; \
 	xcrun stapler staple $$dmg; \
 	spctl -a -vvv -t install $$dmg; \
 	$(LSREGISTER) -u $(RELEASE_DIR)/export/$(SCHEME).app $(RELEASE_DIR)/dmg/$(SCHEME).app \
 		$(RELEASE_DIR)/ScreenLoupe.xcarchive/Products/Applications/$(SCHEME).app; \
+	rm -rf $(RELEASE_DIR)/export $(RELEASE_DIR)/dmg; \
 	echo "Ready: $$dmg (version $$version, build $(BUILD_NUMBER))"
