@@ -44,6 +44,8 @@ final class ScreenCaptureManager: NSObject {
     /// What the running stream was last set up for — or, after a failure, what was last tried, so
     /// the same geometry isn't retried in a loop.
     private var applied: CaptureGeometry?
+    /// Whether the running stream records the pointer, as last set up.
+    private var appliedShowsCursor: Bool?
     private var isUpdating = false
     /// Bumped whenever something outside the update in flight invalidates what it is doing: the system
     /// stopped the stream, or the displays changed. An update that finishes under an older generation
@@ -70,6 +72,12 @@ final class ScreenCaptureManager: NSObject {
         wanted = geometry
         if geometry == nil { problem = nil }
         processUpdates()
+    }
+
+    /// Whether the capture records the real pointer into its pixels (docs/product.md, Crosshair and
+    /// cursor: Original Cursor in the Capture). A running stream takes it with a configuration update.
+    var showsCursor = false {
+        didSet { if showsCursor != oldValue { processUpdates() } }
     }
 
     /// Displays were added, removed or rearranged: re-read them before the next update.
@@ -99,12 +107,14 @@ final class ScreenCaptureManager: NSObject {
     }
 
     private func processUpdates() {
-        guard !isUpdating, wanted != applied else { return }
+        let cursorChanged = wanted != nil && showsCursor != appliedShowsCursor
+        guard !isUpdating, wanted != applied || cursorChanged else { return }
         isUpdating = true
         let target = wanted
+        let cursor = showsCursor
         let startedGeneration = generation
         Task {
-            await self.apply(target)
+            await self.apply(target, showsCursor: cursor)
             if self.generation != startedGeneration {
                 self.applied = nil
             }
@@ -113,13 +123,16 @@ final class ScreenCaptureManager: NSObject {
         }
     }
 
-    private func apply(_ geometry: CaptureGeometry?) async {
+    private func apply(_ geometry: CaptureGeometry?, showsCursor: Bool) async {
         retryTask?.cancel()
         guard let geometry else {
             await stop()
             applied = nil
+            appliedShowsCursor = nil
             return
         }
+        // Recorded first, like `applied` on every path: a failure isn't retried in a loop.
+        appliedShowsCursor = showsCursor
         let started = ContinuousClock.now
         do {
             #if DEBUG
@@ -139,7 +152,7 @@ final class ScreenCaptureManager: NSObject {
                 retryLater(after: 1)
                 return
             }
-            let configuration = Self.configuration(for: geometry)
+            let configuration = Self.configuration(for: geometry, showsCursor: showsCursor)
             if let stream, streamDisplayID == display.displayID {
                 frameStore.setGeometry(geometry)
                 try await withTimeout(seconds: Self.callTimeout) { try await stream.updateConfiguration(configuration) }
@@ -264,7 +277,7 @@ final class ScreenCaptureManager: NSObject {
         return SCContentFilter(display: display, excludingWindows: ours)
     }
 
-    private static func configuration(for geometry: CaptureGeometry) -> SCStreamConfiguration {
+    private static func configuration(for geometry: CaptureGeometry, showsCursor: Bool) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         configuration.sourceRect = geometry.sourceRect.rect
         configuration.width = geometry.outputSize.width
@@ -272,7 +285,8 @@ final class ScreenCaptureManager: NSObject {
         configuration.captureResolution = .best
         configuration.scalesToFit = false
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
-        configuration.showsCursor = false
+        // Off unless asked for: the pointer would cover the pixels being inspected.
+        configuration.showsCursor = showsCursor
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 5
         return configuration

@@ -72,6 +72,16 @@ final class ZoomPanController {
         setZoom(state.steppedZoom(direction: direction), around: anchor)
     }
 
+    /// Back to a zoom and pan kept earlier: a recent capture as it was left, or the live view after
+    /// one. Kept inside the image as any pan is.
+    func restore(zoom: CGFloat, offset: CGPoint) {
+        var next = state
+        next.zoom = zoom
+        next.offset = offset
+        state = next.clamped()
+        changed()
+    }
+
     func pan(by delta: CGPoint) {
         let next = state.panned(by: delta)
         guard next != state else { return }

@@ -1,15 +1,18 @@
 import AppKit
 
-/// Drawn over the magnified image: the crosshair on the pixel under the real cursor inside the
-/// Capture Area (mockup variant A), which the capture itself doesn't show.
+/// Drawn over the magnified image: the pointer on the pixel under the real cursor inside the
+/// Capture Area, which the capture itself doesn't show (docs/product.md, Crosshair and cursor).
 ///
 /// Only for the real cursor: when the mouse is over the Viewer, the mouse pointer already marks the
-/// spot. Lines run across the whole view through that pixel, and a box outlines it; white under
-/// the colour (orange by default) reads on any content. Never takes the mouse.
+/// spot. As a crosshair, lines run across the whole view through that pixel and a box outlines it;
+/// as a cursor, an arrow at its usual size points at the outlined pixel. White under the colour
+/// (orange by default) reads on any content. With the original cursor in the capture nothing is
+/// drawn: the capture has it. Never takes the mouse.
 final class ViewerOverlayView: NSView {
     private let zoomPan: ZoomPanController
     private let inspector: PixelInspector
     var showsCrosshair = true { didSet { if showsCrosshair != oldValue { needsDisplay = true } } }
+    var pointerStyle = PointerStyle.crosshair { didSet { if pointerStyle != oldValue { needsDisplay = true } } }
     var color = SettingsColor.orange.nsColor { didSet { if color != oldValue { needsDisplay = true } } }
     /// The corner ruler, drawn over everything else.
     var ruler: RulerController?
@@ -44,11 +47,14 @@ final class ViewerOverlayView: NSView {
     }
 
     private func drawCrosshair(drawableScale: CGFloat) {
-        guard showsCrosshair, let probe = inspector.probe, probe.source == .captureArea else { return }
+        guard showsCrosshair, pointerStyle != .capturedCursor, let probe = inspector.probe,
+            probe.source == .captureArea
+        else { return }
         let pixel = Self.points(
             zoomPan.state.imageRect(origin: CGPoint(x: probe.x, y: probe.y), size: CGSize(width: 1, height: 1)),
             scale: drawableScale)
         let center = CGPoint(x: pixel.midX, y: pixel.midY)
+        if pointerStyle == .cursor { return drawCursor(at: center, pixel: pixel) }
 
         let lines = NSBezierPath()
         lines.move(to: CGPoint(x: bounds.minX, y: center.y))
@@ -67,6 +73,23 @@ final class ViewerOverlayView: NSView {
         lines.stroke()
         box.lineWidth = 1.5
         box.stroke()
+    }
+
+    /// The system arrow at its usual size, its tip on the centre of the outlined pixel.
+    private func drawCursor(at tip: CGPoint, pixel: CGRect) {
+        let box = NSBezierPath(rect: pixel.insetBy(dx: -1, dy: -1))
+        NSColor.white.withAlphaComponent(0.85).setStroke()
+        box.lineWidth = 3
+        box.stroke()
+        color.setStroke()
+        box.lineWidth = 1.5
+        box.stroke()
+        let arrow = NSCursor.arrow
+        let size = arrow.image.size
+        // The hot spot is measured from the image's top-left corner, as this view's y runs.
+        arrow.image.draw(
+            in: CGRect(x: tip.x - arrow.hotSpot.x, y: tip.y - arrow.hotSpot.y, width: size.width, height: size.height),
+            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }
 
     // MARK: References
@@ -308,8 +331,9 @@ final class ViewerOverlayView: NSView {
 /// Over the image while the view is frozen or a delayed freeze counts down (docs/product.md, Freeze
 /// frame): an accent border around the image area and a chip at its top — solid and "Frozen · Space
 /// to resume" when frozen, dashed with a shrinking ring and the seconds left while counting down.
-/// After a freeze from another app a second chip at the bottom says how it happened. Never in Copy
-/// View, which draws the frame itself.
+/// After a freeze from another app a second chip at the bottom says how it happened. A recent
+/// capture shown in place of the live view gets a purple border and its own chip (docs/product.md,
+/// Recent Captures). Never in Copy View, which draws the frame itself.
 final class FrozenIndicatorView: NSView {
     enum State: Equatable {
         case hidden
@@ -317,6 +341,8 @@ final class FrozenIndicatorView: NSView {
         case frozen(hint: String?)
         /// A delayed freeze happens at `deadline`, `total` seconds after it was asked for.
         case countdown(deadline: Date, total: TimeInterval)
+        /// A recent capture shows; `label` says which.
+        case capture(label: String)
 
         var isFrozen: Bool {
             if case .frozen = self { return true }
@@ -349,6 +375,8 @@ final class FrozenIndicatorView: NSView {
         .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .bold), .foregroundColor: NSColor.white,
     ]
     private static let darkFill = NSColor(srgbRed: 28 / 255, green: 28 / 255, blue: 30 / 255, alpha: 0.9)
+    /// Darker than the border's system purple, so the white text on it reads.
+    private static let captureChip = NSColor(srgbRed: 155 / 255, green: 63 / 255, blue: 209 / 255, alpha: 1)
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -364,22 +392,29 @@ final class FrozenIndicatorView: NSView {
             return
         case .frozen(let hint):
             drawBorder(dashed: false)
-            let size = Self.frozenText.size(withAttributes: Self.attributes)
-            let chip = CGRect(
-                x: (bounds.midX - size.width / 2 - 10).rounded(), y: 12, width: (size.width + 20).rounded(.up),
-                height: (size.height + 10).rounded(.up))
-            NSColor.systemBlue.setFill()
-            NSBezierPath(roundedRect: chip, xRadius: 8, yRadius: 8).fill()
-            Self.frozenText.draw(at: CGPoint(x: chip.minX + 10, y: chip.minY + 5), withAttributes: Self.attributes)
+            drawChip(Self.frozenText, color: .systemBlue)
             if let hint { drawHint(hint) }
         case .countdown(let deadline, let total):
             drawBorder(dashed: true)
             drawCountdown(remaining: max(0, deadline.timeIntervalSinceNow), total: total)
+        case .capture(let label):
+            drawBorder(dashed: false, color: .systemPurple)
+            drawChip(label as NSString, color: Self.captureChip)
         }
     }
 
-    private func drawBorder(dashed: Bool) {
-        NSColor.systemBlue.setStroke()
+    private func drawChip(_ text: NSString, color: NSColor) {
+        let size = text.size(withAttributes: Self.attributes)
+        let chip = CGRect(
+            x: (bounds.midX - size.width / 2 - 10).rounded(), y: 12, width: (size.width + 20).rounded(.up),
+            height: (size.height + 10).rounded(.up))
+        color.setFill()
+        NSBezierPath(roundedRect: chip, xRadius: 8, yRadius: 8).fill()
+        text.draw(at: CGPoint(x: chip.minX + 10, y: chip.minY + 5), withAttributes: Self.attributes)
+    }
+
+    private func drawBorder(dashed: Bool, color: NSColor = .systemBlue) {
+        color.setStroke()
         let border = NSBezierPath(rect: bounds.insetBy(dx: 1.5, dy: 1.5))
         border.lineWidth = 3
         if dashed { border.setLineDash([10, 6], count: 2, phase: 0) }

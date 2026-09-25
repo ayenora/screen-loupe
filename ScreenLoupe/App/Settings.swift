@@ -14,10 +14,14 @@ struct Settings: Codable, Equatable {
     var screenshotDirectory: String?
     /// Viewer overlays and the Color Meter panel.
     var gridEnabled = false
+    /// Whether the pointer shows in the Viewer, drawn as `pointerStyle` says.
     var crosshairEnabled = true
+    var pointerStyle = PointerStyle.crosshair
     var meterVisible = false
+    /// References and Recent Captures take turns in the side column: at most one is open.
     var referencesVisible = false
-    /// With both side panels open, the one that is expanded.
+    var capturesVisible = false
+    /// With two side panels open, the one that is expanded.
     var expandedSidePanel = SidePanel.colorMeter
     /// The side panel column's width in points; its content scales with it.
     var sidePanelWidth = Double(SidePanel.widthRange.lowerBound)
@@ -67,8 +71,10 @@ struct Settings: Codable, Equatable {
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)
+        pointerStyle = c.value(.pointerStyle, or: d.pointerStyle)
         meterVisible = c.value(.meterVisible, or: d.meterVisible)
         referencesVisible = c.value(.referencesVisible, or: d.referencesVisible)
+        capturesVisible = c.value(.capturesVisible, or: d.capturesVisible) && !referencesVisible
         expandedSidePanel = c.value(.expandedSidePanel, or: d.expandedSidePanel)
         sidePanelWidth = c.value(.sidePanelWidth, or: d.sidePanelWidth)
         pinnedColors = c.value(.pinnedColors, or: d.pinnedColors)
@@ -137,10 +143,21 @@ struct SettingsColor: Codable, Hashable, Sendable {
 
 /// A panel at the right of the Viewer.
 enum SidePanel: String, Codable, Sendable {
-    case colorMeter, references
+    case colorMeter, references, captures
 
     /// The side panel column's width in points. At the narrowest the panels' content has scale 1.
     static let widthRange: ClosedRange<CGFloat> = 250...320
+}
+
+/// How the pointer inside the Capture Area shows in the Viewer (docs/product.md, Crosshair and
+/// cursor).
+enum PointerStyle: String, Codable, CaseIterable, Sendable {
+    /// Lines through the pixel pointed at, drawn over the image.
+    case crosshair
+    /// An arrow drawn over the image at its usual size, tip on the pixel.
+    case cursor
+    /// The real pointer, recorded by the capture into its pixels.
+    case capturedCursor
 }
 
 /// What the Viewer shows around the image and where nothing is captured.

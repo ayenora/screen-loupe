@@ -1,8 +1,9 @@
 import AppKit
 
 /// The Viewer's toolbar (docs/product.md, Viewer): zoom presets and the current zoom on the left; Freeze
-/// with its menu of delays, the Select tool, the Ruler, the Grid, Crosshair and Color Meter toggles,
-/// Copy, Save and the keep-on-top pin on the right.
+/// with its menu of delays, the Select tool, the Ruler, the Grid toggle, the pointer toggle with its
+/// menu of styles, the Color Meter, References and Recent Captures toggles, Copy, Save and the
+/// keep-on-top pin on the right.
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
 /// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the pin a checkmark.
@@ -21,12 +22,13 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let crosshairID = NSToolbarItem.Identifier("crosshair")
     private static let meterID = NSToolbarItem.Identifier("colorMeter")
     private static let referencesID = NSToolbarItem.Identifier("references")
+    private static let capturesID = NSToolbarItem.Identifier("recentCaptures")
     private static let copyID = NSToolbarItem.Identifier("copyView")
     private static let saveID = NSToolbarItem.Identifier("saveView")
     private static let onTopID = NSToolbarItem.Identifier("alwaysOnTop")
 
     private enum Toggle: CaseIterable {
-        case grid, crosshair, meter, references
+        case grid, crosshair, meter, references, captures
 
         var title: String {
             switch self {
@@ -34,6 +36,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             case .crosshair: "Crosshair"
             case .meter: "Color Meter"
             case .references: "References"
+            case .captures: "Recent Captures"
             }
         }
 
@@ -43,6 +46,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             case .crosshair: "scope"
             case .meter: "eyedropper"
             case .references: "square.stack.3d.up"
+            case .captures: "photo"
             }
         }
     }
@@ -62,6 +66,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private let freezeButton = NSButton()
     /// The ▾ beside the pause button: Freeze Now and Freeze in 3, 5 or 10 seconds.
     private let freezeMenuButton = NSButton()
+    /// The ▾ beside the pointer toggle: Crosshair, Cursor or Original Cursor in the Capture.
+    private let pointerMenuButton = NSButton()
     private let selectButton = NSButton()
     private let selectMenuItem = NSMenuItem(title: "Select", action: nil, keyEquivalent: "")
     private let rulerButton = NSButton()
@@ -120,6 +126,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         freezeMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
         freezeMenuItem.submenu = Self.freezeMenu(withToggle: true)
         configure(
+            pointerMenuButton, symbol: "chevron.down", title: "Crosshair or Cursor",
+            action: #selector(pointerMenuClicked(_:)))
+        pointerMenuButton.image = pointerMenuButton.image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
+        pointerMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        configure(
             selectButton, symbol: "rectangle.dashed", title: "Select — drag to select, ⌘C copies it",
             action: #selector(selectClicked(_:)))
         selectButton.setButtonType(.pushOnPushOff)
@@ -164,6 +176,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         settings.observe(\.crosshairEnabled) { [weak self] in self?.showToggle(.crosshair, isOn: $0) }
         settings.observe(\.meterVisible) { [weak self] in self?.showToggle(.meter, isOn: $0) }
         settings.observe(\.referencesVisible) { [weak self] in self?.showToggle(.references, isOn: $0) }
+        settings.observe(\.capturesVisible) { [weak self] in self?.showToggle(.captures, isOn: $0) }
+        settings.observe(\.pointerStyle) { [weak self] in self?.showPointerStyle($0) }
     }
 
     private func configure(_ button: NSButton, symbol: String, title: String, action: Selector) {
@@ -262,6 +276,69 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         show(isOn, on: freezeButton)
     }
 
+    /// While a recent capture shows, Freeze and the pointer have nothing to act on (docs/product.md,
+    /// Recent Captures).
+    func setShowingCapture(_ isShowing: Bool) {
+        for button in [freezeButton, freezeMenuButton, toggleButtons[.crosshair], pointerMenuButton] {
+            button?.isEnabled = !isShowing
+        }
+        toggleMenuItems[.crosshair]?.isHidden = isShowing
+    }
+
+    // MARK: Pointer
+
+    private static func pointerTitle(_ style: PointerStyle) -> String {
+        switch style {
+        case .crosshair: "Crosshair"
+        case .cursor: "Cursor"
+        case .capturedCursor: "Original Cursor in the Capture"
+        }
+    }
+
+    /// The toggle's icon and name follow the chosen style.
+    private func showPointerStyle(_ style: PointerStyle) {
+        let symbol =
+            switch style {
+            case .crosshair: "scope"
+            case .cursor: "cursorarrow"
+            case .capturedCursor: "cursorarrow.rays"
+            }
+        let title = Self.pointerTitle(style)
+        let button = toggleButtons[.crosshair]
+        button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button?.toolTip = title
+        toggleMenuItems[.crosshair]?.title = title
+    }
+
+    /// The styles, the chosen one checked. The capture leaves the pointer out while the eyedropper
+    /// is on, and the item says so.
+    @objc private func pointerMenuClicked(_ sender: NSButton) {
+        let menu = NSMenu()
+        let current = settings.settings
+        for (index, style) in PointerStyle.allCases.enumerated() {
+            var title = Self.pointerTitle(style)
+            if style == .capturedCursor, current.sidePanelLayout.isMeterExpanded {
+                title += " — paused while the eyedropper is on"
+            }
+            let item = menu.addItem(withTitle: title, action: #selector(pointerChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.state = style == current.pointerStyle ? .on : .off
+        }
+        let below = NSPoint(
+            x: -(toggleButtons[.crosshair]?.frame.width ?? 0), y: sender.isFlipped ? sender.bounds.maxY + 4 : -4)
+        menu.popUp(positioning: nil, at: below, in: sender)
+    }
+
+    /// Choosing a style also shows the pointer.
+    @objc private func pointerChosen(_ sender: NSMenuItem) {
+        let style = PointerStyle.allCases[sender.tag]
+        settings.update {
+            $0.pointerStyle = style
+            $0.crosshairEnabled = true
+        }
+    }
+
     // MARK: Actions
 
     @objc private func toggleClicked(_ sender: Any) {
@@ -274,8 +351,18 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
                 $0.meterVisible.toggle()
                 if $0.meterVisible { $0.expandedSidePanel = .colorMeter }
             case .references:
+                // References and Recent Captures take turns in the column.
                 $0.referencesVisible.toggle()
-                if $0.referencesVisible { $0.expandedSidePanel = .references }
+                if $0.referencesVisible {
+                    $0.capturesVisible = false
+                    $0.expandedSidePanel = .references
+                }
+            case .captures:
+                $0.capturesVisible.toggle()
+                if $0.capturesVisible {
+                    $0.referencesVisible = false
+                    $0.expandedSidePanel = .captures
+                }
             }
         }
     }
@@ -341,7 +428,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         [
             Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.freezeID, Self.selectID, Self.rulerID, Self.gridID,
             Self.crosshairID,
-            Self.meterID, Self.referencesID, .space,
+            Self.meterID, Self.referencesID, Self.capturesID, .space,
             Self.copyID, Self.saveID, Self.onTopID,
         ]
     }
@@ -377,9 +464,15 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             item.view = rulerButton
             item.label = "Ruler"
             item.menuFormRepresentation = rulerMenuItem
-        case Self.gridID, Self.crosshairID, Self.meterID, Self.referencesID:
+        case Self.crosshairID:
+            let group = NSStackView(views: [toggleButtons[.crosshair], pointerMenuButton].compactMap { $0 })
+            group.spacing = 0
+            item.view = group
+            item.label = "Pointer"
+            item.menuFormRepresentation = toggleMenuItems[.crosshair]
+        case Self.gridID, Self.meterID, Self.referencesID, Self.capturesID:
             let toggles: [NSToolbarItem.Identifier: Toggle] = [
-                Self.gridID: .grid, Self.crosshairID: .crosshair, Self.meterID: .meter, Self.referencesID: .references,
+                Self.gridID: .grid, Self.meterID: .meter, Self.referencesID: .references, Self.capturesID: .captures,
             ]
             let toggle = toggles[identifier] ?? .grid
             item.view = toggleButtons[toggle]

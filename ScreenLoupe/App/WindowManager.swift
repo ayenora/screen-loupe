@@ -26,9 +26,20 @@ final class WindowManager {
         export = ExportController(frameStore: capture.frameStore, settings: settings, viewer: viewer)
 
         capture.onFrame = { [weak self] in
-            self?.viewer.frameArrived()
-            self?.inspector.frameArrived()
+            // A recent capture in the Viewer stays put; the live frame waits in the store.
+            guard let self, !viewer.isShowingCapture else { return }
+            viewer.frameArrived()
+            inspector.frameArrived()
         }
+        viewer.onShowCapture = { [weak self] in
+            guard let self else { return }
+            // A delayed freeze is for the live view it counted over.
+            if viewer.isShowingCapture { cancelFreezeCountdown() }
+            trackCursor()
+        }
+        // The eyedropper comes first: while it is on, the capture leaves the pointer out, so the
+        // Color Meter never reads the pointer itself.
+        settings.observe(\.capturesCursor) { [weak self] in self?.capture.showsCursor = $0 }
         // Stop Sharing in the system menu acts like closing the Viewer: both windows go away.
         capture.onUserStopped = { [weak self] in self?.viewer.close() }
         capture.onProblem = { [weak self] problem in self?.viewer.setCaptureProblem(problem) }
@@ -38,6 +49,7 @@ final class WindowManager {
         viewer.onClose = { [weak self] in
             guard let self else { return }
             isViewerOpen = false
+            viewer.showLive()
             setFrozen(false)
             saveViewerState()
             captureArea.hide()
@@ -55,10 +67,11 @@ final class WindowManager {
     // MARK: The real cursor over the Capture Area
 
     /// Follows the real cursor while the Viewer is open, so the crosshair and the Color Meter show
-    /// the pixel it points at inside the Capture Area (docs/product.md, Crosshair). The Capture Area
+    /// the pixel it points at inside the Capture Area (docs/product.md, Crosshair and cursor). The Capture Area
     /// reports mouse moves while it is shown; without it there is nothing to point at.
     private func trackCursor() {
-        guard isViewerOpen, viewer.isInspecting, captureArea.isVisible,
+        // On a recent capture the real cursor points at nothing in the picture.
+        guard isViewerOpen, viewer.isInspecting, captureArea.isVisible, !viewer.isShowingCapture,
             let scale = captureArea.captureGeometry?.display.scale
         else {
             inspector.setAreaPixel(nil)
@@ -109,6 +122,8 @@ final class WindowManager {
     /// During a countdown it stops the countdown instead. `hint` says how it was frozen, after the
     /// global shortcut from another app.
     func toggleFreeze(hint: String? = nil) {
+        // Freezing is for the live view; a recent capture is still anyway.
+        guard !viewer.isShowingCapture else { return }
         if isFreezeCountingDown { return cancelFreezeCountdown() }
         guard isFrozen || export.canExport else { return NSSound.beep() }
         setFrozen(!isFrozen, hint: hint)
@@ -116,6 +131,7 @@ final class WindowManager {
 
     /// Freezes at once, also in the middle of a countdown.
     func freezeNow() {
+        guard !viewer.isShowingCapture else { return }
         cancelFreezeCountdown()
         guard isFrozen || export.canExport else { return NSSound.beep() }
         setFrozen(true)
@@ -124,6 +140,7 @@ final class WindowManager {
     /// Freezes after `seconds`, while the live view runs on: time to go to another app and press
     /// and hold there. A frozen view goes live for the countdown.
     func freeze(after seconds: Int) {
+        guard !viewer.isShowingCapture else { return }
         guard isFrozen || export.canExport else { return NSSound.beep() }
         setFrozen(false)
         let total = TimeInterval(seconds)
@@ -179,5 +196,13 @@ final class WindowManager {
     private func updateCapture() {
         let active = isViewerOpen && viewer.showsCapture
         capture.capture(active ? captureArea.captureGeometry : nil)
+    }
+}
+
+extension Settings {
+    /// Whether the stream records the real pointer (docs/product.md, Crosshair and cursor): Original
+    /// Cursor in the Capture is chosen and shown, and the eyedropper is off.
+    var capturesCursor: Bool {
+        crosshairEnabled && pointerStyle == .capturedCursor && !sidePanelLayout.isMeterExpanded
     }
 }

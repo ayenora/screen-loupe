@@ -11,6 +11,41 @@ struct CapturedFrame: @unchecked Sendable {
     var pixelSize: PixelSize {
         PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
     }
+
+    /// The frame copied into a buffer of its own, cut to `ImageBudget`, to keep as a recent capture.
+    /// The stream's buffers come from a small pool it reuses; holding on to them would starve it.
+    /// IOSurface-backed and Metal-compatible, so it is drawn like a live frame.
+    func copiedForKeeping() -> CapturedFrame? {
+        guard let kept = geometry.fittedToImageBudget() else { return nil }
+        let width = kept.outputSize.width
+        let height = kept.outputSize.height
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [CFString: Any](),
+            kCVPixelBufferMetalCompatibilityKey: true,
+        ]
+        var copy: CVPixelBuffer?
+        guard
+            CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &copy)
+                == kCVReturnSuccess,
+            let copy
+        else { return nil }
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        CVPixelBufferLockBaseAddress(copy, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(copy, [])
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+        }
+        guard let from = CVPixelBufferGetBaseAddress(pixelBuffer), let to = CVPixelBufferGetBaseAddress(copy) else {
+            return nil
+        }
+        let fromRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let toRow = CVPixelBufferGetBytesPerRow(copy)
+        // The kept image is the top-left part of the captured one.
+        for row in 0..<height {
+            memcpy(to.advanced(by: row * toRow), from.advanced(by: row * fromRow), width * 4)
+        }
+        return CapturedFrame(pixelBuffer: copy, geometry: kept)
+    }
 }
 
 /// The latest complete frame, handed from the ScreenCaptureKit queue to the main thread.
@@ -22,6 +57,7 @@ final class FrameStore: @unchecked Sendable {
     private var frame: CapturedFrame?
     private var geometry: CaptureGeometry?
     private var frozen = false
+    private var capture: CapturedFrame?
 
     /// While frozen, new frames are dropped, so the Viewer, the Color Meter and Copy/Save all keep
     /// the frame that was showing (docs/product.md, Freeze frame).
@@ -30,8 +66,16 @@ final class FrameStore: @unchecked Sendable {
         set { lock.withLock { frozen = newValue } }
     }
 
+    /// A recent capture shown in place of the live frame (docs/product.md, Recent Captures): the
+    /// Viewer, the Color Meter and Copy/Save all take it, as they take a frozen frame. Live frames
+    /// are still stored meanwhile, so the view is current when it goes back to live.
+    var shownCapture: CapturedFrame? {
+        get { lock.withLock { capture } }
+        set { lock.withLock { capture = newValue } }
+    }
+
     var latestFrame: CapturedFrame? {
-        lock.withLock { frame }
+        lock.withLock { capture ?? frame }
     }
 
     /// The geometry the stream is currently configured with. Frames arriving from now on carry it.

@@ -32,3 +32,20 @@ enum ImageBudget {
         return CGSize(width: kept.width, height: kept.height)
     }
 }
+
+extension CaptureGeometry {
+    /// A frame of this geometry kept as a recent capture: the area cut to `ImageBudget` from its
+    /// top-left, and the captured image cut to the part inside it, which stays at the same place.
+    /// The captured image's top-left part of `outputSize` is what to copy. `nil` when none of the
+    /// captured image is left (an area straddling two displays, cut before it reaches that part).
+    func fittedToImageBudget() -> CaptureGeometry? {
+        let kept = ImageBudget.fitted(width: areaSize.width, height: areaSize.height)
+        let width = min(outputSize.width, kept.width - Int(imageOrigin.x))
+        let height = min(outputSize.height, kept.height - Int(imageOrigin.y))
+        guard width > 0, height > 0 else { return nil }
+        var next = self
+        next.areaSize = PixelSize(width: kept.width, height: kept.height)
+        next.outputSize = PixelSize(width: width, height: height)
+        return next
+    }
+}

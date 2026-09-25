@@ -220,6 +220,8 @@ final class ViewerView: MTKView {
     var selection: SelectionController?
     /// Called with an Option-drag's region, in viewport pixels, when the drag ends.
     var onCopyRegion: ((CGRect) -> Void)?
+    /// Escape with nothing else to drop: back from a recent capture to the live view.
+    var onShowLive: (() -> Void)?
 
     private enum Press { case ruler, reference, selection }
     /// Who the current press belongs to; `nil` for panning or picking.
@@ -376,9 +378,11 @@ final class ViewerView: MTKView {
             restingCursor.set()
         case " ": sendToggleFreeze()
         case "\u{1b}":
-            // Escape: drops the selection and stops a freeze countdown.
-            selection?.clearSelection()
+            // Escape: drops the selection first; else stops a freeze countdown and goes back from a
+            // recent capture to live.
+            if selection?.clearSelection() == true { return }
             NSApp.sendAction(#selector(AppController.cancelFreezeCountdown(_:)), to: nil, from: self)
+            onShowLive?()
         default: super.keyDown(with: event)
         }
     }
