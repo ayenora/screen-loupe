@@ -4,7 +4,7 @@ What comes after the current version. Every item is measured against the princip
 
 ## Next
 
-- **First public release.** A signed, notarized download and possibly the Mac App Store.
+- **The Mac App Store,** besides the signed, notarized download on GitHub Releases.
 
 ### Capturing
 
