@@ -61,7 +61,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
             onShowCapture?()
         }
         content.statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
-        settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.applyAlwaysOnTop($0) }
+        // A floating window stays above other apps' windows even while another app is active. The
+        // Capture Area frame sits higher still (`.statusBar`), so the Viewer never covers it.
+        settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.window?.level = $0 ? .floating : .normal }
         refreshContent()
     }
 
@@ -111,78 +113,6 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     func toggleAlwaysOnTop() {
         settings.update { $0.viewerAlwaysOnTop.toggle() }
-    }
-
-    /// Keep on Top was turned on while the Viewer was full screen: it applies once that has ended.
-    private var onTopAfterFullScreen = false
-    /// Keep on Top was turned off while the Viewer floated over another app's full-screen Space: it
-    /// waits, hidden, for a Space change to come back on an ordinary one.
-    private var spaceObserver: NSObjectProtocol?
-
-    /// On top, the Viewer floats above other apps' windows even while another app is active, and
-    /// joins every Space, full-screen apps' included, like the Capture Area frame, which sits higher
-    /// still (`.statusBar`) so the Viewer never covers it. A window that joins other apps' full-screen
-    /// Spaces can't go full screen itself, so a full-screen Viewer leaves full screen first.
-    private func applyAlwaysOnTop(_ onTop: Bool) {
-        guard let window else { return }
-        if onTop, window.styleMask.contains(.fullScreen) {
-            onTopAfterFullScreen = true
-            window.toggleFullScreen(nil)
-            return
-        }
-        window.level = onTop ? .floating : .normal
-        if onTop {
-            if spaceObserver != nil {
-                stopWaitingForSpace()
-                window.orderFront(nil)
-            }
-            window.collectionBehavior.remove(.fullScreenPrimary)
-            window.collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary])
-        } else {
-            _ = stepOutOfFullScreenSpace()
-            window.collectionBehavior.remove([.canJoinAllSpaces, .fullScreenAuxiliary])
-            window.collectionBehavior.insert(.fullScreenPrimary)
-            // Back among ordinary windows, the Viewer would sit under another app's window ordered
-            // front while it floated: it comes to their top, as the app it belongs to is active.
-            if window.isVisible, NSApp.isActive { window.orderFront(nil) }
-        }
-    }
-
-    /// Keep on Top is going off. A window that leaves every Space but one stays in the Space
-    /// showing: over another app's full-screen Space it would stay stuck there. It hides instead and
-    /// comes back when an ordinary Space shows. Returns that app, which keeps the focus.
-    func stepOutOfFullScreenSpace() -> NSRunningApplication? {
-        guard let window, window.isVisible, let app = window.screen?.otherAppInFullScreen else { return nil }
-        window.orderOut(nil)
-        waitForOrdinarySpace()
-        return app
-    }
-
-    private func waitForOrdinarySpace() {
-        guard spaceObserver == nil, let window else { return }
-        let frame = window.frame
-        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                let screen = NSScreen.screens.first { $0.frame.intersects(frame) }
-                guard screen?.otherAppInFullScreen == nil else { return }
-                self.stopWaitingForSpace()
-                self.window?.orderFront(nil)
-            }
-        }
-    }
-
-    private func stopWaitingForSpace() {
-        if let spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver) }
-        spaceObserver = nil
-    }
-
-    func windowDidExitFullScreen(_ notification: Notification) {
-        guard onTopAfterFullScreen else { return }
-        onTopAfterFullScreen = false
-        applyAlwaysOnTop(settings.settings.viewerAlwaysOnTop)
     }
 
     // MARK: Copy View
@@ -304,8 +234,6 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        // Closed while waiting to come back: it stays closed.
-        stopWaitingForSpace()
         onClose?()
     }
 
