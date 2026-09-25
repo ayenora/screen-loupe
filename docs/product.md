@@ -40,7 +40,7 @@ A regular macOS window that shows the Capture Area live.
 
 - Moved, resized, taken full screen or placed on another display; none of that changes the Capture Area.
 - Toolbar: zoom presets and the current zoom on the left; freeze (with a menu of delays), Select, ruler, grid, the pointer (with a menu of styles), Color Meter, References, Recent Captures, Copy, Save and Keep on Top on the right.
-- **Keep Viewer on Top** keeps it above other apps' windows, full-screen apps included: it shows on every Space. macOS lets only an app without a Dock icon float over another app's full screen, so while it is on the app runs from the menu bar only: no Dock icon, no app menu. The Viewer can't go full screen itself meanwhile; turning it on takes a full-screen Viewer out of full screen first. Turned off over a full-screen app, the Viewer leaves it, that app keeps the focus, and the Viewer comes back on the next ordinary Space.
+- **Keep Viewer on Top** keeps it above other apps' windows. Not over an app in macOS full screen (the green button), which has a Space of its own: a window stretched over the screen works almost the same and keeps the Viewer over it.
 - **Size Window to Area** (View menu, ⌥⌘0) sizes the Viewer so the whole magnified area shows at the current zoom, without panning. The zoom doesn't change. The window never grows beyond its screen: it moves to stay on it, and an image bigger than the screen still pans.
 - When access to the screen is missing or capture breaks, the Viewer says so and offers a way out; it is never an empty window without an explanation.
 
