@@ -81,6 +81,15 @@ struct ReferenceLayersTests {
         stack.move(fromOffsets: IndexSet(integer: 2), toOffset: 0)
         #expect(stack.layers.map(\.name) == ["a", "b", "c"])
     }
+
+    @Test func layersStayOnTheirPixelsWhenTheAreasLeftOrTopEdgeIsDragged() {
+        var stack = ReferenceStack()
+        stack.add(layer("a", origin: CGPoint(x: 10, y: 20)))
+        stack.add(layer("b", origin: CGPoint(x: -5, y: 0)))
+        // The left edge dragged 4 px left, the top edge 3 px down.
+        stack.followAreaOrigin(shift: CGPoint(x: -4, y: 3))
+        #expect(stack.layers.map(\.origin) == [CGPoint(x: -1, y: -3), CGPoint(x: 14, y: 17)])
+    }
 }
 
 struct ReferenceLayersCodingTests {

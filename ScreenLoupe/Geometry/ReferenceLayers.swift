@@ -132,6 +132,16 @@ struct ReferenceStack: Codable, Equatable, Sendable {
         change(&layers[index])
     }
 
+    /// The Capture Area's top-left corner moved by `shift` source pixels (its left or top edge was
+    /// dragged): every layer stays on the pixels it was aligned with, as the image does, so its X
+    /// and Y from the new corner change.
+    mutating func followAreaOrigin(shift: CGPoint) {
+        for index in layers.indices {
+            layers[index].origin = CGPoint(
+                x: layers[index].origin.x - shift.x, y: layers[index].origin.y - shift.y)
+        }
+    }
+
     /// The layer the mouse takes at `point` (source pixels): the topmost visible, unpinned one
     /// under it. Pinned and hidden layers let the mouse through.
     func movableLayer(at point: CGPoint) -> UUID? {

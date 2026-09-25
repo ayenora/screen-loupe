@@ -82,6 +82,14 @@ final class RulerController {
         changed()
     }
 
+    /// The Capture Area's top-left corner moved by `shift` source pixels: a pinned ruler stays on its
+    /// pixels (`CornerRuler.followAreaOrigin`).
+    func areaOriginMoved(by shift: CGPoint) {
+        guard shift != .zero, ruler?.isPinned == true else { return }
+        ruler?.followAreaOrigin(shift: shift)
+        changed()
+    }
+
     func drawn(scale: CGFloat) -> Drawn? {
         guard let ruler else { return nil }
         let state = zoomPan.state
