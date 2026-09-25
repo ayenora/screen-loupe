@@ -1,24 +1,31 @@
 import AppKit
 
-/// Which side panels are open, and which of two is expanded.
+/// Which side panels are open, and which of two is expanded. References and Recent Captures take
+/// turns below the Color Meter, so at most two are open.
 struct SidePanelLayout: Equatable {
     var showsMeter: Bool
     var showsReferences: Bool
+    var showsCaptures: Bool
     var expanded: SidePanel
 
+    /// The panel below the Color Meter, if one is open.
+    var lower: SidePanel? { showsReferences ? .references : showsCaptures ? .captures : nil }
+
     /// The Color Meter is open and not collapsed to its strip: the eyedropper works then.
-    var isMeterExpanded: Bool { showsMeter && (!showsReferences || expanded == .colorMeter) }
+    var isMeterExpanded: Bool { showsMeter && (lower == nil || expanded == .colorMeter) }
 }
 
 extension Settings {
     var sidePanelLayout: SidePanelLayout {
-        SidePanelLayout(showsMeter: meterVisible, showsReferences: referencesVisible, expanded: expandedSidePanel)
+        SidePanelLayout(
+            showsMeter: meterVisible, showsReferences: referencesVisible, showsCaptures: capturesVisible,
+            expanded: expandedSidePanel)
     }
 }
 
-/// The panels at the right of the Viewer, top down: the Color Meter, then References
-/// (docs/product.md, References). With both open only one is expanded and fills the height; the
-/// other is a strip in its place that expands it when clicked.
+/// The panels at the right of the Viewer, top down: the Color Meter, then References or Recent
+/// Captures (docs/product.md, References and Recent Captures). With two open only one is expanded
+/// and fills the height; the other is a strip in its place that expands it when clicked.
 ///
 /// Dragging the left edge widens the column within `SidePanel.widthRange`, and everything in it grows
 /// in proportion: each panel multiplies its own fonts, sizes and spacings by `scale`. No drawing
@@ -38,19 +45,22 @@ final class SidePanelStack: NSView {
     private let meterPanel: ColorMeterPanel
     private let meter = NSScrollView()
     private let references: NSView
+    private let captures: NSView
     private let meterStrip = PanelStrip(title: "Color Meter")
     private let referencesStrip = PanelStrip(title: "References")
+    private let capturesStrip = PanelStrip(title: "Recent Captures")
     private var widthConstraint: NSLayoutConstraint!
     private var resizeStart: (mouseX: CGFloat, width: CGFloat)?
 
-    init(meter panel: ColorMeterPanel, references: NSView) {
+    init(meter panel: ColorMeterPanel, references: NSView, captures: NSView) {
         meterPanel = panel
         self.references = references
+        self.captures = captures
         super.init(frame: .zero)
         wantsLayer = true
         setUpScrolling()
         // Laid out by hand in `layout()`: in a stack view the SwiftUI list collapsed to nothing.
-        for view in [meterStrip, meter, referencesStrip, references] {
+        for view in [meterStrip, meter, referencesStrip, references, capturesStrip, captures] {
             view.translatesAutoresizingMaskIntoConstraints = true
             addSubview(view)
         }
@@ -58,6 +68,7 @@ final class SidePanelStack: NSView {
         widthConstraint.isActive = true
         meterStrip.onClick = { [weak self] in self?.onExpand?(.colorMeter) }
         referencesStrip.onClick = { [weak self] in self?.onExpand?(.references) }
+        capturesStrip.onClick = { [weak self] in self?.onExpand?(.captures) }
     }
 
     @available(*, unavailable)
@@ -97,12 +108,17 @@ final class SidePanelStack: NSView {
     }
 
     func show(_ layout: SidePanelLayout) {
-        let both = layout.showsMeter && layout.showsReferences
-        meter.isHidden = !layout.showsMeter || (both && layout.expanded != .colorMeter)
-        meterStrip.isHidden = !(both && layout.expanded != .colorMeter)
-        references.isHidden = !layout.showsReferences || (both && layout.expanded != .references)
-        referencesStrip.isHidden = !(both && layout.expanded != .references)
-        isHidden = !layout.showsMeter && !layout.showsReferences
+        let lower = layout.lower
+        let both = layout.showsMeter && lower != nil
+        // With two open, the lower one is expanded unless the Color Meter is.
+        let meterExpanded = !both || layout.expanded == .colorMeter
+        meter.isHidden = !layout.showsMeter || !meterExpanded
+        meterStrip.isHidden = !(both && !meterExpanded)
+        references.isHidden = lower != .references || (both && meterExpanded)
+        referencesStrip.isHidden = !(lower == .references && both && meterExpanded)
+        captures.isHidden = lower != .captures || (both && meterExpanded)
+        capturesStrip.isHidden = !(lower == .captures && both && meterExpanded)
+        isHidden = !layout.showsMeter && lower == nil
         needsLayout = true
     }
 
@@ -117,6 +133,7 @@ final class SidePanelStack: NSView {
             meterPanel.scale = scale
             meterStrip.scale = scale
             referencesStrip.scale = scale
+            capturesStrip.scale = scale
             onScale?(scale)
             needsLayout = true
         }
@@ -127,10 +144,10 @@ final class SidePanelStack: NSView {
     override func layout() {
         super.layout()
         let strip = Self.stripHeight * scale
-        let strips = [meterStrip, referencesStrip].filter { !$0.isHidden }.count
+        let strips = [meterStrip, referencesStrip, capturesStrip].filter { !$0.isHidden }.count
         let panelHeight = max(0, bounds.height - CGFloat(strips) * strip)
         var y: CGFloat = 0
-        for view in [meterStrip, meter, referencesStrip, references] where !view.isHidden {
+        for view in [meterStrip, meter, referencesStrip, references, capturesStrip, captures] where !view.isHidden {
             let height = view is PanelStrip ? strip : panelHeight
             view.frame = CGRect(x: 0, y: y, width: bounds.width, height: height)
             y += height

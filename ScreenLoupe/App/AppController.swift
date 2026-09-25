@@ -54,6 +54,8 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     /// Saves what AppKit doesn't keep by itself before the app quits.
     func applicationWillTerminate(_ notification: Notification) {
+        // The live view's zoom is the one kept, not a recent capture's.
+        builtWindows?.viewer.showLive()
         builtWindows?.saveViewerState()
         builtWindows?.saveProject()
     }
@@ -209,8 +211,11 @@ extension AppController: NSMenuItemValidation {
             let isFrozen = builtWindows?.isFrozen == true
             let isCounting = builtWindows?.isFreezeCountingDown == true
             menuItem.state = isFrozen || isCounting ? .on : .off
+            // A recent capture in the Viewer is still anyway (docs/product.md, Recent Captures).
+            guard builtWindows?.viewer.isShowingCapture != true else { return false }
             return isFrozen || isCounting || canExport
         case #selector(freezeNow(_:)), #selector(freezeAfterDelay(_:)):
+            guard builtWindows?.viewer.isShowingCapture != true else { return false }
             return builtWindows?.isFrozen == true || canExport
         case #selector(toggleSelectTool(_:)):
             menuItem.state = builtWindows?.viewer.isSelectToolOn == true ? .on : .off

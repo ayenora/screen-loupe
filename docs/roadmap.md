@@ -10,8 +10,7 @@ What comes after the current version. Every item is measured against the princip
 
 Decided to build; the details settle when each moves into product.md.
 
-- **A frozen frame is an image.** To the Viewer, freezing and looking at a picture are the same thing, technically and as a concept: every tool works on both. The two items below follow from that.
-- **Recent captures.** A panel with the last four images copied or saved, kept in memory only and gone on quit: switch between them, look at one in the Viewer as a frozen frame, copy it again, save it to a file, delete it. Short-term memory of the viewer, not a screenshot library.
+- **A frozen frame is an image.** To the Viewer, freezing and looking at a picture are the same thing, technically and as a concept: every tool works on both, as it already does on a recent capture. The item below follows from that.
 - **Open an image** in the Viewer as a frozen frame, with zoom, ruler, Color Meter and references, to look at a file with the same pixel-true tools.
 
 ## The version after: colour

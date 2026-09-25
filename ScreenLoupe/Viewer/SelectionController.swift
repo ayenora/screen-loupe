@@ -72,10 +72,25 @@ final class SelectionController {
         changed()
     }
 
-    func clearSelection() {
-        guard stored != nil else { return }
+    /// Clears the selection; returns whether there was one.
+    @discardableResult
+    func clearSelection() -> Bool {
+        guard stored != nil else { return false }
         stored = nil
         changed()
+        return true
+    }
+
+    /// The selection as set, to keep while another picture shows and bring back after: each recent
+    /// capture and the live view have their own (docs/product.md, Recent Captures). With the tool
+    /// off nothing comes back, as turning it off drops the selection.
+    var keptSelection: CGRect? {
+        get { stored }
+        set {
+            stored = isToolOn ? newValue : nil
+            drag = nil
+            changed()
+        }
     }
 
     // MARK: The Select tool

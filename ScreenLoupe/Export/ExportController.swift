@@ -20,20 +20,22 @@ final class ExportController {
     func copyView() {
         let what = viewer.hasSelection ? "Selection" : "View"
         guard let image = viewImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
+        viewer.captureKeeper(.view, image: image)?()
         viewer.showToast("\(what) copied")
     }
 
     func copySource() {
         guard let image = sourceImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
+        viewer.captureKeeper(.source, image: image)?()
         viewer.showToast("Source copied")
     }
 
     func saveView() {
-        save(viewImage(), kind: "View")
+        save(viewImage(), kind: .view)
     }
 
     func saveSource() {
-        save(sourceImage(), kind: "Source")
+        save(sourceImage(), kind: .source)
     }
 
     /// What the Viewer shows, or just the Select tool's selection while there is one, with the grid
@@ -49,15 +51,18 @@ final class ExportController {
             from: frame, colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
     }
 
-    /// The image is taken when the command is given, before the save panel opens.
-    private func save(_ image: CGImage?, kind: String) {
+    /// The image is taken when the command is given, before the save panel opens; so is its recent
+    /// capture, added once the file is written.
+    private func save(_ image: CGImage?, kind: ViewerContentView.CaptureKind) {
         guard let image, let png = ScreenshotExporter.pngData(image), let window = viewer.window else {
             return NSSound.beep()
         }
+        let keepCapture = viewer.captureKeeper(kind, image: image)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = ScreenshotExporter.fileName(kind: kind, style: settings.settings.fileNameStyle)
+        panel.nameFieldStringValue = ScreenshotExporter.fileName(
+            kind: kind == .source ? "Source" : "View", style: settings.settings.fileNameStyle)
         panel.directoryURL =
             settings.settings.screenshotDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
@@ -65,6 +70,7 @@ final class ExportController {
             guard response == .OK, let url = panel.url else { return }
             do {
                 try png.write(to: url, options: .atomic)
+                keepCapture?()
                 self?.settings.update { $0.screenshotDirectory = url.deletingLastPathComponent().path }
                 self?.viewer.showToast("Saved \(url.lastPathComponent)")
                 if self?.settings.settings.revealsSavedFile == true {

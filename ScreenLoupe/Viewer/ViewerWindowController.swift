@@ -55,6 +55,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         window.setFrameAutosaveName("Viewer")
 
         content.statusView.onRetry = { [weak self] in self?.onRetry?() }
+        content.onShowCapture = { [weak self] in
+            guard let self else { return }
+            toolbar.setShowingCapture(isShowingCapture)
+            onShowCapture?()
+        }
         content.statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
         // A floating window stays above other apps' windows even while another app is active. The
         // Capture Area frame sits higher still (`.statusBar`), so the Viewer never covers it.
@@ -135,6 +140,24 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     func toggleSelectTool() {
         content.selection.toggleTool()
+    }
+
+    // MARK: Recent Captures
+
+    /// Whether a recent capture shows in place of the live view (docs/product.md, Recent Captures).
+    var isShowingCapture: Bool { content.isShowingCapture }
+
+    /// Called when a recent capture starts or stops showing.
+    var onShowCapture: (() -> Void)?
+
+    /// Keeps what `image` was made from as a recent capture; see `ViewerContentView.captureKeeper`.
+    func captureKeeper(_ kind: ViewerContentView.CaptureKind, image: CGImage) -> (() -> Void)? {
+        content.captureKeeper(kind, image: image)
+    }
+
+    /// Back to the live view: closing the Viewer, Escape.
+    func showLive() {
+        content.captures.show(nil)
     }
 
     // MARK: Freeze frame

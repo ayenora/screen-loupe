@@ -38,7 +38,7 @@ A frame above every other window that marks the region being inspected.
 A regular macOS window that shows the Capture Area live.
 
 - Moved, resized, taken full screen or placed on another display; none of that changes the Capture Area.
-- Toolbar: zoom presets and the current zoom on the left; freeze (with a menu of delays), Select, ruler, grid, crosshair, Color Meter, References, Copy, Save and Keep on Top on the right.
+- Toolbar: zoom presets and the current zoom on the left; freeze (with a menu of delays), Select, ruler, grid, the pointer (with a menu of styles), Color Meter, References, Recent Captures, Copy, Save and Keep on Top on the right.
 - **Keep Viewer on Top** keeps it above other apps' windows.
 - **Size Window to Area** (View menu, ⌥⌘0) sizes the Viewer so the whole magnified area shows at the current zoom, without panning. The zoom doesn't change. The window never grows beyond its screen: it moves to stay on it, and an image bigger than the screen still pans.
 - When access to the screen is missing or capture breaks, the Viewer says so and offers a way out; it is never an empty window without an explanation.
@@ -57,7 +57,7 @@ A regular macOS window that shows the Capture Area live.
 | Mode | What you get |
 |---|---|
 | **Copy/Save Source** | The Capture Area as it is on screen, unmagnified, at native resolution: a 500×300 pt area on a 2× display is a 1000×600 PNG. |
-| **Copy/Save View** | Exactly what the Viewer shows: its zoom, pan and viewport, with the reference layers. The crosshair and the ruler are tools, not content, and stay out. |
+| **Copy/Save View** | Exactly what the Viewer shows: its zoom, pan and viewport, with the reference layers. The crosshair, the drawn cursor and the ruler are tools, not content, and stay out. |
 
 | Shortcut | Action |
 |---|---|
@@ -87,6 +87,19 @@ Space in the Viewer, the pause button in the toolbar, View › Freeze Frame or t
 - The Capture Area can still be moved and resized; the image updates when the view resumes.
 - Closing the Viewer resumes.
 
+### Recent Captures
+
+The last four pictures copied or saved in the Viewer, kept to study later: take a transient state quickly, then zoom, measure and pick colours on it at leisure instead of on the live view. The toolbar's Recent Captures button opens the panel.
+
+- Every copy and save in the Viewer adds one, newest on top: Copy View and Copy Source, Save View and Save Source, an Option-drag, a selection, and the global Copy View and Copy Source shortcuts. A fifth pushes out the oldest. They are kept in memory only and gone when the app quits.
+- A capture keeps the Capture Area's pixels at native resolution, not the copied image, so every tool works on real screen pixels. It opens as it was shown: its zoom, pan and selection. The clipboard and the file still get what was asked for.
+- One row per capture: a thumbnail of what was copied, what it was (View 800%, Selection, Region, Source), the size of that image in pixels and the time. The × deletes it. The list scrolls when the column is short.
+- Clicking a row shows that capture in the Viewer in place of the live view, with a purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" at its top. Zoom, pan, the ruler, the grid, Select, the Color Meter, Copy and Save work on it as on the live view; each capture keeps its own zoom, pan and selection. Copies made from a capture add none.
+- Freeze and the pointer have nothing to do on a capture and are off while it shows.
+- Escape, closing the panel or closing the Viewer goes back to live, as it was left.
+- The capture stays in the Viewer while its panel is collapsed to a strip, so the Color Meter can be expanded and its eyedropper used on it.
+- References and Recent Captures take turns below the Color Meter: opening one closes the other.
+
 ### Ruler
 
 A corner ruler over the image, for measuring in screen pixels at any zoom. The toolbar's ruler button or View › Ruler (⌘R) turns it on and off; turning it off forgets it.
@@ -98,9 +111,15 @@ A corner ruler over the image, for measuring in screen pixels at any zoom. The t
 - On hover a translucent band shows along the line — the part that moves the ruler — and a pin button outside the corner; both stay a moment after the pointer leaves. While the image pans or zooms, an unpinned ruler hides, since it would jump from pixel to pixel, and eases back in once the image settles.
 - The pin button pins the ruler to the pixels under it. Panning and zooming then carry it along, and so does resizing the Capture Area by its left or top edge; it can't be moved, only its arms stretched. Zooming out lengthens an arm that would look too short, and zooming back in returns it to the length it was set to.
 
-### Crosshair
+### Crosshair and cursor
 
-The capture hides the real cursor so it doesn't cover the pixels. The crosshair shows in the Viewer where the real cursor is inside the Capture Area, so you see exactly what you point at, magnified. On by default; a toolbar toggle.
+The capture hides the real cursor so it doesn't cover the pixels. The Viewer shows instead where the real cursor is inside the Capture Area, so you see exactly what you point at, magnified. On by default; a toolbar toggle, whose ▾ chooses how it shows:
+
+- **Crosshair:** lines across the Viewer through the pixel pointed at, and a box around it.
+- **Cursor:** an arrow at its usual size, its tip on the outlined pixel. Readable at any zoom and hides little.
+- **Original Cursor in the Capture:** the capture records the real pointer, in the shape the app under it sets (arrow, I-beam, hand). It is part of the pixels, so it grows with the zoom and goes into copies, saved files and recent captures. While the Color Meter's eyedropper is on, the capture leaves it out, so the Color Meter never reads the pointer itself; the menu says so, and the pointer comes back when the Color Meter collapses or closes.
+
+The crosshair and the drawn cursor are tools, not content: they stay out of copies.
 
 ### Color Meter
 
@@ -112,7 +131,7 @@ A panel beside the image for the pixel under the cursor — in the Viewer, or un
 
 ### References
 
-Images laid over the live pixels — a design export, an earlier screenshot — for an exact check of the screen against them. PNG, JPEG, TIFF, HEIC, BMP and GIF are accepted. An image over the same 16-megapixel limit keeps its top-left part, as a copy does (Screenshots). The toolbar's References button opens the panel; the layers show and take the mouse only while it is open.
+Images laid over the live pixels — a design export, an earlier screenshot — for an exact check of the screen against them. PNG, JPEG, TIFF, HEIC, BMP and GIF are accepted. An image over the same 16-megapixel limit keeps its top-left part, as a copy does (Screenshots). The toolbar's References button opens the panel, in place of Recent Captures; the layers show and take the mouse only while it is open.
 
 - Up to 10 layers, top first, one row each like layers in an image editor: grip ⠿, eye, thumbnail, name, opacity, pin. A row drags as a whole to reorder, and the others make room. The list scrolls.
 - Below the list, the Layer section holds the selected layer's settings, where nothing drags: opacity, Normal or Difference, X and Y of the top-left corner in pixels from the Capture Area's top-left (resizing the area by its left or top edge keeps the layer on its pixels and changes these), scale, a reset of position and scale, and Delete.
@@ -172,7 +191,7 @@ Opened with Settings… (⌘,) in the app menu or the menu bar item. Five tabs; 
 
 ### Kept between launches
 
-The Capture Area's place, size and pin, the Viewer's frame, zoom, the toolbar toggles, which side panel is expanded, pinned colours, the screenshot folder and every setting — and the project: the reference layers and the ruler. Freeze, a countdown, the Select tool and its selection are not kept; the Viewer always opens live.
+The Capture Area's place, size and pin, the Viewer's frame, zoom, the toolbar toggles, which side panel is expanded, pinned colours, the screenshot folder and every setting — and the project: the reference layers and the ruler. Freeze, a countdown, the Select tool and its selection, and the recent captures are not kept; the Viewer always opens live.
 
 ## Not in scope
 
