@@ -93,10 +93,11 @@ The last four pictures copied or saved in the Viewer, kept to study later: take 
 
 - Every copy and save in the Viewer adds one, newest on top: Copy View and Copy Source, Save View and Save Source, an Option-drag, a selection, and the global Copy View and Copy Source shortcuts. A fifth pushes out the oldest. They are kept in memory only and gone when the app quits.
 - A capture keeps the Capture Area's pixels at native resolution, not the copied image, so every tool works on real screen pixels. It opens as it was shown: its zoom, pan and selection. The clipboard and the file still get what was asked for.
-- One row per capture: a thumbnail of what was copied, what it was (View 800%, Selection, Region, Source), the size of that image in pixels and the time. The × deletes it. The list scrolls when the column is short.
+- On top, apart from the captures, a Live row that can't be deleted: the live view, what the Capture Area shows now. It is chosen whenever no capture shows, and clicking it goes back to live.
+- Below it one row per capture: a thumbnail of what was copied, what it was (View 800%, Selection, Region, Source), the size of that image in pixels and the time. The × deletes it. The list scrolls when the column is short.
 - Clicking a row shows that capture in the Viewer in place of the live view, with a purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" at its top. Zoom, pan, the ruler, the grid, Select, the Color Meter, Copy and Save work on it as on the live view; each capture keeps its own zoom, pan and selection. Copies made from a capture add none.
 - Freeze and the pointer have nothing to do on a capture and are off while it shows.
-- Escape, closing the panel or closing the Viewer goes back to live, as it was left.
+- The Live row, Escape, closing the panel or closing the Viewer goes back to live, as it was left.
 - The capture stays in the Viewer while its panel is collapsed to a strip, so the Color Meter can be expanded and its eyedropper used on it.
 - References and Recent Captures take turns below the Color Meter: opening one closes the other.
 
