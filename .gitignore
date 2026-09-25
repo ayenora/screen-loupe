@@ -35,3 +35,6 @@ xcuserdata/
 
 # Local agent guidance; the repository is public
 CLAUDE.md
+
+# Internal working documents: the private roadmap, the release plan, competitor notes
+/docs/internal/

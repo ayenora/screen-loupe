@@ -10,7 +10,9 @@ final class ViewerContentView: NSStackView {
     let viewerView: ViewerView
     let statusView = CaptureStatusView()
     let ruler: RulerController
+    let selection: SelectionController
 
+    private let settings: SettingsStore
     private let inspector: PixelInspector
     private let overlay: ViewerOverlayView
     private let meterPanel: ColorMeterPanel
@@ -20,11 +22,14 @@ final class ViewerContentView: NSStackView {
     private let frozenIndicator = FrozenIndicatorView()
     /// The magnified image with everything drawn over it; left of the side column.
     private let imageArea = NSView()
+    /// The side panels as last set, for the modes of the mouse in the image.
+    private var sidePanelLayout: SidePanelLayout?
 
     init(
         settings: SettingsStore, frameStore: FrameStore, zoomPan: ZoomPanController, inspector: PixelInspector,
         project: ProjectStore
     ) {
+        self.settings = settings
         self.inspector = inspector
         let viewerView = ViewerView(frameStore: frameStore, zoomPan: zoomPan, inspector: inspector)
         self.viewerView = viewerView
@@ -34,8 +39,11 @@ final class ViewerContentView: NSStackView {
         meterPanel = ColorMeterPanel(inspector: inspector)
         ruler = RulerController(zoomPan: zoomPan, project: project)
         references = ReferencesController(project: project, zoomPan: zoomPan)
+        selection = SelectionController(zoomPan: zoomPan)
         viewerView.ruler = ruler
         overlay.ruler = ruler
+        viewerView.selection = selection
+        overlay.selection = selection
         viewerView.references = references
         overlay.references = references
         let referencesPanel = NSHostingView(rootView: ReferencesPanel(references: references))
@@ -44,7 +52,7 @@ final class ViewerContentView: NSStackView {
         sidePanels = SidePanelStack(meter: meterPanel, references: referencesPanel)
         super.init(frame: .zero)
         build()
-        wire(zoomPan: zoomPan, settings: settings)
+        wire(zoomPan: zoomPan)
     }
 
     @available(*, unavailable)
@@ -80,7 +88,7 @@ final class ViewerContentView: NSStackView {
         addArrangedSubview(sidePanels)
     }
 
-    private func wire(zoomPan: ZoomPanController, settings: SettingsStore) {
+    private func wire(zoomPan: ZoomPanController) {
         zoomPan.observe { [weak self] in
             guard let self else { return }
             viewerView.requestDraw()
@@ -88,6 +96,11 @@ final class ViewerContentView: NSStackView {
             ruler.viewportChanged()
         }
         ruler.observe { [weak self] in self?.overlay.needsDisplay = true }
+        selection.observe { [weak self] in
+            self?.overlay.needsDisplay = true
+            self?.applyMouseModes()
+        }
+        viewerView.onCopyRegion = { [weak self] region in self?.copyRegion(region) }
         inspector.onChange = { [weak self] in
             self?.overlay.needsDisplay = true
             self?.meterPanel.refresh()
@@ -99,6 +112,7 @@ final class ViewerContentView: NSStackView {
         viewerView.onPick = { [weak self] in self?.pickColor() }
         meterPanel.onCopy = { [weak self] text, what in self?.copyText(text, what: what) }
 
+        let settings = settings
         sidePanels.onExpand = { panel in settings.update { $0.expandedSidePanel = panel } }
         sidePanels.onScale = { [weak references] scale in references?.scale = scale }
         sidePanels.width = CGFloat(settings.settings.sidePanelWidth)
@@ -113,10 +127,18 @@ final class ViewerContentView: NSStackView {
             guard let self else { return }
             sidePanels.show(layout)
             references.isActive = layout.showsReferences
-            // The eyedropper works only while the Color Meter is expanded, and then it comes first.
-            viewerView.isPicking = layout.isMeterExpanded
-            references.takesMouse = !layout.isMeterExpanded
+            sidePanelLayout = layout
+            applyMouseModes()
         }
+    }
+
+    /// Who the mouse in the image belongs to. The Select tool comes first; else the eyedropper,
+    /// which works only while the Color Meter is expanded; reference layers take it when neither does.
+    private func applyMouseModes() {
+        let isSelecting = selection.isToolOn
+        viewerView.isPicking = !isSelecting && sidePanelLayout?.isMeterExpanded == true
+        references.takesMouse = !isSelecting && !viewerView.isPicking
+        window?.invalidateCursorRects(for: viewerView)
     }
 
     override func viewDidMoveToWindow() {
@@ -132,9 +154,19 @@ final class ViewerContentView: NSStackView {
         toast.show(text)
     }
 
-    func setFrozen(_ frozen: Bool) {
-        frozenIndicator.isHidden = !frozen
-        if !frozen { viewerView.forgetAreaOrigin() }
+    /// Frozen, counting down to a freeze, or live.
+    func showFreeze(_ state: FrozenIndicatorView.State) {
+        // The first live frame after a freeze keeps the framing (`AreaResizeTracker.forget`).
+        if frozenIndicator.state.isFrozen, !state.isFrozen { viewerView.forgetAreaOrigin() }
+        frozenIndicator.state = state
+    }
+
+    /// An Option-drag's region, straight to the clipboard.
+    private func copyRegion(_ region: CGRect) {
+        guard let image = viewerView.renderViewImage(showsGrid: settings.settings.gridInCopyView, region: region),
+            ScreenshotExporter.copy(image)
+        else { return NSSound.beep() }
+        showToast("Region copied")
     }
 
     private func pickColor() {

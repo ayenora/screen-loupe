@@ -46,7 +46,9 @@ struct Shortcut: Codable, Hashable, Sendable {
     }
 }
 
-/// The global shortcuts (docs/product.md, Global shortcuts). A cleared shortcut is `nil`.
+/// The global shortcuts (docs/product.md, Global shortcuts). A cleared shortcut is `nil`, saved as
+/// `null`, so it stays cleared; a key missing from saved settings (an action added later) gets its
+/// default.
 struct Shortcuts: Codable, Equatable, Sendable {
     var toggleCaptureArea: Shortcut? = Shortcut(
         keyCode: kVK_ANSI_L, modifiers: [.control, .option, .command], key: "L")
@@ -54,10 +56,42 @@ struct Shortcuts: Codable, Equatable, Sendable {
     var copyView: Shortcut? = Shortcut(keyCode: kVK_ANSI_C, modifiers: [.control, .option, .command], key: "C")
     var copySource: Shortcut? = Shortcut(
         keyCode: kVK_ANSI_C, modifiers: [.control, .option, .shift, .command], key: "C")
+    /// F13 alone: no modifier reaches the app the mouse is held down in.
+    var toggleFreeze: Shortcut? = Shortcut(keyCode: kVK_F13, modifiers: [], key: "F13")
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Shortcuts()
+        func shortcut(_ key: CodingKeys, _ fallback: Shortcut?) -> Shortcut? {
+            guard c.contains(key) else { return fallback }
+            if (try? c.decodeNil(forKey: key)) == true { return nil }
+            return c.value(key, or: fallback)
+        }
+        toggleCaptureArea = shortcut(.toggleCaptureArea, d.toggleCaptureArea)
+        toggleViewer = shortcut(.toggleViewer, d.toggleViewer)
+        copyView = shortcut(.copyView, d.copyView)
+        copySource = shortcut(.copySource, d.copySource)
+        toggleFreeze = shortcut(.toggleFreeze, d.toggleFreeze)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(toggleCaptureArea, forKey: .toggleCaptureArea)
+        try c.encode(toggleViewer, forKey: .toggleViewer)
+        try c.encode(copyView, forKey: .copyView)
+        try c.encode(copySource, forKey: .copySource)
+        try c.encode(toggleFreeze, forKey: .toggleFreeze)
+    }
 }
 
 enum ShortcutAction: CaseIterable, Sendable {
-    case toggleCaptureArea, toggleViewer, copyView, copySource
+    case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze
 
     var title: String {
         switch self {
@@ -65,8 +99,12 @@ enum ShortcutAction: CaseIterable, Sendable {
         case .toggleViewer: "Show / Hide Viewer"
         case .copyView: "Copy View"
         case .copySource: "Copy Source"
+        case .toggleFreeze: "Freeze / Resume Viewer"
         }
     }
+
+    /// Freeze may be F13–F19 alone (`ShortcutRules`).
+    var allowsLoneFunctionKey: Bool { self == .toggleFreeze }
 
     var keyPath: WritableKeyPath<Shortcuts, Shortcut?> {
         switch self {
@@ -74,6 +112,7 @@ enum ShortcutAction: CaseIterable, Sendable {
         case .toggleViewer: \.toggleViewer
         case .copyView: \.copyView
         case .copySource: \.copySource
+        case .toggleFreeze: \.toggleFreeze
         }
     }
 }

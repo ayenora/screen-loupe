@@ -88,6 +88,20 @@ enum MainMenu {
         let freeze = menu.addItem(
             withTitle: "Freeze Frame", action: #selector(AppController.toggleFreeze(_:)), keyEquivalent: "")
         freeze.target = target
+        let later = NSMenu(title: "Freeze Later")
+        for seconds in [3, 5, 10] {
+            let item = later.addItem(
+                withTitle: "Freeze in \(seconds) Seconds", action: #selector(AppController.freezeAfterDelay(_:)),
+                keyEquivalent: "")
+            item.tag = seconds
+            item.target = target
+        }
+        let laterItem = submenuItem(later)
+        laterItem.title = later.title
+        menu.addItem(laterItem)
+        let select = menu.addItem(
+            withTitle: "Select", action: #selector(AppController.toggleSelectTool(_:)), keyEquivalent: "e")
+        select.target = target
         let ruler = menu.addItem(
             withTitle: "Ruler", action: #selector(AppController.toggleMeasuringRuler(_:)), keyEquivalent: "r")
         ruler.target = target

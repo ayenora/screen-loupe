@@ -101,16 +101,50 @@ final class WindowManager {
     // MARK: Freeze frame
 
     var isFrozen: Bool { capture.frameStore.isFrozen }
+    /// A delayed freeze is counting down (docs/product.md, Freeze frame).
+    var isFreezeCountingDown: Bool { freezeTimer != nil }
+    private var freezeTimer: Timer?
 
-    /// Space in the Viewer, the toolbar's pause button, View › Freeze Frame.
-    func toggleFreeze() {
+    /// Space in the Viewer, the toolbar's pause button, View › Freeze Frame, the global shortcut.
+    /// During a countdown it stops the countdown instead. `hint` says how it was frozen, after the
+    /// global shortcut from another app.
+    func toggleFreeze(hint: String? = nil) {
+        if isFreezeCountingDown { return cancelFreezeCountdown() }
         guard isFrozen || export.canExport else { return NSSound.beep() }
-        setFrozen(!isFrozen)
+        setFrozen(!isFrozen, hint: hint)
     }
 
-    private func setFrozen(_ frozen: Bool) {
+    /// Freezes at once, also in the middle of a countdown.
+    func freezeNow() {
+        cancelFreezeCountdown()
+        guard isFrozen || export.canExport else { return NSSound.beep() }
+        setFrozen(true)
+    }
+
+    /// Freezes after `seconds`, while the live view runs on: time to go to another app and press
+    /// and hold there. A frozen view goes live for the countdown.
+    func freeze(after seconds: Int) {
+        guard isFrozen || export.canExport else { return NSSound.beep() }
+        setFrozen(false)
+        let total = TimeInterval(seconds)
+        freezeTimer = Timer.scheduledTimer(withTimeInterval: total, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.freezeNow() }
+        }
+        viewer.showFreeze(.countdown(deadline: Date().addingTimeInterval(total), total: total))
+    }
+
+    /// Escape in the Viewer, the pause button during a countdown, closing the Viewer.
+    func cancelFreezeCountdown() {
+        guard let freezeTimer else { return }
+        freezeTimer.invalidate()
+        self.freezeTimer = nil
+        viewer.showFreeze(isFrozen ? .frozen(hint: nil) : .hidden)
+    }
+
+    private func setFrozen(_ frozen: Bool, hint: String? = nil) {
+        cancelFreezeCountdown()
         capture.frameStore.isFrozen = frozen
-        viewer.setFrozen(frozen)
+        viewer.showFreeze(frozen ? .frozen(hint: hint) : .hidden)
     }
 
     func resetZoom() {

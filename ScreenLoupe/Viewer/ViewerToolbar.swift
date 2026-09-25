@@ -1,12 +1,13 @@
 import AppKit
 
-/// The Viewer's toolbar (docs/product.md, Viewer): zoom presets and the current zoom on the left; Freeze,
-/// the Ruler, the Grid, Crosshair and Color Meter toggles, Copy, Save and the keep-on-top pin on the right.
+/// The Viewer's toolbar (docs/product.md, Viewer): zoom presets and the current zoom on the left; Freeze
+/// with its menu of delays, the Select tool, the Ruler, the Grid, Crosshair and Color Meter toggles,
+/// Copy, Save and the keep-on-top pin on the right.
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
 /// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the pin a checkmark.
 ///
-/// Freeze, Ruler, Copy, Save and Keep on Top are app commands: they go up the responder chain to
+/// Freeze, Select, Ruler, Copy, Save and Keep on Top are app commands: they go up the responder chain to
 /// `AppController`, as the menus' do. The toggles are settings and change them directly. Every
 /// button shows the state of its model, never just its own click.
 @MainActor
@@ -14,6 +15,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let presetsID = NSToolbarItem.Identifier("zoomPresets")
     private static let zoomLabelID = NSToolbarItem.Identifier("zoomLabel")
     private static let freezeID = NSToolbarItem.Identifier("freeze")
+    private static let selectID = NSToolbarItem.Identifier("select")
     private static let rulerID = NSToolbarItem.Identifier("ruler")
     private static let gridID = NSToolbarItem.Identifier("grid")
     private static let crosshairID = NSToolbarItem.Identifier("crosshair")
@@ -58,6 +60,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     /// The zoom the label last showed, to tell a zoom change from a pan.
     private var shownZoom: CGFloat?
     private let freezeButton = NSButton()
+    /// The ▾ beside the pause button: Freeze Now and Freeze in 3, 5 or 10 seconds.
+    private let freezeMenuButton = NSButton()
+    private let selectButton = NSButton()
+    private let selectMenuItem = NSMenuItem(title: "Select", action: nil, keyEquivalent: "")
     private let rulerButton = NSButton()
     private let rulerMenuItem = NSMenuItem(title: "Ruler", action: nil, keyEquivalent: "")
     private let freezeMenuItem = NSMenuItem(title: "Freeze Frame", action: nil, keyEquivalent: "")
@@ -73,14 +79,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private let zoomPan: ZoomPanController
     private let settings: SettingsStore
     private let ruler: RulerController
-    /// The frame store's freeze, as `setFrozen` last reported it.
+    private let selection: SelectionController
+    /// Frozen or counting down to a freeze, as `setFrozen` last reported it.
     private var isFrozen = false
     let toolbar = NSToolbar(identifier: "Viewer")
 
-    init(zoomPan: ZoomPanController, settings: SettingsStore, ruler: RulerController) {
+    init(zoomPan: ZoomPanController, settings: SettingsStore, ruler: RulerController, selection: SelectionController) {
         self.zoomPan = zoomPan
         self.settings = settings
         self.ruler = ruler
+        self.selection = selection
         super.init()
         presets.target = self
         presets.action = #selector(presetChosen(_:))
@@ -105,7 +113,17 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         onTopButton.setButtonType(.pushOnPushOff)
         configure(freezeButton, symbol: "pause", title: "Freeze Frame (Space)", action: #selector(freezeClicked(_:)))
         freezeButton.setButtonType(.pushOnPushOff)
-        freezeMenuItem.action = #selector(AppController.toggleFreeze(_:))
+        configure(
+            freezeMenuButton, symbol: "chevron.down", title: "Freeze Later", action: #selector(freezeMenuClicked(_:)))
+        freezeMenuButton.image = freezeMenuButton.image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
+        freezeMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        freezeMenuItem.submenu = Self.freezeMenu(withToggle: true)
+        configure(
+            selectButton, symbol: "rectangle.dashed", title: "Select — drag to select, ⌘C copies it",
+            action: #selector(selectClicked(_:)))
+        selectButton.setButtonType(.pushOnPushOff)
+        selectMenuItem.action = #selector(AppController.toggleSelectTool(_:))
         configure(rulerButton, symbol: "ruler", title: "Ruler", action: #selector(rulerClicked(_:)))
         rulerButton.setButtonType(.pushOnPushOff)
         rulerMenuItem.action = #selector(AppController.toggleMeasuringRuler(_:))
@@ -139,6 +157,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         refresh()
         ruler.observe { [weak self] in self?.showRuler() }
         showRuler()
+        selection.observe { [weak self] in self?.showSelectTool() }
+        showSelectTool()
         settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.show($0, on: self?.onTopButton) }
         settings.observe(\.gridEnabled) { [weak self] in self?.showToggle(.grid, isOn: $0) }
         settings.observe(\.crosshairEnabled) { [weak self] in self?.showToggle(.crosshair, isOn: $0) }
@@ -213,6 +233,30 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         show(ruler.isOn, on: rulerButton)
     }
 
+    private func showSelectTool() {
+        show(selection.isToolOn, on: selectButton)
+    }
+
+    /// Freeze Now and the delays, as `AppController` commands, which also enable them; the overflow
+    /// form starts with the Freeze toggle itself.
+    private static func freezeMenu(withToggle: Bool) -> NSMenu {
+        let menu = NSMenu()
+        if withToggle {
+            menu.addItem(
+                withTitle: "Freeze Frame", action: #selector(AppController.toggleFreeze(_:)), keyEquivalent: "")
+        } else {
+            menu.addItem(withTitle: "Freeze Now", action: #selector(AppController.freezeNow(_:)), keyEquivalent: "")
+        }
+        menu.addItem(.separator())
+        for seconds in [3, 5, 10] {
+            let item = menu.addItem(
+                withTitle: "Freeze in \(seconds) Seconds", action: #selector(AppController.freezeAfterDelay(_:)),
+                keyEquivalent: "")
+            item.tag = seconds
+        }
+        return menu
+    }
+
     func setFrozen(_ isOn: Bool) {
         isFrozen = isOn
         show(isOn, on: freezeButton)
@@ -246,6 +290,15 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
 
     @objc private func freezeClicked(_ sender: NSButton) {
         send(#selector(AppController.toggleFreeze(_:)), from: sender, isOn: isFrozen)
+    }
+
+    @objc private func freezeMenuClicked(_ sender: NSButton) {
+        let below = NSPoint(x: -freezeButton.frame.width, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4)
+        Self.freezeMenu(withToggle: false).popUp(positioning: nil, at: below, in: sender)
+    }
+
+    @objc private func selectClicked(_ sender: NSButton) {
+        send(#selector(AppController.toggleSelectTool(_:)), from: sender, isOn: selection.isToolOn)
     }
 
     @objc private func rulerClicked(_ sender: NSButton) {
@@ -286,7 +339,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.freezeID, Self.rulerID, Self.gridID,
+            Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.freezeID, Self.selectID, Self.rulerID, Self.gridID,
             Self.crosshairID,
             Self.meterID, Self.referencesID, .space,
             Self.copyID, Self.saveID, Self.onTopID,
@@ -311,9 +364,15 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             item.view = zoomLabel
             item.menuFormRepresentation = zoomLabelMenuItem
         case Self.freezeID:
-            item.view = freezeButton
+            let group = NSStackView(views: [freezeButton, freezeMenuButton])
+            group.spacing = 0
+            item.view = group
             item.label = "Freeze Frame"
             item.menuFormRepresentation = freezeMenuItem
+        case Self.selectID:
+            item.view = selectButton
+            item.label = "Select"
+            item.menuFormRepresentation = selectMenuItem
         case Self.rulerID:
             item.view = rulerButton
             item.label = "Ruler"

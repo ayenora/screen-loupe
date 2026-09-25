@@ -38,7 +38,7 @@ A frame above every other window that marks the region being inspected.
 A regular macOS window that shows the Capture Area live.
 
 - Moved, resized, taken full screen or placed on another display; none of that changes the Capture Area.
-- Toolbar: zoom presets and the current zoom on the left; freeze, ruler, grid, crosshair, Color Meter, References, Copy, Save and Keep on Top on the right.
+- Toolbar: zoom presets and the current zoom on the left; freeze (with a menu of delays), Select, ruler, grid, crosshair, Color Meter, References, Copy, Save and Keep on Top on the right.
 - **Keep Viewer on Top** keeps it above other apps' windows.
 - **Size Window to Area** (View menu, ⌥⌘0) sizes the Viewer so the whole magnified area shows at the current zoom, without panning. The zoom doesn't change. The window never grows beyond its screen: it moves to stay on it, and an image bigger than the screen still pans.
 - When access to the screen is missing or capture breaks, the Viewer says so and offers a way out; it is never an empty window without an explanation.
@@ -68,11 +68,21 @@ A regular macOS window that shows the Capture Area live.
 
 Saved files are PNGs with the display's colour profile, named like macOS screenshots, in the folder used last. Copy View is the point of the app for reviews and bug reports: zoom into a detail at 800–1600%, frame it, copy exactly that.
 
+An image holds at most 16 megapixels, as many as 4096 × 4096. A copy or a saved file that would be bigger — a large selection at a high zoom, a huge Capture Area — keeps its top-left part: a side shorter than 4096 stays whole and the other is cut to fit, and with both sides longer 4096 × 4096 is kept. Nothing is scaled down.
+
+A part of the view is copied without resizing the window or panning, in two ways:
+
+- **Option-drag, the quick way.** Hold ⌥ and drag a rectangle in the Viewer; on letting go, that region of the view is on the clipboard ("Region copied"). It is free, not snapped to pixels, and there is nothing to adjust afterwards. While dragging, a label shows the size of the image it copies. A plain drag still pans.
+- **The Select tool, the precise way.** The toolbar's Select button or View › Select (⌘E) turns on a mode like the eyedropper: while it is on, a drag selects instead of panning, and Space-drag pans. The selection always snaps to whole screen pixels, with the grid shown or not, and a label under it gives its size in pixels and its place from the Capture Area's top-left (`12 × 5 px · x 11, y 11`). Its handles resize it and dragging inside moves it. It stays on its pixels when the Capture Area is resized by its left or top edge. While there is a selection, Copy View and Save View (⌘C, ⌘S, the toolbar's buttons, the global Copy View shortcut) take just the selection, at the current zoom, even where it reaches beyond the window; otherwise the whole view. A click outside it or Escape clears it; turning the tool off drops it.
+
 ### Freeze frame
 
-Space in the Viewer, the pause button in the toolbar or View › Freeze Frame stops the live view on the current frame, to study a transient state — a hover, a pressed button, a frame of an animation. Space again resumes.
+Space in the Viewer, the pause button in the toolbar, View › Freeze Frame or the global Freeze shortcut stops the live view on the current frame, to study a transient state — a hover, a pressed button, a frame of an animation. Space again resumes.
 
 - While frozen, a blue border runs around the image with "Frozen · Space to resume" at its top.
+- **Freezing while holding a state in another app.** The mouse is held down in an emulator or a browser to keep a pressed or dragged state, and the frame has to be taken without letting go. Two ways:
+  - *The global Freeze shortcut*, F13 by default. It freezes the Viewer from any app; then the mouse is let go and the frozen frame is framed, copied or saved as usual. A function key alone is allowed for this shortcut only, so no modifier reaches the app under the mouse (in the iOS Simulator ⌥ means pinch). Frozen this way from another app, the Viewer also says so at its bottom: "Frozen by F13 from Simulator — let go of the mouse, then zoom, pan, copy".
+  - *Freeze after a delay.* The ▾ beside the pause button opens Freeze Now and Freeze in 3, 5 or 10 Seconds; View › Freeze Later has the same delays. The live view runs on while the countdown shows over the image — a dashed border and "Freezing in 2 s · Esc to cancel" with a shrinking ring — and at zero it freezes as Space does. No keyboard at all; the price is the wait. The pause button or Escape stops the countdown.
 - Copy, Save and the Color Meter use the frozen frame.
 - The Capture Area can still be moved and resized; the image updates when the view resumes.
 - Closing the Viewer resumes.
@@ -102,7 +112,7 @@ A panel beside the image for the pixel under the cursor — in the Viewer, or un
 
 ### References
 
-Images laid over the live pixels — a design export, an earlier screenshot — for an exact check of the screen against them. PNG, JPEG, TIFF, HEIC, BMP and GIF are accepted. The toolbar's References button opens the panel; the layers show and take the mouse only while it is open.
+Images laid over the live pixels — a design export, an earlier screenshot — for an exact check of the screen against them. PNG, JPEG, TIFF, HEIC, BMP and GIF are accepted. An image over the same 16-megapixel limit keeps its top-left part, as a copy does (Screenshots). The toolbar's References button opens the panel; the layers show and take the mouse only while it is open.
 
 - Up to 10 layers, top first, one row each like layers in an image editor: grip ⠿, eye, thumbnail, name, opacity, pin. A row drags as a whole to reorder, and the others make room. The list scrolls.
 - Below the list, the Layer section holds the selected layer's settings, where nothing drags: opacity, Normal or Difference, X and Y of the top-left corner in pixels from the Capture Area's top-left, scale, a reset of position and scale, and Delete.
@@ -148,6 +158,7 @@ Work from any app, with defaults chosen to avoid system shortcuts; each can be c
 | `⌃⌥⌘V` | Show/Hide Viewer |
 | `⌃⌥⌘C` | Copy View |
 | `⌃⌥⇧⌘C` | Copy Source |
+| `F13` | Freeze / Resume Viewer |
 
 ### Settings
 
@@ -157,40 +168,12 @@ Opened with Settings… (⌘,) in the app menu or the menu bar item. Five tabs; 
 - **Capture Area:** frame colour (six presets or any colour), line width 1 or 2 pt, the size label at rest, size units, with a preview. The grip tab is a darker shade of the frame colour with white or black text, whichever reads better.
 - **Viewer:** background dark, light or checkerboard (8 pt squares); the pixel grid's threshold, 4× to 32×, and line colour; crosshair colour; whether a mouse wheel needs ⌘ to zoom. On a trackpad two fingers always pan.
 - **Screenshots:** the folder the save panel opens in; the grid in Copy View and Save View (only while it is visible in the Viewer); file names like macOS screenshots or `ScreenLoupe-View-20260924-142005.png`; revealing saved files in Finder.
-- **Shortcuts:** the four global shortcuts. Click, press the new combination; Escape cancels, Delete clears. A combination already taken moves to the new action. A shortcut needs ⌃, or ⌥ with ⌘, so it can't take ⌘C and the like from other apps; one that macOS refuses is marked in Settings.
+- **Shortcuts:** the five global shortcuts. Click, press the new combination; Escape cancels, Delete clears. A combination already taken moves to the new action. A shortcut needs ⌃, or ⌥ with ⌘, so it can't take ⌘C and the like from other apps; Freeze / Resume Viewer may also be F13–F19 alone. One that macOS refuses is marked in Settings.
 
 ### Kept between launches
 
-The Capture Area's place, size and pin, the Viewer's frame, zoom, the toolbar toggles, which side panel is expanded, pinned colours, the screenshot folder and every setting — and the project: the reference layers and the ruler. Freeze is not kept; the Viewer always opens live.
+The Capture Area's place, size and pin, the Viewer's frame, zoom, the toolbar toggles, which side panel is expanded, pinned colours, the screenshot folder and every setting — and the project: the reference layers and the ruler. Freeze, a countdown, the Select tool and its selection are not kept; the Viewer always opens live.
 
 ## Not in scope
 
-These stay out, to keep the app small and focused on looking at pixels: OCR, annotations, drawing arrows or text, image editing, a screenshot history manager, cloud sync, accounts, telemetry, subscriptions, AI features. The app collects no data.
-
-## How it compares
-
-Checked against the vendors' documentation in September 2026. "Not documented" means the vendor doesn't say, not that the feature is missing.
-
-| | Screen Loupe | xScope Loupe | macOS Zoom (Accessibility) | Digital Color Meter | Region mirrors (RegionMirror, ZoneShare, Conjuly) | Cursor loupes (ColorSlurp, ColorSnapper, Picky Colors, Loupe) |
-|---|---|---|---|---|---|---|
-| **Live view of a fixed region** you choose | Yes | Yes, when locked (⌘L) [2] | No — the picture-in-picture window can stay put, but what it shows follows the pointer [1] | Locked aperture: a tiny sample of one spot [3] | Yes [5] | No — the loupe follows the cursor [4] |
-| **Separate, resizable window**, on any display | Yes | Resizable loupe window [2] | Picture-in-picture window or screen edge [1] | Small fixed window [3] | Yes [5] | Transient loupe while picking [4] |
-| **Crisp pixels** (no smoothing) | Always at integer zoom | Not documented | Optional ("Smooth images" can be turned off) [1] | Yes | Not documented; built for presenting [5] | Yes |
-| **Pan** a magnified image larger than the window | Yes | Not documented | Follows the pointer | — | Not documented | — |
-| **Real cursor shown** in the magnified view while you work in the region | Yes, crosshair | Not documented | Is the pointer | — | Not documented | — |
-| **Copy / save the zoomed view** exactly as shown | Yes | Not documented | — | Colour values and a colour swatch [3] | Not documented | Colour values |
-| **Copy the source region** at native resolution | Yes | — | — | — | — | — |
-| Pixel colour | HEX, `rgb()`, SwiftUI, AppKit, native value; pinned colours | RGB, HSB, HEX, CSS; swatches [2] | — | Yes, several colour spaces [3] | — | Yes, many formats [4] |
-| **Pixel grid** on exact pixel boundaries | Yes | Gridlines [2] | — | — | — | — |
-| Price | Free, open source (MIT) | $49.99 [2] | Built into macOS | Built into macOS | Free to $19.99 [5] | Free to a few dollars [4] |
-| Main purpose | Inspecting UI while working | Designer measurement toolkit | Accessibility | Colour sampling | Sharing part of the screen in calls | Colour picking |
-
-**In short:** most magnifiers are tied to the cursor — to look at a spot you must point at it, so you can't work there at the same time. Region mirrors show a fixed spot live but are made for presenting, not for looking at pixels. The closest tool is xScope's locked Loupe, one of ten tools in a paid suite. Screen Loupe does one thing: it separates *where you look* from *where you work*, and makes what you look at pixel-true — crisp at every integer zoom, pannable, with the real cursor marked, and copyable exactly as shown or at native resolution.
-
-## Sources
-
-1. Apple Support, *Change Zoom advanced options for accessibility on Mac*: https://support.apple.com/guide/mac-help/change-accessibility-zoom-preferences-mh35715/mac ; AbilityNet, *How to magnify what's on the screen in macOS 15 Sequoia*: https://mcmw.abilitynet.org.uk/how-to-magnify-whats-on-the-screen-in-macos-15-sequoia
-2. xScope 4 on the Mac App Store ("the content of the window or the mouse position can be locked"): https://apps.apple.com/us/app/xscope-4/id889428659?mt=12 ; xScope guide: https://xscopeapp.com/guide
-3. Digital Color Meter User Guide: https://support.apple.com/guide/digital-color-meter/welcome/mac
-4. ColorSlurp magnifier: https://colorslurp.com/docs/magnifier ; Picky Colors: https://pickycolors.com/ ; Loupe on the App Store: https://apps.apple.com/us/app/loupe/id1535217393
-5. RegionMirror: https://regionmirror.com/ ; ZoneShare: https://zoneshare.app/ ; Conjuly: https://apps.apple.com/app/conjuly/id6758891488
+These stay out, to keep the app small and focused on looking at pixels: OCR, annotations, drawing arrows or text, image editing, a screenshot library kept on disk, cloud sync, accounts, telemetry, subscriptions, AI features. The app collects no data.

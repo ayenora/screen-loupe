@@ -11,18 +11,22 @@ enum ScreenshotExporter {
     /// Capture Source: the Capture Area at its native resolution, without zoom.
     ///
     /// The frame's bytes are copied as they are, tagged with the source display's color space. When
-    /// the area straddles two displays, the part on the other display stays transparent.
+    /// the area straddles two displays, the part on the other display stays transparent. Past
+    /// `ImageBudget` only the area's top-left part.
     static func sourceImage(from frame: CapturedFrame, colorSpace: CGColorSpace) -> CGImage? {
         guard let image = frameImage(frame.pixelBuffer, colorSpace: colorSpace) else { return nil }
         let geometry = frame.geometry
-        if geometry.imageOrigin == .zero, geometry.areaSize == frame.pixelSize {
-            return image
-        }
         let area = geometry.areaSize
-        guard let context = bitmapContext(width: area.width, height: area.height, colorSpace: colorSpace) else {
+        let kept = ImageBudget.fitted(width: area.width, height: area.height)
+        if geometry.imageOrigin == .zero, geometry.areaSize == frame.pixelSize {
+            return kept == (area.width, area.height)
+                ? image : image.cropping(to: CGRect(x: 0, y: 0, width: kept.width, height: kept.height))
+        }
+        guard let context = bitmapContext(width: kept.width, height: kept.height, colorSpace: colorSpace) else {
             return nil
         }
-        context.draw(image, in: geometry.imageRectInAreaImage)
+        // The context is y up: moving the area image down by the rows cut off below keeps its top.
+        context.draw(image, in: geometry.imageRectInAreaImage.offsetBy(dx: 0, dy: CGFloat(kept.height - area.height)))
         return context.makeImage()
     }
 

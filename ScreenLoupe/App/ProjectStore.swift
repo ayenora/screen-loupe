@@ -75,9 +75,11 @@ final class ProjectStore {
             log.error("Importing a reference failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
+        // A larger image shows only its top-left part (`ReferencesController.image(for:)`).
+        let kept = ImageBudget.fitted(width: width, height: height)
         return ReferenceLayer(
             id: id, name: url.lastPathComponent, fileName: fileName,
-            imageSize: CGSize(width: width, height: height))
+            imageSize: CGSize(width: kept.width, height: kept.height))
     }
 
     /// Removes an image the project no longer uses.

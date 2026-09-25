@@ -1,4 +1,13 @@
+import Carbon.HIToolbox
 import MetalKit
+
+extension MTKView {
+    /// Drawable pixels per point: the unit `ZoomPanState` works in, over the view's points. Everything
+    /// drawn over the image or exported from it converts with this.
+    var drawableScale: CGFloat {
+        bounds.width > 0 ? drawableSize.width / bounds.width : (window?.backingScaleFactor ?? 1)
+    }
+}
 
 /// The magnified Capture Area. Draws only when a frame arrives or the zoom/pan changes.
 ///
@@ -8,15 +17,8 @@ import MetalKit
 ///
 /// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel (or a
 /// bare mouse wheel, per Settings), `+`/`-`; `0` fits (docs/product.md, Zoom and pan). With the Color Meter open the cursor is an eyedropper and a
-/// click (without dragging) pins the colour under it.
-extension MTKView {
-    /// Drawable pixels per point: the unit `ZoomPanState` works in, over the view's points. Everything
-    /// drawn over the image or exported from it converts with this.
-    var drawableScale: CGFloat {
-        bounds.width > 0 ? drawableSize.width / bounds.width : (window?.backingScaleFactor ?? 1)
-    }
-}
-
+/// click (without dragging) pins the colour under it. Option-drag copies a region; with the Select
+/// tool on a drag selects and Space-drag pans (docs/product.md, Screenshots).
 final class ViewerView: MTKView {
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
@@ -91,7 +93,9 @@ final class ViewerView: MTKView {
         if let frame = frameStore.latestFrame {
             let geometry = frame.geometry
             let area = CGSize(width: geometry.areaSize.width, height: geometry.areaSize.height)
-            zoomPan.setContent(area, originShift: resizeTracker.originShift(for: geometry))
+            let shift = resizeTracker.originShift(for: geometry)
+            zoomPan.setContent(area, originShift: shift)
+            selection?.areaOriginMoved(by: shift)
             matchColorSpace(ofDisplay: geometry.display.id)
         }
         requestDraw()
@@ -99,12 +103,23 @@ final class ViewerView: MTKView {
 
     /// Copy View: what the Viewer shows now, rendered offscreen, with the pixel grid only when
     /// `showsGrid` (Settings › Screenshots). Tagged with the colour space the Viewer shows it in.
-    /// `nil` without a frame or without Metal.
-    func renderViewImage(showsGrid: Bool) -> CGImage? {
+    /// Just `region` (viewport pixels) when given; else just the Select tool's selection while there
+    /// is one, at the current zoom, even where it reaches beyond the viewport. Past `ImageBudget`
+    /// only the top-left part. `nil` without a frame or without Metal.
+    func renderViewImage(showsGrid: Bool, region: CGRect? = nil) -> CGImage? {
         guard let renderer else { return nil }
         var style = renderer.style
         style.showsGrid = style.showsGrid && showsGrid
-        return renderer.renderImage(renderer.scene(for: self, style: style))
+        var scene = renderer.scene(for: self, style: style)
+        if let region {
+            scene.state.offset = CGPoint(x: scene.state.offset.x - region.minX, y: scene.state.offset.y - region.minY)
+            scene.state.viewportSize = region.size
+            scene.size = region.size
+        } else if let rect = selection?.selection {
+            scene.state = scene.state.cropped(to: rect)
+            scene.size = scene.state.viewportSize
+        }
+        return renderer.renderImage(scene)
     }
 
     private var resizeTracker = AreaResizeTracker()
@@ -127,11 +142,14 @@ final class ViewerView: MTKView {
 
     // MARK: Coordinates
 
-    /// A window location as a drawable pixel, y down: the space `ZoomPanState` works in.
-    private func drawablePoint(_ event: NSEvent) -> CGPoint {
-        let point = convert(event.locationInWindow, from: nil)
+    /// A point in the view as a drawable pixel, y down: the space `ZoomPanState` works in.
+    private func drawablePoint(_ point: CGPoint) -> CGPoint {
         let scale = drawableScale
         return CGPoint(x: point.x * scale, y: (bounds.height - point.y) * scale)
+    }
+
+    private func drawablePoint(_ event: NSEvent) -> CGPoint {
+        drawablePoint(convert(event.locationInWindow, from: nil))
     }
 
     /// The cursor as a drawable pixel when it is over the view, for keyboard zoom around it.
@@ -139,8 +157,7 @@ final class ViewerView: MTKView {
         guard let window else { return nil }
         let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
         guard bounds.contains(point) else { return nil }
-        let scale = drawableScale
-        return CGPoint(x: point.x * scale, y: (bounds.height - point.y) * scale)
+        return drawablePoint(point)
     }
 
     // MARK: Input
@@ -148,8 +165,13 @@ final class ViewerView: MTKView {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// The eyedropper while the Color Meter is open, otherwise an open hand for panning.
-    private var restingCursor: NSCursor { isPicking ? .eyedropper : .openHand }
+    /// The Select tool's crosshair, the eyedropper while the Color Meter is open, otherwise an open
+    /// hand for panning.
+    private var restingCursor: NSCursor {
+        if isSpaceHeld { return .openHand }
+        if selection?.isToolOn == true { return .crosshair }
+        return isPicking ? .eyedropper : .openHand
+    }
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: restingCursor)
@@ -166,7 +188,7 @@ final class ViewerView: MTKView {
 
     override func mouseMoved(with event: NSEvent) {
         inspectPixel(at: event)
-        updateRulerHover(event)
+        updateCursor(at: drawablePoint(event), modifiers: event.modifierFlags)
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -174,29 +196,43 @@ final class ViewerView: MTKView {
         ruler?.hover(at: nil, scale: drawableScale)
     }
 
-    // MARK: Ruler
+    /// ⌥ turns the cursor into the region crosshair at once, without waiting for the mouse to move.
+    override func flagsChanged(with event: NSEvent) {
+        super.flagsChanged(with: event)
+        if let point = cursorPoint { updateCursor(at: point, modifiers: event.modifierFlags) }
+    }
+
+    // MARK: Tools
 
     /// The corner ruler takes presses on its parts before the reference layers, and they before
-    /// panning (docs/product.md, Ruler and References).
+    /// panning (docs/product.md, Ruler and References). An Option-drag comes before all of them,
+    /// and the Select tool, while on, before the reference layers.
     var ruler: RulerController?
     var references: ReferencesController? {
         didSet {
             renderer?.references = { [weak references] in references?.drawable ?? [] }
         }
     }
-    private enum Press { case ruler, reference }
+    var selection: SelectionController?
+    /// Called with an Option-drag's region, in viewport pixels, when the drag ends.
+    var onCopyRegion: ((CGRect) -> Void)?
+
+    private enum Press { case ruler, reference, selection }
     /// Who the current press belongs to; `nil` for panning or picking.
     private var toolPress: Press?
 
-    private func updateRulerHover(_ event: NSEvent) {
-        let point = drawablePoint(event)
+    private func updateCursor(at point: CGPoint, modifiers: NSEvent.ModifierFlags) {
         let scale = drawableScale
-        if let ruler, ruler.isOn {
-            ruler.hover(at: point, scale: scale)
-            if let cursor = RulerController.cursor(for: ruler.part(at: point, scale: scale), dragging: ruler.isDragging)
-            {
-                return cursor.set()
-            }
+        if let ruler, ruler.isOn { ruler.hover(at: point, scale: scale) }
+        if modifiers.contains(.option) || selection?.region != nil { return NSCursor.crosshair.set() }
+        if isSpaceHeld { return restingCursor.set() }
+        if let ruler, ruler.isOn,
+            let cursor = RulerController.cursor(for: ruler.part(at: point, scale: scale), dragging: ruler.isDragging)
+        {
+            return cursor.set()
+        }
+        if let selection, selection.isToolOn {
+            return SelectionController.cursor(for: selection.part(at: point, scale: scale)).set()
         }
         if let references,
             let cursor = ReferencesController.cursor(
@@ -213,20 +249,36 @@ final class ViewerView: MTKView {
         inspector.setViewerPixel(pixel)
     }
 
+    // MARK: Mouse
+
     /// A press becomes a pan once the mouse moves this far; otherwise it is a click.
     private static let dragThreshold: CGFloat = 3
     private var pressLocation: CGPoint?
     private var isPanning = false
 
     override func mouseDown(with event: NSEvent) {
-        if let ruler, ruler.press(at: drawablePoint(event), scale: drawableScale) {
-            toolPress = .ruler
-            updateRulerHover(event)
-            return
+        let point = drawablePoint(event)
+        let scale = drawableScale
+        // Space let go while another window had the keyboard never reached `keyUp`.
+        if isSpaceHeld, !CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_Space)) {
+            isSpaceHeld = false
         }
-        if let references, references.press(at: drawablePoint(event), scale: drawableScale) {
+        if isSpaceHeld {
+            // Space-drag pans, whatever is under the mouse.
+        } else if event.modifierFlags.contains(.option), let selection {
+            selection.beginRegion(at: point)
+            toolPress = .selection
+            return
+        } else if let ruler, ruler.press(at: point, scale: scale) {
+            toolPress = .ruler
+            updateCursor(at: point, modifiers: event.modifierFlags)
+            return
+        } else if let selection, selection.press(at: point, scale: scale) {
+            toolPress = .selection
+            return
+        } else if let references, references.press(at: point, scale: scale) {
             toolPress = .reference
-            updateRulerHover(event)
+            updateCursor(at: point, modifiers: event.modifierFlags)
             return
         }
         pressLocation = event.locationInWindow
@@ -237,12 +289,14 @@ final class ViewerView: MTKView {
         switch toolPress {
         case .ruler?: return ruler?.drag(to: drawablePoint(event), scale: drawableScale) ?? ()
         case .reference?: return references?.drag(to: drawablePoint(event)) ?? ()
+        case .selection?: return selection?.drag(to: drawablePoint(event), scale: drawableScale) ?? ()
         case nil: break
         }
         if !isPanning, let start = pressLocation {
             let moved = hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y)
             guard moved >= Self.dragThreshold else { return }
             isPanning = true
+            spacePanned = isSpaceHeld
             NSCursor.closedHand.push()
             // Catch up with the distance covered before the pan started.
             let scale = drawableScale
@@ -257,11 +311,14 @@ final class ViewerView: MTKView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if toolPress != nil {
+        if let press = toolPress {
             toolPress = nil
-            ruler?.endDrag()
-            references?.endDrag()
-            updateRulerHover(event)
+            switch press {
+            case .ruler: ruler?.endDrag()
+            case .reference: references?.endDrag()
+            case .selection: if let region = selection?.endDrag() { onCopyRegion?(region) }
+            }
+            updateCursor(at: drawablePoint(event), modifiers: event.modifierFlags)
             return
         }
         if isPanning {
@@ -269,7 +326,7 @@ final class ViewerView: MTKView {
             // of this view's cursor rect.
             NSCursor.pop()
             if bounds.contains(convert(event.locationInWindow, from: nil)) { restingCursor.set() }
-        } else if isPicking {
+        } else if isPicking, !isSpaceHeld, selection?.isToolOn != true {
             inspectPixel(at: event)
             onPick?()
         }
@@ -296,13 +353,40 @@ final class ViewerView: MTKView {
         zoomPan.setZoom(zoomPan.state.zoom * (1 + event.magnification), around: drawablePoint(event))
     }
 
+    // MARK: Keys
+
+    /// Space is held with the Select tool on: a drag pans, and letting go freezes only if nothing
+    /// was panned, as a tap of Space does anyway.
+    private var isSpaceHeld = false
+    private var spacePanned = false
+
     override func keyDown(with event: NSEvent) {
         switch event.charactersIgnoringModifiers {
         case "+", "=": zoomPan.stepZoom(1, around: cursorPoint)
         case "-", "_": zoomPan.stepZoom(-1, around: cursorPoint)
         case "0": zoomPan.fit()
-        case " ": NSApp.sendAction(#selector(AppController.toggleFreeze(_:)), to: nil, from: self)
+        case " " where selection?.isToolOn == true:
+            guard !event.isARepeat else { return }
+            isSpaceHeld = true
+            spacePanned = false
+            restingCursor.set()
+        case " ": sendToggleFreeze()
+        case "\u{1b}":
+            // Escape: drops the selection and stops a freeze countdown.
+            selection?.clearSelection()
+            NSApp.sendAction(#selector(AppController.cancelFreezeCountdown(_:)), to: nil, from: self)
         default: super.keyDown(with: event)
         }
+    }
+
+    override func keyUp(with event: NSEvent) {
+        guard event.charactersIgnoringModifiers == " ", isSpaceHeld else { return super.keyUp(with: event) }
+        isSpaceHeld = false
+        if !spacePanned { sendToggleFreeze() }
+        if let point = cursorPoint { updateCursor(at: point, modifiers: event.modifierFlags) }
+    }
+
+    private func sendToggleFreeze() {
+        NSApp.sendAction(#selector(AppController.toggleFreeze(_:)), to: nil, from: self)
     }
 }

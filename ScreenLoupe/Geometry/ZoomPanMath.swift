@@ -54,6 +54,17 @@ struct ZoomPanState: Equatable, Sendable {
         return (x, y)
     }
 
+    /// The view of just `sourceRect` (whole source pixels) at the current zoom: a viewport its size,
+    /// with its top-left corner at the viewport's. For copying the Select tool's selection, which may
+    /// reach beyond the visible viewport.
+    func cropped(to sourceRect: CGRect) -> ZoomPanState {
+        var next = self
+        next.viewportSize = CGSize(
+            width: (sourceRect.width * zoom).rounded(), height: (sourceRect.height * zoom).rounded())
+        next.offset = CGPoint(x: (-sourceRect.minX * zoom).rounded(), y: (-sourceRect.minY * zoom).rounded())
+        return next
+    }
+
     // MARK: Operations
 
     /// Whether the zoom is the one that fits the whole image, as the Fit preset does.
