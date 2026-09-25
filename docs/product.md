@@ -112,7 +112,7 @@ A corner ruler over the image, for measuring in screen pixels at any zoom. The t
 - Drag the line to move the ruler, an arm's end to stretch that arm, the corner to move it while the ends stay. An arm dragged past the corner flips to the other side. Everything moves in whole pixels, so the ends sit on pixel edges.
 - No arm looks shorter than 32 pt, so its handles never touch.
 - Unpinned, the ruler stays where it is in the Viewer while the image pans and zooms under it.
-- On hover a translucent band shows along the line — the part that moves the ruler — and a pin button outside the corner; both stay a moment after the pointer leaves. While the image pans or zooms, an unpinned ruler hides, since it would jump from pixel to pixel, and eases back in once the image settles.
+- On hover a translucent band shows along the line — the part that moves the ruler — and a pin button outside the corner; both stay a moment after the pointer leaves. While the image pans or zooms, an unpinned ruler stays perfectly still in the Viewer, off the pixel grid, with its lengths dimmed as approximate; once the image settles it eases onto the nearest pixel edges, less than a pixel away, and the lengths are exact again. It never hides, also while it is being dragged.
 - The pin button pins the ruler to the pixels under it. Panning and zooming then carry it along, and so does resizing the Capture Area by its left or top edge; it can't be moved, only its arms stretched. Zooming out lengthens an arm that would look too short, and zooming back in returns it to the length it was set to.
 
 ### Crosshair and cursor

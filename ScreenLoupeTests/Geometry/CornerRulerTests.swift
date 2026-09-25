@@ -24,6 +24,41 @@ struct CornerRulerTests {
         #expect(ruler.placement(in: panned, minimum: minimum).corner == CGPoint(x: 12, y: 10))
     }
 
+    @Test func whileTheImageMovesAViewerRulerIsDrawnOffTheGridWhereItWasSet() {
+        let ruler = CornerRuler(anchor: .viewer(corner: CGPoint(x: 83, y: 45), arms: CGSize(width: 101, height: -99)))
+        let free = ruler.freePlacement(in: state, minimum: minimum)
+        #expect(free?.corner == CGPoint(x: 83, y: 45))
+        #expect(free?.arms == CGSize(width: 101, height: -99))
+        var panned = state
+        panned.offset = CGPoint(x: -21, y: 5)
+        #expect(ruler.freePlacement(in: panned, minimum: minimum)?.corner == CGPoint(x: 83, y: 45))
+    }
+
+    @Test func placedWhereItShowsTheFreeRulerStartsExactlyOnItsPixels() {
+        var ruler = CornerRuler(anchor: .viewer(corner: CGPoint(x: 83, y: 45), arms: CGSize(width: 101, height: -99)))
+        let placed = ruler.placement(in: state, minimum: minimum)
+        let corner = state.viewportPoint(forSourcePoint: placed.corner)
+        let arms = CGSize(width: placed.arms.width * state.zoom, height: placed.arms.height * state.zoom)
+        ruler.place(corner: corner, arms: arms)
+        let free = ruler.freePlacement(in: state, minimum: minimum)
+        #expect(free?.corner == corner)
+        #expect(free?.arms == arms)
+        #expect(ruler.placement(in: state, minimum: minimum) == placed)
+    }
+
+    @Test func aFreeArmIsNeverShorterThanTheMinimum() {
+        let ruler = CornerRuler(anchor: .viewer(corner: CGPoint(x: 80, y: 80), arms: CGSize(width: 10, height: -3)))
+        // The shortest arm is 8 source pixels at zoom 8: 64 drawable pixels.
+        #expect(ruler.freePlacement(in: state, minimum: minimum)?.arms == CGSize(width: 64, height: -64))
+    }
+
+    @Test func aPinnedRulerHasNoFreePlacement() {
+        var ruler = CornerRuler(anchor: .image(corner: CGPoint(x: 10, y: 10), arms: CGSize(width: 20, height: 20)))
+        #expect(ruler.freePlacement(in: state, minimum: minimum) == nil)
+        ruler.place(corner: .zero, arms: CGSize(width: 64, height: 64))
+        #expect(ruler.anchor == .image(corner: CGPoint(x: 10, y: 10), arms: CGSize(width: 20, height: 20)))
+    }
+
     @Test func aPinnedRulerMovesWithTheImage() {
         let ruler = CornerRuler(anchor: .image(corner: CGPoint(x: 10, y: 10), arms: CGSize(width: 20, height: 20)))
         var panned = state

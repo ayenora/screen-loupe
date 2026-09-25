@@ -183,16 +183,9 @@ final class ViewerOverlayView: NSView {
     static let rulerColor = NSColor(srgbRed: 1, green: 0.176, blue: 0.584, alpha: 1)
 
     private func drawRuler(drawableScale scale: CGFloat) {
-        guard let ruler, let rulerState = ruler.ruler, ruler.visibility > 0, let drawn = ruler.drawn(scale: scale),
+        guard let ruler, let rulerState = ruler.ruler, let drawn = ruler.drawn(scale: scale),
             let context = NSGraphicsContext.current?.cgContext
         else { return }
-        context.saveGState()
-        context.setAlpha(ruler.visibility)
-        context.beginTransparencyLayer(auxiliaryInfo: nil)
-        defer {
-            context.endTransparencyLayer()
-            context.restoreGState()
-        }
         func point(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x / scale, y: p.y / scale) }
         let corner = point(drawn.corner)
         let horizontalEnd = point(drawn.horizontalEnd)
@@ -260,6 +253,9 @@ final class ViewerOverlayView: NSView {
         let verticalText = Self.length(abs(arms.height), sourceScale: sourceScale)
         let horizontalSize = Self.pillSize(horizontalText)
         let verticalSize = Self.pillSize(verticalText)
+        // Off the pixels the lengths are approximate: dimmed until the ruler is on them.
+        context.saveGState()
+        if !drawn.isOnPixels { context.setAlpha(0.5) }
         Self.drawPill(
             horizontalText,
             center: CGPoint(
@@ -270,6 +266,7 @@ final class ViewerOverlayView: NSView {
             center: CGPoint(
                 x: corner.x + (arms.width > 0 ? -1 : 1) * (verticalSize.width / 2 + 9),
                 y: (corner.y + verticalEnd.y) / 2))
+        context.restoreGState()
 
         if ruler.isHovered {
             let pin = point(drawn.pin)

@@ -64,7 +64,29 @@ struct CornerRuler: Equatable, Sendable, Codable {
         }
     }
 
+    /// Where an unpinned ruler is drawn while the image pans or zooms under it: its place in the
+    /// Viewer as set, off the pixel grid, so it stays still instead of jumping from pixel to pixel.
+    /// The corner and signed arms in drawable pixels; `nil` for a pinned ruler, which moves with
+    /// the image.
+    func freePlacement(in state: ZoomPanState, minimum: CGFloat) -> (corner: CGPoint, arms: CGSize)? {
+        guard case .viewer(let corner, let arms) = anchor else { return nil }
+        let shortest = Self.shortestArm(zoom: state.zoom, minimum: minimum) * state.zoom
+        return (
+            CGPoint(
+                x: min(max(corner.x, 0), state.viewportSize.width), y: min(max(corner.y, 0), state.viewportSize.height)),
+            CGSize(width: Self.arm(arms.width, shortest: shortest), height: Self.arm(arms.height, shortest: shortest))
+        )
+    }
+
     // MARK: Editing
+
+    /// Fixes an unpinned ruler in the Viewer where it is drawn: `corner` and signed `arms` in
+    /// drawable pixels. Its free placement is then exactly what showed, so it doesn't jump when the
+    /// image starts to move.
+    mutating func place(corner: CGPoint, arms: CGSize) {
+        guard case .viewer = anchor else { return }
+        anchor = .viewer(corner: corner, arms: arms)
+    }
 
     /// The Capture Area's top-left corner moved by `shift` source pixels (its left or top edge was
     /// dragged). A pinned ruler stays on its pixels, as the image does; one fixed in the Viewer stays
