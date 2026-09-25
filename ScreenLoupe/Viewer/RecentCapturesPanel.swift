@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): one row
-/// per capture, newest first — thumbnail, what was copied, its size and time, and Delete. Clicking a
-/// row shows that capture in the Viewer. Every size is multiplied by `captures.scale`, so the panel
-/// grows with the column.
+/// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
+/// live view on top, which can't be deleted, then one row per capture, newest first — thumbnail,
+/// what was copied, its size and time, and Delete. Clicking a row shows it in the Viewer. Every
+/// size is multiplied by `captures.scale`, so the panel grows with the column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
 
@@ -21,6 +21,12 @@ struct RecentCapturesPanel: View {
             .padding(.horizontal, 14 * s)
             .padding(.top, 12 * s)
             .padding(.bottom, 8 * s)
+
+            LiveRow(captures: captures)
+                .padding(.horizontal, 8 * s)
+                .padding(.bottom, 6 * s)
+            Divider()
+                .padding(.bottom, 6 * s)
 
             if captures.captures.isEmpty {
                 Text(
@@ -49,6 +55,43 @@ struct RecentCapturesPanel: View {
                 .padding(.vertical, 7 * s)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+/// The live view: what the Capture Area shows now. Chosen whenever no capture shows.
+private struct LiveRow: View {
+    let captures: RecentCaptures
+
+    private var s: CGFloat { captures.scale }
+    private var isShown: Bool { captures.shownID == nil }
+
+    var body: some View {
+        HStack(spacing: 10 * s) {
+            Image(systemName: "viewfinder")
+                .font(.system(size: 20 * s, weight: .regular))
+                .foregroundStyle(isShown ? Color.accentColor : .secondary)
+                .frame(width: 76 * s, height: 50 * s)
+                .background(Color.secondary.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 4 * s))
+                .overlay(RoundedRectangle(cornerRadius: 4 * s).strokeBorder(Color(nsColor: .separatorColor)))
+            VStack(alignment: .leading, spacing: 2 * s) {
+                Text("Live").font(.system(size: 12 * s, weight: .semibold))
+                Text("What the Capture Area shows now")
+                    .font(.system(size: 11 * s))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(6 * s)
+        .background(RoundedRectangle(cornerRadius: 8 * s).fill(isShown ? Color.accentColor.opacity(0.15) : .clear))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8 * s).strokeBorder(isShown ? Color.accentColor : .clear, lineWidth: 1.5)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { captures.show(nil) }
+        .accessibilityAddTraits(isShown ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(named: "Show") { captures.show(nil) }
     }
 }
 
