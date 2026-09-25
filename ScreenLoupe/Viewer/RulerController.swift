@@ -16,6 +16,8 @@ final class RulerController {
         var verticalEnd: CGPoint
         /// The pin button, in the corner's outer (270°) angle.
         var pin: CGPoint
+        /// On whole source pixels, so the lengths are exact; off them while the image moves.
+        var isOnPixels: Bool
     }
 
     /// The shortest an arm looks, so the handles at its ends never touch.
@@ -46,16 +48,21 @@ final class RulerController {
         observers.forEach { $0() }
     }
 
-    /// 0…1. An unpinned ruler stays put while the image pans or zooms under it, so it would jitter
-    /// from pixel to pixel; it hides meanwhile and eases back in once the image settles.
-    private(set) var visibility: CGFloat = 1
+    /// 0…1: how far an unpinned ruler is on its pixels. While the image pans or zooms under it, it
+    /// stays still in the Viewer off the pixel grid (0) instead of jumping from pixel to pixel; once
+    /// the image settles it eases onto the pixels (1). It never hides.
+    private var snap: CGFloat = 1
     private var settleTimer: Timer?
-    private var fadeTask: Task<Void, Never>?
+    private var snapTask: Task<Void, Never>?
+    /// The view and the drawable scale it was last drawn with, to fix the ruler where it showed
+    /// when the image starts to move.
+    private var lastState: ZoomPanState
+    private var lastScale: CGFloat = 1
     private var unhoverTimer: Timer?
     /// How long the pin button stays after the pointer leaves.
     private static let unhoverDelay: TimeInterval = 0.6
     private static let settleDelay: TimeInterval = 0.12
-    private static let fadeDuration: TimeInterval = 0.12
+    private static let snapDuration: TimeInterval = 0.12
 
     private let zoomPan: ZoomPanController
     private let project: ProjectStore
@@ -64,6 +71,7 @@ final class RulerController {
     init(zoomPan: ZoomPanController, project: ProjectStore) {
         self.zoomPan = zoomPan
         self.project = project
+        lastState = zoomPan.state
         ruler = project.project.ruler
     }
 
@@ -77,8 +85,8 @@ final class RulerController {
         drag = nil
         settleTimer?.invalidate()
         unhoverTimer?.invalidate()
-        fadeTask?.cancel()
-        visibility = 1
+        snapTask?.cancel()
+        snap = 1
         changed()
     }
 
@@ -91,22 +99,44 @@ final class RulerController {
     }
 
     func drawn(scale: CGFloat) -> Drawn? {
+        lastState = zoomPan.state
+        lastScale = scale
+        return drawn(in: zoomPan.state, scale: scale)
+    }
+
+    /// Between the free placement and the one on pixels, as far as `snap` says.
+    private func drawn(in state: ZoomPanState, scale: CGFloat) -> Drawn? {
         guard let ruler else { return nil }
-        let state = zoomPan.state
-        let placed = ruler.placement(in: state, minimum: Self.minimumLength * scale)
-        let corner = state.viewportPoint(forSourcePoint: placed.corner)
+        let minimum = Self.minimumLength * scale
+        var placed = ruler.placement(in: state, minimum: minimum)
+        var corner = state.viewportPoint(forSourcePoint: placed.corner)
+        var arms = CGSize(width: placed.arms.width * state.zoom, height: placed.arms.height * state.zoom)
+        if snap < 1, let free = ruler.freePlacement(in: state, minimum: minimum) {
+            func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * snap }
+            corner = CGPoint(x: mix(free.corner.x, corner.x), y: mix(free.corner.y, corner.y))
+            arms = CGSize(width: mix(free.arms.width, arms.width), height: mix(free.arms.height, arms.height))
+            // The lengths it would have on pixels, shown dimmed until it gets there.
+            placed.arms = CGSize(
+                width: Self.signed((arms.width / state.zoom).rounded()),
+                height: Self.signed((arms.height / state.zoom).rounded()))
+        }
         let pinShift = Self.pinDistance * scale / 2.squareRoot()
         return Drawn(
             placement: placed, corner: corner,
-            horizontalEnd: CGPoint(x: corner.x + placed.arms.width * state.zoom, y: corner.y),
-            verticalEnd: CGPoint(x: corner.x, y: corner.y + placed.arms.height * state.zoom),
+            horizontalEnd: CGPoint(x: corner.x + arms.width, y: corner.y),
+            verticalEnd: CGPoint(x: corner.x, y: corner.y + arms.height),
             pin: CGPoint(
-                x: corner.x + (placed.arms.width < 0 ? pinShift : -pinShift),
-                y: corner.y + (placed.arms.height < 0 ? pinShift : -pinShift)))
+                x: corner.x + (arms.width < 0 ? pinShift : -pinShift),
+                y: corner.y + (arms.height < 0 ? pinShift : -pinShift)),
+            isOnPixels: snap >= 1 || ruler.isPinned)
+    }
+
+    /// A zero length keeps pointing right or down, as `CornerRuler` arms do.
+    private static func signed(_ length: CGFloat) -> CGFloat {
+        length == 0 ? 1 : length
     }
 
     func part(at point: CGPoint, scale: CGFloat) -> Part? {
-        // Hidden or fading in, the ruler still takes a press where it is, rather than letting it pan.
         guard let ruler, let drawn = drawn(scale: scale) else { return nil }
         let grab = Self.grabRadius * scale
         if isHovered, distance(point, drawn.pin) <= Self.pinRadius * scale { return .pin }
@@ -151,42 +181,37 @@ final class RulerController {
         changed()
     }
 
-    /// The image panned or zoomed: an unpinned ruler hides until it settles, then eases back in.
+    /// The image panned or zoomed. An unpinned ruler stays where it showed, off the pixel grid, and
+    /// eases onto the pixels once the image settles; also while it is being dragged.
     func viewportChanged() {
         guard let ruler, !ruler.isPinned else { return }
-        fadeTask?.cancel()
-        fadeTask = nil
-        if visibility != 0 {
-            visibility = 0
-            changed()
+        if snap > 0, let shown = drawn(in: lastState, scale: lastScale) {
+            // Fixed where it was drawn, on pixels or on the way there, so it doesn't jump now.
+            self.ruler?.place(
+                corner: shown.corner,
+                arms: CGSize(
+                    width: shown.horizontalEnd.x - shown.corner.x, height: shown.verticalEnd.y - shown.corner.y))
         }
+        snapTask?.cancel()
+        snapTask = nil
+        snap = 0
+        changed()
         settleTimer?.invalidate()
         settleTimer = Timer.scheduledTimer(withTimeInterval: Self.settleDelay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fadeIn() }
+            MainActor.assumeIsolated { self?.easeOntoPixels() }
         }
     }
 
-    /// Fully visible at once, for a press while it was hidden or fading in.
-    private func showNow() {
-        settleTimer?.invalidate()
+    private func easeOntoPixels() {
         settleTimer = nil
-        fadeTask?.cancel()
-        fadeTask = nil
-        guard visibility != 1 else { return }
-        visibility = 1
-        changed()
-    }
-
-    private func fadeIn() {
-        settleTimer = nil
-        fadeTask = Task { [weak self] in
+        snapTask = Task { [weak self] in
             let start = ContinuousClock.now
             while !Task.isCancelled {
                 let elapsed = ContinuousClock.now - start
-                let t = min(1, CGFloat(elapsed / .milliseconds(Int(Self.fadeDuration * 1000))))
+                let t = min(1, CGFloat(elapsed / .milliseconds(Int(Self.snapDuration * 1000))))
                 guard let self else { return }
                 // Ease out: most of the way at once, settling softly.
-                visibility = 1 - (1 - t) * (1 - t)
+                snap = 1 - (1 - t) * (1 - t)
                 changed()
                 if t >= 1 { return }
                 try? await Task.sleep(for: .milliseconds(16))
@@ -198,7 +223,6 @@ final class RulerController {
     /// pinned ruler isn't, so it pans the image.
     func press(at point: CGPoint, scale: CGFloat) -> Bool {
         guard let part = part(at: point, scale: scale) else { return false }
-        showNow()
         switch part {
         case .pin:
             ruler?.togglePin(in: zoomPan.state, minimum: Self.minimumLength * scale)
