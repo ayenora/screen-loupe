@@ -26,6 +26,8 @@ The app is one workflow — **place → zoom → pan → inspect → copy** — 
 A frame above every other window that marks the region being inspected.
 
 - Moved by its line or its grip tab, resized by eight handles on the corners and edges; minimum 64×64 pt.
+- **Snapping with ⌘.** Hold ⌘ while moving or resizing, and an edge that comes within 8 pt of a window's or a display's edge snaps to it, from inside or outside. An edge snaps only to windows beside it: a left edge to a window that spans some of its height. Without ⌘ nothing snaps, and the arrow keys never do.
+- **Fit to a window.** The window button beside the tab, Window › Fit Capture Area to Window…, the menu bar item or the global shortcut: the window under the pointer is tinted, a click makes the area exactly that window, Escape or a click on no window cancels. The click goes to no app, so a tap in the Simulator doesn't happen. It works on a pinned area too: the pin guards against a stray drag, and this is a deliberate command. A closed Viewer opens to show it.
 - Transparent inside: nothing covers the content, and clicks go through to the app underneath.
 - Shows its size in points and pixels (`220 × 150 pt · 440 × 300 px`), so the numbers mean something on Retina and non-Retina displays alike.
 - Arrow keys move it by one pixel, Shift + arrow by ten; Option resizes instead of moving.
@@ -74,7 +76,7 @@ An image holds at most 16 megapixels, as many as 4096 × 4096. A copy or a saved
 A part of the view is copied without resizing the window or panning, in two ways:
 
 - **Option-drag, the quick way.** Hold ⌥ and drag a rectangle in the Viewer; on letting go, that region of the view is on the clipboard ("Region copied"). It is free, not snapped to pixels, and there is nothing to adjust afterwards. While dragging, a label shows the size of the image it copies. A plain drag still pans.
-- **The Select tool, the precise way.** The toolbar's Select button or View › Select (⌘E) turns on a mode like the eyedropper: while it is on, a drag selects instead of panning, and Space-drag pans. The selection always snaps to whole screen pixels, with the grid shown or not, and a label under it gives its size in pixels and its place from the Capture Area's top-left (`12 × 5 px · x 11, y 11`). Its handles resize it and dragging inside moves it. It stays on its pixels when the Capture Area is resized by its left or top edge. While there is a selection, Copy View and Save View (⌘C, ⌘S, the toolbar's buttons, the global Copy View shortcut) take just the selection, at the current zoom, even where it reaches beyond the window; otherwise the whole view. A click outside it or Escape clears it; turning the tool off drops it.
+- **The Select tool, the precise way.** The toolbar's Select button or View › Select (⌘E) turns on a mode like the eyedropper: while it is on, a drag selects instead of panning, and Space-drag pans. The selection always snaps to whole screen pixels, with the grid shown or not, and a label under it gives its size in pixels and its place from the Capture Area's top-left (`12 × 5 px · x 11, y 11`). Its handles resize it and dragging inside moves it. Edit › Select All (⌘A) selects the whole Capture Area, turning the tool on if it is off. It stays on its pixels when the Capture Area is resized by its left or top edge. While there is a selection, Copy View and Save View (⌘C, ⌘S, the toolbar's buttons, the global Copy View shortcut) take just the selection, at the current zoom, even where it reaches beyond the window; otherwise the whole view. A click outside it or Escape clears it; turning the tool off drops it.
 
 ### Freeze frame
 
@@ -93,7 +95,7 @@ Space in the Viewer, the pause button in the toolbar, View › Freeze Frame or t
 The last four pictures copied or saved in the Viewer, kept to study later: take a transient state quickly, then zoom, measure and pick colours on it at leisure instead of on the live view. The toolbar's Recent Captures button opens the panel.
 
 - Every copy and save in the Viewer adds one, newest on top: Copy View and Copy Source, Save View and Save Source, an Option-drag, a selection, and the global Copy View and Copy Source shortcuts. A fifth pushes out the oldest. They are kept in memory only and gone when the app quits.
-- A capture keeps the Capture Area's pixels at native resolution, not the copied image, so every tool works on real screen pixels; a copy of a selection or an Option-drag keeps just the screen pixels it covers. It opens as it was shown: its zoom, pan and selection. The clipboard and the file still get what was asked for.
+- A capture keeps the Capture Area's pixels at native resolution, not the copied image, so every tool works on real screen pixels; a copy keeps just the screen pixels it covers — a view the part the window showed, a selection or an Option-drag their pixels — and only a source copy keeps the whole area. For the whole area at a zoom: ⌘A, then ⌘C. It opens as it was shown: its zoom, pan and selection. The clipboard and the file still get what was asked for.
 - On top, apart from the captures, a Live row that can't be deleted: the live view, what the Capture Area shows now. It is chosen whenever no capture shows, and clicking it goes back to live.
 - Below it one row per capture: a thumbnail of what was copied, what it was (View 800%, Selection, Region, Source), the size of that image in pixels and the time. The × deletes it. The list scrolls when the column is short.
 - Clicking a row shows that capture in the Viewer in place of the live view, with a purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" at its top. Zoom, pan, the ruler, the grid, Select, the Color Meter, Copy and Save work on it as on the live view; each capture keeps its own zoom, pan and selection. Copies made from a capture add none.
@@ -166,7 +168,8 @@ Screen Recording access is needed to see the screen. Without it the Viewer expla
 
 ### Menu bar and app mode
 
-- A menu bar item: Show Viewer, Show/Hide Capture Area, Copy View, Copy Source, Reset Zoom, Keep Viewer on Top, Settings, Quit.
+- A menu bar item: Show Viewer, Show/Hide Capture Area, Fit Capture Area to Window, Keep Viewer on Top, Copy View, Copy Source, Reset Zoom, Settings, the guide, Quit.
+- Help › Screen Loupe Guide (⌘?) and Keyboard Shortcuts open the guide on the project's website; with the menu bar only, the menu bar item has the guide.
 - Closing the Viewer hides the Capture Area too, so no frame is left on screen without its Viewer; the app keeps running in the menu bar.
 - One copy runs at a time: launching another — a second build, `open -n` — brings the running one's Viewer forward and quits.
 
@@ -181,6 +184,7 @@ Work from any app, with defaults chosen to avoid system shortcuts; each can be c
 | `⌃⌥⌘C` | Copy View |
 | `⌃⌥⇧⌘C` | Copy Source |
 | `F13` | Freeze / Resume Viewer |
+| `⌃⌥⌘W` | Fit Capture Area to Window |
 
 ### Settings
 
@@ -190,7 +194,7 @@ Opened with Settings… (⌘,) in the app menu or the menu bar item. Five tabs; 
 - **Capture Area:** frame colour (six presets or any colour), line width 1 or 2 pt, the size label at rest, size units, with a preview. The grip tab is a darker shade of the frame colour with white or black text, whichever reads better.
 - **Viewer:** background dark, light or checkerboard (8 pt squares); the pixel grid's threshold, 4× to 32×, and line colour; crosshair colour; whether a mouse wheel needs ⌘ to zoom. On a trackpad two fingers always pan.
 - **Screenshots:** the folder the save panel opens in; the grid in Copy View and Save View (only while it is visible in the Viewer); file names like macOS screenshots or `ScreenLoupe-View-20260924-142005.png`; revealing saved files in Finder.
-- **Shortcuts:** the five global shortcuts. Click, press the new combination; Escape cancels, Delete clears. A combination already taken moves to the new action. A shortcut needs ⌃, or ⌥ with ⌘, so it can't take ⌘C and the like from other apps; Freeze / Resume Viewer may also be F13–F19 alone. One that macOS refuses is marked in Settings.
+- **Shortcuts:** the six global shortcuts. Click, press the new combination; Escape cancels, Delete clears. A combination already taken moves to the new action. A shortcut needs ⌃, or ⌥ with ⌘, so it can't take ⌘C and the like from other apps; Freeze / Resume Viewer may also be F13–F19 alone. One that macOS refuses is marked in Settings.
 
 ### Kept between launches
 

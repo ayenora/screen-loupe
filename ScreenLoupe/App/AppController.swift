@@ -91,6 +91,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.toggleCaptureArea()
     }
 
+    @objc func pickWindowForCaptureArea(_ sender: Any?) {
+        windows.pickWindow()
+    }
+
     @objc func toggleViewerAlwaysOnTop(_ sender: Any?) {
         windows.viewer.toggleAlwaysOnTop()
     }
@@ -125,6 +129,12 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc func toggleSelectTool(_ sender: Any?) {
         windows.viewer.toggleSelectTool()
+    }
+
+    /// Edit › Select All (⌘A) when no text field has the focus: the Select tool takes the whole
+    /// Capture Area.
+    @objc func selectAll(_ sender: Any?) {
+        windows.viewer.selectWholeArea()
     }
 
     @objc func sizeViewerToArea(_ sender: Any?) {
@@ -163,6 +173,17 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
     #endif
 
+    /// The guide on the project's website (docs/guide.md).
+    private static let guide = "https://ayenora.github.io/screen-loupe/guide"
+
+    @objc func showGuide(_ sender: Any?) {
+        NSWorkspace.shared.open(URL(string: Self.guide)!)
+    }
+
+    @objc func showKeyboardShortcuts(_ sender: Any?) {
+        NSWorkspace.shared.open(URL(string: Self.guide + "#keyboard-shortcuts")!)
+    }
+
     @objc func showSettings(_ sender: Any?) {
         let controller = settingsWindow ?? SettingsWindowController(settings: settings, shortcuts: shortcuts)
         settingsWindow = controller
@@ -188,6 +209,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         case .copyView: windows.export.copyView()
         case .copySource: windows.export.copySource()
         case .toggleFreeze: windows.toggleFreeze(hint: frozenFromAnotherAppHint())
+        case .pickWindow: windows.pickWindow()
         }
     }
 
@@ -228,6 +250,8 @@ extension AppController: NSMenuItemValidation {
         case #selector(freezeNow(_:)), #selector(freezeAfterDelay(_:)):
             guard builtWindows?.viewer.isShowingCapture != true else { return false }
             return builtWindows?.isFrozen == true || canExport
+        case #selector(NSText.selectAll(_:)):
+            return builtWindows?.viewer.showsCapture == true
         case #selector(toggleSelectTool(_:)):
             menuItem.state = builtWindows?.viewer.isSelectToolOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true

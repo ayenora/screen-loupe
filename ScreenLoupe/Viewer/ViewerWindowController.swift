@@ -142,6 +142,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.selection.toggleTool()
     }
 
+    func selectWholeArea() {
+        content.selection.selectAll()
+    }
+
     // MARK: Recent Captures
 
     /// Whether a recent capture shows in place of the live view (docs/product.md, Recent Captures).

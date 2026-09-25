@@ -64,6 +64,16 @@ final class SelectionController {
         changed()
     }
 
+    /// Edit › Select All (⌘A): the whole Capture Area, turning the tool on if it is off.
+    func selectAll() {
+        let size = zoomPan.state.contentSize
+        guard size.width > 0, size.height > 0 else { return }
+        isToolOn = true
+        stored = CGRect(origin: .zero, size: size)
+        drag = nil
+        changed()
+    }
+
     /// The Capture Area's top-left corner moved by `shift` source pixels (its left or top edge was
     /// dragged): the selection stays on its pixels, as the image does.
     func areaOriginMoved(by shift: CGPoint) {

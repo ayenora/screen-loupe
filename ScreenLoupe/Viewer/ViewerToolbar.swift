@@ -113,8 +113,9 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         zoomLabel.delegate = self
         zoomLabel.widthAnchor.constraint(equalToConstant: 64).isActive = true
 
-        configure(copyButton, symbol: "doc.on.doc", title: "Copy View", action: #selector(copyClicked(_:)))
-        configure(saveButton, symbol: "square.and.arrow.down", title: "Save View…", action: #selector(saveClicked(_:)))
+        configure(copyButton, symbol: "doc.on.doc", title: "Copy View (⌘C)", action: #selector(copyClicked(_:)))
+        configure(
+            saveButton, symbol: "square.and.arrow.down", title: "Save View… (⌘S)", action: #selector(saveClicked(_:)))
         configure(onTopButton, symbol: "pin", title: "Keep on Top", action: #selector(onTopClicked(_:)))
         onTopButton.setButtonType(.pushOnPushOff)
         configure(freezeButton, symbol: "pause", title: "Freeze Frame (Space)", action: #selector(freezeClicked(_:)))
@@ -132,11 +133,11 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
         pointerMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
         configure(
-            selectButton, symbol: "rectangle.dashed", title: "Select — drag to select, ⌘C copies it",
+            selectButton, symbol: "rectangle.dashed", title: "Select (⌘E) — drag to select, ⌘C copies it",
             action: #selector(selectClicked(_:)))
         selectButton.setButtonType(.pushOnPushOff)
         selectMenuItem.action = #selector(AppController.toggleSelectTool(_:))
-        configure(rulerButton, symbol: "ruler", title: "Ruler", action: #selector(rulerClicked(_:)))
+        configure(rulerButton, symbol: "ruler", title: "Ruler (⌘R)", action: #selector(rulerClicked(_:)))
         rulerButton.setButtonType(.pushOnPushOff)
         rulerMenuItem.action = #selector(AppController.toggleMeasuringRuler(_:))
         for toggle in Toggle.allCases {

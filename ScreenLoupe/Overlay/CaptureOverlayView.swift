@@ -28,6 +28,9 @@ final class CaptureOverlayView: NSView {
     /// Brings the Viewer forward, for when a click in the area sent another app's window over it.
     private let raiseButton = TabButtonView(
         symbol: "arrow.up.forward.app", onSymbol: "arrow.up.forward.app", label: "Show Viewer", onLabel: "Show Viewer")
+    /// Picks a window for the area to take.
+    private let pickButton = TabButtonView(
+        symbol: "macwindow", onSymbol: "macwindow", label: "Fit Area to Window", onLabel: "Fit Area to Window")
     private var isDragging = false
     private var isRevealed = false
 
@@ -45,6 +48,7 @@ final class CaptureOverlayView: NSView {
             tab.style = style
             pinButton.style = style
             raiseButton.style = style
+            pickButton.style = style
             label.alphaValue = labelAlpha
             needsDisplay = true
         }
@@ -56,10 +60,11 @@ final class CaptureOverlayView: NSView {
         tab.style = style
         pinButton.style = style
         raiseButton.style = style
+        pickButton.style = style
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        for subview in [decorations, label, positionBox, tab, pinButton, raiseButton] as [NSView] {
+        for subview in [decorations, label, positionBox, tab, pinButton, raiseButton, pickButton] as [NSView] {
             addSubview(subview)
         }
         decorations.alphaValue = 0
@@ -67,6 +72,7 @@ final class CaptureOverlayView: NSView {
         positionBox.alphaValue = 0
         pinButton.alphaValue = 0
         raiseButton.alphaValue = 0
+        pickButton.alphaValue = 0
     }
 
     @available(*, unavailable)
@@ -92,6 +98,7 @@ final class CaptureOverlayView: NSView {
         positionBox.frame = local(layout.positionRect)
         pinButton.frame = local(layout.pinRect)
         raiseButton.frame = local(layout.raiseRect)
+        pickButton.frame = local(layout.pickRect)
         tab.text = tabText
         tab.showsShadow = layout.tabPlacement == .inside
 
@@ -118,6 +125,7 @@ final class CaptureOverlayView: NSView {
             positionBox.animator().alphaValue = revealed ? 1 : 0
             pinButton.animator().alphaValue = revealed ? 1 : 0
             raiseButton.animator().alphaValue = revealed ? 1 : 0
+            pickButton.animator().alphaValue = revealed ? 1 : 0
             label.animator().alphaValue = labelAlpha
         }
     }
@@ -283,7 +291,7 @@ private final class GripTabView: NSView {
     }
 }
 
-/// A square button beside the tab — the pin, the raise button: the tab's colour with an outlined
+/// A square button beside the tab — the pin, the raise and pick buttons: the tab's colour with an outlined
 /// symbol, or the accent with the filled one while it is on.
 private final class TabButtonView: NSView {
     var style: FrameStyle? { didSet { needsDisplay = true } }

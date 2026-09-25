@@ -48,7 +48,7 @@ Ordered by how much each strengthens the core experience.
 
 ### Each needs its own decision
 
-- **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not in scope".
+- **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not in scope". It uses Original Cursor in the Capture (product.md, Crosshair and cursor), so a recorded animation shows the pointer that drives it.
 - **Act through the Viewer.** Clicks and scrolls in the Viewer go to the real spot on screen, making the Viewer a true zoomed monitor. Needs the Accessibility permission to post events and has to feel safe; a bigger design question than the rest.
 - **HDR/EDR content.** The capture is SDR today, so HDR highlights are clipped in the Viewer and the Color Meter.
 

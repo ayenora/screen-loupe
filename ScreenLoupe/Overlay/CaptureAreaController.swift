@@ -11,6 +11,8 @@ final class CaptureAreaController {
     var onMouseMoved: (() -> Void)?
     /// Called by the frame's raise button: bring the Viewer forward.
     var onRaiseViewer: (() -> Void)?
+    /// Called by the frame's pick button: pick a window for the area.
+    var onPickWindow: (() -> Void)?
 
     /// What to capture for the current rect, or `nil` when it is on no display.
     var captureGeometry: CaptureGeometry? {
@@ -27,6 +29,8 @@ final class CaptureAreaController {
         var target: OverlayHitTarget
         var startMouse: CGPoint
         var startRect: CGRect
+        /// Window and display edges to snap to while ⌘ is held, read on the first such move.
+        var snapTargets: [CGRect]?
     }
     private var drag: Drag?
     private var isHovering = false
@@ -34,6 +38,7 @@ final class CaptureAreaController {
     private var hideTimer: Timer?
     private var eventMonitors: [Any] = []
     private var keyObservers: [NSObjectProtocol] = []
+    private var picker: WindowPicker?
 
     private static let defaultSize = CGSize(width: 320, height: 200)
 
@@ -112,6 +117,28 @@ final class CaptureAreaController {
         let centerX = screen.minX + screen.width * 0.3
         return CGRect(
             x: centerX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height)
+    }
+
+    // MARK: Picking a window
+
+    /// Lets the user pick a window, then makes the area that window, shown, and calls `onPicked`.
+    /// Pinned or not: the pin guards against a stray drag, and picking is a deliberate command.
+    func pickWindow(onPicked: @escaping () -> Void) {
+        guard picker == nil, let converter else { return }
+        let picker = WindowPicker(windows: ScreenWindows.frames(converter: converter), tint: view.style.accent) {
+            [weak self] picked in
+            guard let self else { return }
+            self.picker = nil
+            guard let picked else { return }
+            let minimum = CaptureAreaEditing.minimumSize
+            var rect = picked
+            rect.size = CGSize(width: max(rect.width, minimum.width), height: max(rect.height, minimum.height))
+            applyEdited(rect, snap: .edges, persist: true)
+            show()
+            onPicked()
+        }
+        self.picker = picker
+        picker.start()
     }
 
     // MARK: Applying a rect
@@ -247,6 +274,10 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
             onRaiseViewer?()
             return
         }
+        if target == .pickWindow {
+            onPickWindow?()
+            return
+        }
         // A pinned frame stays put. Otherwise the window only receives presses on its drawn pixels,
         // and anything that isn't a handle moves it.
         guard !isPinned else { return }
@@ -257,15 +288,27 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
     func overlayView(_ view: CaptureOverlayView, mouseDraggedTo point: CGPoint) {
         guard let drag else { return }
         let delta = CGVector(dx: point.x - drag.startMouse.x, dy: point.y - drag.startMouse.y)
+        // With ⌘ held, edges snap to windows and displays (docs/product.md, Capture Area).
+        let targets = NSEvent.modifierFlags.contains(.command) ? snapTargets() : []
         switch drag.target {
         case .move:
-            applyEdited(drag.startRect.offsetBy(dx: delta.dx, dy: delta.dy), snap: .move, persist: false)
+            let moved = drag.startRect.offsetBy(dx: delta.dx, dy: delta.dy)
+            applyEdited(EdgeSnapping.moved(moved, targets: targets), snap: .move, persist: false)
         case .resize(let handle):
-            applyEdited(
-                CaptureAreaEditing.resized(drag.startRect, handle: handle, by: delta), snap: .edges, persist: false)
-        case .pin, .raiseViewer:
+            let resized = CaptureAreaEditing.resized(drag.startRect, handle: handle, by: delta)
+            applyEdited(EdgeSnapping.resized(resized, handle: handle, targets: targets), snap: .edges, persist: false)
+        case .pin, .raiseViewer, .pickWindow:
             break
         }
+    }
+
+    /// Read once per drag: windows don't move while the frame is dragged.
+    private func snapTargets() -> [CGRect] {
+        if let targets = drag?.snapTargets { return targets }
+        guard let converter else { return [] }
+        let targets = ScreenWindows.frames(converter: converter) + converter.layout.displays.map(\.globalFrame)
+        drag?.snapTargets = targets
+        return targets
     }
 
     func overlayViewMouseUp(_ view: CaptureOverlayView) {

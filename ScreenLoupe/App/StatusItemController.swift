@@ -11,6 +11,8 @@ final class StatusItemController {
         let menu = NSMenu()
         menu.addItem(Self.item("Show Viewer", #selector(AppController.showViewer(_:)), target))
         menu.addItem(Self.item("Show Capture Area", #selector(AppController.toggleCaptureArea(_:)), target))
+        menu.addItem(
+            Self.item("Fit Capture Area to Window…", #selector(AppController.pickWindowForCaptureArea(_:)), target))
         menu.addItem(Self.item("Keep Viewer on Top", #selector(AppController.toggleViewerAlwaysOnTop(_:)), target))
         menu.addItem(.separator())
         menu.addItem(Self.item("Copy View", #selector(AppController.copyView(_:)), target))
@@ -18,6 +20,8 @@ final class StatusItemController {
         menu.addItem(Self.item("Reset Zoom", #selector(AppController.resetZoom(_:)), target))
         menu.addItem(.separator())
         menu.addItem(Self.item("Settings…", #selector(AppController.showSettings(_:)), target))
+        // Menu bar only, the app has no Help menu: the guide is reached from here.
+        menu.addItem(Self.item("Screen Loupe Guide", #selector(AppController.showGuide(_:)), target))
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Screen Loupe", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         item.menu = menu

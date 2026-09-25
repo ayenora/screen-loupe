@@ -58,11 +58,12 @@ struct Shortcuts: Codable, Equatable, Sendable {
         keyCode: kVK_ANSI_C, modifiers: [.control, .option, .shift, .command], key: "C")
     /// F13 alone: no modifier reaches the app the mouse is held down in.
     var toggleFreeze: Shortcut? = Shortcut(keyCode: kVK_F13, modifiers: [], key: "F13")
+    var pickWindow: Shortcut? = Shortcut(keyCode: kVK_ANSI_W, modifiers: [.control, .option, .command], key: "W")
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze
+        case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze, pickWindow
     }
 
     init(from decoder: Decoder) throws {
@@ -78,6 +79,7 @@ struct Shortcuts: Codable, Equatable, Sendable {
         copyView = shortcut(.copyView, d.copyView)
         copySource = shortcut(.copySource, d.copySource)
         toggleFreeze = shortcut(.toggleFreeze, d.toggleFreeze)
+        pickWindow = shortcut(.pickWindow, d.pickWindow)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -87,11 +89,12 @@ struct Shortcuts: Codable, Equatable, Sendable {
         try c.encode(copyView, forKey: .copyView)
         try c.encode(copySource, forKey: .copySource)
         try c.encode(toggleFreeze, forKey: .toggleFreeze)
+        try c.encode(pickWindow, forKey: .pickWindow)
     }
 }
 
 enum ShortcutAction: CaseIterable, Sendable {
-    case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze
+    case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze, pickWindow
 
     var title: String {
         switch self {
@@ -100,6 +103,7 @@ enum ShortcutAction: CaseIterable, Sendable {
         case .copyView: "Copy View"
         case .copySource: "Copy Source"
         case .toggleFreeze: "Freeze / Resume Viewer"
+        case .pickWindow: "Fit Capture Area to Window"
         }
     }
 
@@ -113,6 +117,7 @@ enum ShortcutAction: CaseIterable, Sendable {
         case .copyView: \.copyView
         case .copySource: \.copySource
         case .toggleFreeze: \.toggleFreeze
+        case .pickWindow: \.pickWindow
         }
     }
 }

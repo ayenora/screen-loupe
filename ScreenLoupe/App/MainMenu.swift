@@ -12,6 +12,9 @@ enum MainMenu {
         let window = windowMenu(target: target)
         menu.addItem(submenuItem(window))
         NSApp.windowsMenu = window
+        let help = helpMenu(target: target)
+        menu.addItem(submenuItem(help))
+        NSApp.helpMenu = help
         #if DEBUG
             menu.addItem(submenuItem(debugMenu(target: target)))
         #endif
@@ -124,6 +127,10 @@ enum MainMenu {
         let area = menu.addItem(
             withTitle: "Show Capture Area", action: #selector(AppController.toggleCaptureArea(_:)), keyEquivalent: "")
         area.target = target
+        let pick = menu.addItem(
+            withTitle: "Fit Capture Area to Window…", action: #selector(AppController.pickWindowForCaptureArea(_:)),
+            keyEquivalent: "")
+        pick.target = target
         let onTop = menu.addItem(
             withTitle: "Keep Viewer on Top", action: #selector(AppController.toggleViewerAlwaysOnTop(_:)),
             keyEquivalent: "")
@@ -131,6 +138,19 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        return menu
+    }
+
+    /// The guide lives on the project's website (docs/guide.md).
+    private static func helpMenu(target: AppController) -> NSMenu {
+        let menu = NSMenu(title: "Help")
+        let guide = menu.addItem(
+            withTitle: "Screen Loupe Guide", action: #selector(AppController.showGuide(_:)), keyEquivalent: "?")
+        guide.target = target
+        let shortcuts = menu.addItem(
+            withTitle: "Keyboard Shortcuts", action: #selector(AppController.showKeyboardShortcuts(_:)),
+            keyEquivalent: "")
+        shortcuts.target = target
         return menu
     }
 

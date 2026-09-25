@@ -63,6 +63,7 @@ final class WindowManager {
         captureArea.onMouseMoved = { [weak self] in self?.trackCursor() }
         // The frame's raise button: a click in the area may have sent another app's window over the Viewer.
         captureArea.onRaiseViewer = { [weak self] in self?.showViewer() }
+        captureArea.onPickWindow = { [weak self] in self?.pickWindow() }
         viewer.placeOnFirstLaunch(beside: captureArea.captureRect)
     }
 
@@ -95,6 +96,14 @@ final class WindowManager {
         viewer.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
         updateCapture()
+    }
+
+    /// Makes the Capture Area a window the user picks; a closed Viewer opens to show it.
+    func pickWindow() {
+        captureArea.pickWindow { [weak self] in
+            guard let self, !isViewerOpen else { return }
+            showViewer()
+        }
     }
 
     func toggleCaptureArea() {
