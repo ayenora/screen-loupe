@@ -61,6 +61,8 @@ final class WindowManager {
             self?.trackCursor()
         }
         captureArea.onMouseMoved = { [weak self] in self?.trackCursor() }
+        // The frame's raise button: a click in the area may have sent another app's window over the Viewer.
+        captureArea.onRaiseViewer = { [weak self] in self?.showViewer() }
         viewer.placeOnFirstLaunch(beside: captureArea.captureRect)
     }
 

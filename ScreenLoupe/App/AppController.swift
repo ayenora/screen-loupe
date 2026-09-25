@@ -23,7 +23,18 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var observers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        settings.observe(\.showsDockIcon) { [weak self] in self?.applyDockIcon($0) }
+        // One copy at a time: two would fight over the global shortcuts and the settings. A second
+        // launch — another build of the app, `open -n` — hands over to the running one and quits.
+        // Opening the running app's bundle reopens it, which brings its Viewer forward.
+        if let running = NSRunningApplication.runningApplications(
+            withBundleIdentifier: Bundle.main.bundleIdentifier ?? ""
+        ).first(where: { $0 != .current }), let url = running.bundleURL {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            }
+            return
+        }
+        settings.observe(\.hasDockIcon) { [weak self] in self?.applyDockIcon($0) }
         NSApp.mainMenu = MainMenu.make(target: self)
         statusItem = StatusItemController(target: self)
         shortcuts.onAction = { [weak self] action in self?.perform(action) }
@@ -164,10 +175,41 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// Menu bar only: no Dock icon and no main menu bar. Switching keeps the app active, so an open
     /// Settings window stays in front.
     private func applyDockIcon(_ showsDockIcon: Bool) {
+        // Asked before the switch: macOS deactivates the app while its policy changes.
+        let wasActive = NSApp.isActive
+        // Keep on Top going off over another app's full screen: the Viewer steps out of that Space
+        // first, and that app keeps the focus; activating here would switch away from it.
+        let fullScreenApp = showsDockIcon ? builtWindows?.viewer.stepOutOfFullScreenSpace() : nil
         NSApp.setActivationPolicy(showsDockIcon ? .regular : .accessory)
-        if NSApp.isActive || settingsWindow?.window?.isVisible == true {
+        if let fullScreenApp {
+            fullScreenApp.activate()
+        } else if wasActive || settingsWindow?.window?.isVisible == true {
             NSApp.activate()
+            reactivateIfDeactivated()
         }
+    }
+
+    private var reactivation: NSObjectProtocol?
+
+    /// Switching to the menu bar only can deactivate the app a moment after the switch, when the
+    /// activation just asked for has already run. For half a second a deactivation is undone, not
+    /// cooperatively: by then another app is active and would keep the focus.
+    private func reactivateIfDeactivated() {
+        if let reactivation { NotificationCenter.default.removeObserver(reactivation) }
+        reactivation = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                NSApp.activate(ignoringOtherApps: true)
+                self?.stopReactivating()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.stopReactivating() }
+    }
+
+    private func stopReactivating() {
+        if let reactivation { NotificationCenter.default.removeObserver(reactivation) }
+        reactivation = nil
     }
 
     private func perform(_ action: ShortcutAction) {
@@ -237,4 +279,10 @@ extension AppController: NSMenuDelegate {
         let editsText = NSApp.keyWindow?.firstResponder is NSText
         menu.items.first { $0.action == #selector(NSText.copy(_:)) }?.title = editsText ? "Copy" : "Copy View"
     }
+}
+
+extension Settings {
+    /// The Dock icon shows unless the app is set to the menu bar only, or Keep Viewer on Top is on:
+    /// macOS lets only an app without one float a window over another app's full-screen Space.
+    var hasDockIcon: Bool { showsDockIcon && !viewerAlwaysOnTop }
 }

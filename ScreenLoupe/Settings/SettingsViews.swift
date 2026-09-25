@@ -24,7 +24,8 @@ struct GeneralSettingsView: View {
                 // Approving the login item happens in System Settings.
                 loginStatus = SMAppService.mainApp.status
             }
-            SettingsRow("Show in", note: "Menu bar only hides the Dock icon.") {
+            SettingsRow("Show in", note: "Menu bar only hides the Dock icon. Keep Viewer on Top hides it too while on.")
+            {
                 Picker("Show in", selection: store.binding(\.showsDockIcon)) {
                     Text("Dock and menu bar").tag(true)
                     Text("Menu bar only").tag(false)

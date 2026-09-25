@@ -188,7 +188,7 @@ final class ViewerContentView: NSStackView {
         guard let image = viewerView.renderViewImage(showsGrid: settings.settings.gridInCopyView, region: region),
             ScreenshotExporter.copy(image)
         else { return NSSound.beep() }
-        captureKeeper(.region, image: image)?()
+        captureKeeper(.region(region), image: image)?()
         showToast("Region copied")
     }
 
@@ -198,27 +198,40 @@ final class ViewerContentView: NSStackView {
     var isShowingCapture: Bool { captures.shownID != nil }
 
     /// What a copy or save was made of, for its recent capture.
-    enum CaptureKind {
-        case view, source, region
+    enum CaptureKind: Equatable {
+        case view, source
+        /// An Option-drag's region, in viewport pixels.
+        case region(CGRect)
     }
 
     /// Keeps the picture `image` was just made from as a recent capture (docs/product.md, Recent
     /// Captures): the returned call adds it, now for a copy, once written for a save. The frame and
-    /// how the Viewer shows it are taken now. `nil` while a recent capture shows: copies made from
-    /// one add none.
+    /// how the Viewer shows it are taken now; a selection or a region keeps just its pixels, framed
+    /// as it was. `nil` while a recent capture shows: copies made from one add none.
     func captureKeeper(_ kind: CaptureKind, image: CGImage) -> (() -> Void)? {
         guard !isShowingCapture, let frame = frameStore.latestFrame else { return nil }
         let state = zoomPan.state
-        let name =
-            switch kind {
-            case .view: selection.selection != nil ? "Selection" : "View · \(Int((state.zoom * 100).rounded()))%"
-            case .source: "Source"
-            case .region: "Region"
-            }
+        let name: String
+        let area: CGRect?
+        switch kind {
+        case .view:
+            area = selection.selection
+            name = area != nil ? "Selection" : "View · \(Int((state.zoom * 100).rounded()))%"
+        case .source:
+            area = nil
+            name = "Source"
+        case .region(let region):
+            area = ViewRegion.sourceRect(of: region, in: state)
+            name = "Region"
+            guard area != nil else { return nil }
+        }
+        // A cut picture starts at the area's corner: the same pixels stay where they were.
+        let origin = area?.origin ?? .zero
+        let offset = CGPoint(x: state.offset.x + origin.x * state.zoom, y: state.offset.y + origin.y * state.zoom)
         guard
             let capture = RecentCaptures.capture(
-                of: frame, kind: name, image: image, zoom: state.zoom, offset: state.offset,
-                selection: selection.keptSelection)
+                of: frame, area: area, kind: name, image: image, zoom: state.zoom, offset: offset,
+                selection: area == nil ? selection.keptSelection : nil)
         else { return nil }
         return { [weak self] in self?.captures.add(capture) }
     }

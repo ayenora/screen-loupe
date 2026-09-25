@@ -87,4 +87,15 @@ enum ViewRegion {
         guard maxX - minX >= 1, maxY - minY >= 1 else { return nil }
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
+
+    /// The whole source pixels `region` (viewport pixels) touches, inside the image: what a recent
+    /// capture of the region keeps. `nil` when it covers none of the image.
+    static func sourceRect(of region: CGRect, in state: ZoomPanState) -> CGRect? {
+        let a = state.sourcePoint(forViewportPoint: CGPoint(x: region.minX, y: region.minY))
+        let b = state.sourcePoint(forViewportPoint: CGPoint(x: region.maxX, y: region.maxY))
+        let rect = CGRect(
+            x: a.x.rounded(.down), y: a.y.rounded(.down), width: b.x.rounded(.up) - a.x.rounded(.down),
+            height: b.y.rounded(.up) - a.y.rounded(.down))
+        return PixelSelection.clamped(rect, to: state.contentSize)
+    }
 }

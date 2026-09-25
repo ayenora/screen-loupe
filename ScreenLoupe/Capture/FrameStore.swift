@@ -12,11 +12,18 @@ struct CapturedFrame: @unchecked Sendable {
         PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
     }
 
-    /// The frame copied into a buffer of its own, cut to `ImageBudget`, to keep as a recent capture.
-    /// The stream's buffers come from a small pool it reuses; holding on to them would starve it.
+    /// The frame copied into a buffer of its own, cut to `area` (whole pixels of the Capture Area,
+    /// for a selection or a region) and to `ImageBudget`, to keep as a recent capture. The stream's
+    /// buffers come from a small pool it reuses; holding on to them would starve it.
     /// IOSurface-backed and Metal-compatible, so it is drawn like a live frame.
-    func copiedForKeeping() -> CapturedFrame? {
-        guard let kept = geometry.fittedToImageBudget() else { return nil }
+    func copiedForKeeping(area: CGRect? = nil) -> CapturedFrame? {
+        var cut = geometry
+        var offset = PixelSize(width: 0, height: 0)
+        if let area {
+            guard let cropped = geometry.cropped(toArea: area) else { return nil }
+            (cut, offset) = cropped
+        }
+        guard let kept = cut.fittedToImageBudget() else { return nil }
         let width = kept.outputSize.width
         let height = kept.outputSize.height
         let attributes: [CFString: Any] = [
@@ -40,9 +47,10 @@ struct CapturedFrame: @unchecked Sendable {
         }
         let fromRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let toRow = CVPixelBufferGetBytesPerRow(copy)
-        // The kept image is the top-left part of the captured one.
+        // The kept image starts at `offset` in the captured one.
+        let start = from.advanced(by: offset.height * fromRow + offset.width * 4)
         for row in 0..<height {
-            memcpy(to.advanced(by: row * toRow), from.advanced(by: row * fromRow), width * 4)
+            memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
         }
         return CapturedFrame(pixelBuffer: copy, geometry: kept)
     }

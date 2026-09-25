@@ -24,14 +24,17 @@ final class CaptureOverlayView: NSView {
     private let tab = GripTabView()
     private let label = SizeLabelView()
     private let positionBox = PositionBoxView()
-    private let pinButton = PinButtonView()
+    private let pinButton = TabButtonView(symbol: "pin", onSymbol: "pin.fill", label: "Pin", onLabel: "Unpin")
+    /// Brings the Viewer forward, for when a click in the area sent another app's window over it.
+    private let raiseButton = TabButtonView(
+        symbol: "arrow.up.forward.app", onSymbol: "arrow.up.forward.app", label: "Show Viewer", onLabel: "Show Viewer")
     private var isDragging = false
     private var isRevealed = false
 
     /// Pinned: no band or handles, and the tab's pin is filled.
     var isPinned = false {
         didSet {
-            pinButton.isPinned = isPinned
+            pinButton.isOn = isPinned
             decorations.alphaValue = decorationsAlpha
         }
     }
@@ -41,6 +44,7 @@ final class CaptureOverlayView: NSView {
             decorations.style = style
             tab.style = style
             pinButton.style = style
+            raiseButton.style = style
             label.alphaValue = labelAlpha
             needsDisplay = true
         }
@@ -51,16 +55,18 @@ final class CaptureOverlayView: NSView {
         decorations.style = style
         tab.style = style
         pinButton.style = style
+        raiseButton.style = style
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        for subview in [decorations, label, positionBox, tab, pinButton] as [NSView] {
+        for subview in [decorations, label, positionBox, tab, pinButton, raiseButton] as [NSView] {
             addSubview(subview)
         }
         decorations.alphaValue = 0
         tab.alphaValue = 0
         positionBox.alphaValue = 0
         pinButton.alphaValue = 0
+        raiseButton.alphaValue = 0
     }
 
     @available(*, unavailable)
@@ -85,6 +91,7 @@ final class CaptureOverlayView: NSView {
         positionBox.lines = positionLines
         positionBox.frame = local(layout.positionRect)
         pinButton.frame = local(layout.pinRect)
+        raiseButton.frame = local(layout.raiseRect)
         tab.text = tabText
         tab.showsShadow = layout.tabPlacement == .inside
 
@@ -110,6 +117,7 @@ final class CaptureOverlayView: NSView {
             tab.animator().alphaValue = revealed ? 1 : 0
             positionBox.animator().alphaValue = revealed ? 1 : 0
             pinButton.animator().alphaValue = revealed ? 1 : 0
+            raiseButton.animator().alphaValue = revealed ? 1 : 0
             label.animator().alphaValue = labelAlpha
         }
     }
@@ -275,24 +283,39 @@ private final class GripTabView: NSView {
     }
 }
 
-/// The pin button beside the tab: the tab's colour with an outlined pin, or the accent with a
-/// filled pin while the frame is pinned.
-private final class PinButtonView: NSView {
+/// A square button beside the tab — the pin, the raise button: the tab's colour with an outlined
+/// symbol, or the accent with the filled one while it is on.
+private final class TabButtonView: NSView {
     var style: FrameStyle? { didSet { needsDisplay = true } }
-    var isPinned = false { didSet { needsDisplay = true } }
+    var isOn = false { didSet { needsDisplay = true } }
+    private let symbol: String
+    private let onSymbol: String
+    private let label: String
+    private let onLabel: String
+
+    init(symbol: String, onSymbol: String, label: String, onLabel: String) {
+        self.symbol = symbol
+        self.onSymbol = onSymbol
+        self.label = label
+        self.onLabel = onLabel
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let style else { return }
-        (isPinned ? style.accent : style.tabFill).setFill()
+        (isOn ? style.accent : style.tabFill).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
-        let tint = isPinned ? (style.handleFill == .white ? NSColor.white : .black) : style.onTab
+        let tint = isOn ? (style.handleFill == .white ? NSColor.white : .black) : style.onTab
         let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
         guard
             let pin = NSImage(
-                systemSymbolName: isPinned ? "pin.fill" : "pin", accessibilityDescription: isPinned ? "Unpin" : "Pin")?
+                systemSymbolName: isOn ? onSymbol : symbol, accessibilityDescription: isOn ? onLabel : label)?
                 .withSymbolConfiguration(configuration)
         else { return }
         pin.draw(

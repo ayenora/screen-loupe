@@ -9,6 +9,8 @@ final class CaptureAreaController {
     var onChange: (() -> Void)?
     /// Called when the mouse moves anywhere on screen while the frame is shown.
     var onMouseMoved: (() -> Void)?
+    /// Called by the frame's raise button: bring the Viewer forward.
+    var onRaiseViewer: (() -> Void)?
 
     /// What to capture for the current rect, or `nil` when it is on no display.
     var captureGeometry: CaptureGeometry? {
@@ -241,6 +243,10 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
             settings.update { $0.captureAreaPinned.toggle() }
             return
         }
+        if target == .raiseViewer {
+            onRaiseViewer?()
+            return
+        }
         // A pinned frame stays put. Otherwise the window only receives presses on its drawn pixels,
         // and anything that isn't a handle moves it.
         guard !isPinned else { return }
@@ -257,7 +263,7 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
         case .resize(let handle):
             applyEdited(
                 CaptureAreaEditing.resized(drag.startRect, handle: handle, by: delta), snap: .edges, persist: false)
-        case .pin:
+        case .pin, .raiseViewer:
             break
         }
     }
