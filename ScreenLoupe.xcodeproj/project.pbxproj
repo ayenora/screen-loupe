@@ -20,10 +20,13 @@
 				Geometry/CornerRuler.swift,
 				Geometry/DisplayCoordinateConverter.swift,
 				Geometry/DisplayLayout.swift,
+				Geometry/ImageBudget.swift,
 				Geometry/LenientDecoding.swift,
 				Geometry/OverlayLayout.swift,
 				Geometry/ReferenceLayers.swift,
+				Geometry/ShortcutRules.swift,
 				Geometry/SizeText.swift,
+				Geometry/ViewerSelection.swift,
 				Geometry/ViewerWindowFit.swift,
 				Geometry/ZoomPanMath.swift,
 			);

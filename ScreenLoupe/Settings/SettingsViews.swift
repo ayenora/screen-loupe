@@ -194,7 +194,9 @@ struct ShortcutSettingsView: View {
         SettingsForm {
             ForEach(ShortcutAction.allCases, id: \.self) { action in
                 SettingsRow(action.title, note: note(for: action)) {
-                    ShortcutRecorder(shortcut: binding(for: action)) { shortcuts.isSuspended = $0 }
+                    ShortcutRecorder(
+                        shortcut: binding(for: action), allowsLoneFunctionKey: action.allowsLoneFunctionKey
+                    ) { shortcuts.isSuspended = $0 }
                 }
             }
             Text("Click a shortcut and press new keys to change it. Delete clears it.")
@@ -206,7 +208,12 @@ struct ShortcutSettingsView: View {
         if shortcuts.failed.contains(action) {
             return "macOS didn't accept this shortcut; it may be taken by another app. Try another."
         }
-        return action == .copyView ? "Works from any app." : nil
+        switch action {
+        case .copyView: return "Works from any app."
+        case .toggleFreeze:
+            return "Can be F13–F19 alone, so no modifier reaches the app you hold the mouse down in."
+        default: return nil
+        }
     }
 
     /// Taking a combination another action has clears it there, so no two actions share one.

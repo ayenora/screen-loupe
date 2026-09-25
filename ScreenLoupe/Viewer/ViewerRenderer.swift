@@ -135,10 +135,13 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
 
     /// `scene` rendered offscreen by the same pipelines as the screen, for Copy View
     /// (docs/design.md §2.4): what it shows is the Viewer, at any zoom, with the grid and the
-    /// reference layers as drawn. `nil` without a frame or a viewport.
+    /// reference layers as drawn. Past `ImageBudget` just its top-left part is rendered. `nil`
+    /// without a frame or a viewport.
     func renderImage(_ scene: Scene) -> CGImage? {
-        let width = Int(scene.size.width.rounded())
-        let height = Int(scene.size.height.rounded())
+        var scene = scene
+        scene.size = ImageBudget.fitted(scene.size)
+        let width = Int(scene.size.width)
+        let height = Int(scene.size.height)
         guard scene.frame != nil, width > 0, height > 0 else { return nil }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: Self.pixelFormat, width: width, height: height, mipmapped: false)
@@ -267,13 +270,10 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         _ input: UncheckedSendable<(image: CGImage, space: CGColorSpace, device: MTLDevice)>
     ) async -> UncheckedSendable<MTLTexture>? {
         let (image, space, device) = input.value
-        // An image beyond the GPU's texture limit is scaled down to fit; the quad keeps the layer's
-        // size, so it only loses detail.
-        let limit = 16384
-        let shrink = min(1, CGFloat(limit) / CGFloat(max(image.width, image.height)))
-        let width = max(1, Int((CGFloat(image.width) * shrink).rounded(.down)))
-        let height = max(1, Int((CGFloat(image.height) * shrink).rounded(.down)))
-        guard image.width > 0, image.height > 0,
+        // Reference images are cropped to `ImageBudget` when they load, so they fit a texture.
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0,
             let context = CGContext(
                 data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
                 bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),

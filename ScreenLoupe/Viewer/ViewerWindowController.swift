@@ -31,7 +31,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         self.zoomPan = zoomPan
         content = ViewerContentView(
             settings: settings, frameStore: frameStore, zoomPan: zoomPan, inspector: inspector, project: project)
-        toolbar = ViewerToolbar(zoomPan: zoomPan, settings: settings, ruler: content.ruler)
+        toolbar = ViewerToolbar(
+            zoomPan: zoomPan, settings: settings, ruler: content.ruler, selection: content.selection)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
@@ -125,11 +126,23 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.ruler.toggle()
     }
 
+    // MARK: Select tool
+
+    var isSelectToolOn: Bool { content.selection.isToolOn }
+
+    /// Whether Copy View and Save View take the Select tool's selection rather than the whole view.
+    var hasSelection: Bool { content.selection.selection != nil }
+
+    func toggleSelectTool() {
+        content.selection.toggleTool()
+    }
+
     // MARK: Freeze frame
 
-    func setFrozen(_ frozen: Bool) {
-        content.setFrozen(frozen)
-        toolbar.setFrozen(frozen)
+    /// Frozen, counting down to a freeze, or live: the image area and the toolbar's pause button.
+    func showFreeze(_ state: FrozenIndicatorView.State) {
+        content.showFreeze(state)
+        toolbar.setFrozen(state != .hidden)
     }
 
     // MARK: Size to area

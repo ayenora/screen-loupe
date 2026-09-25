@@ -3,10 +3,11 @@ import Carbon.HIToolbox
 import SwiftUI
 
 /// A button that records a global shortcut: click it and press the keys. Escape cancels, Delete
-/// clears. A shortcut needs ⌃, or ⌥ with ⌘: ⌘ alone or with ⇧ would take standard shortcuts away
-/// from every app, and macOS rejects ⌥ or ⌥⇧ alone for global shortcuts.
+/// clears. Which combinations are allowed is `ShortcutRules`.
 struct ShortcutRecorder: NSViewRepresentable {
     @Binding var shortcut: Shortcut?
+    /// F13–F19 alone is allowed too (Freeze).
+    var allowsLoneFunctionKey = false
     /// Called with `true` when recording starts and `false` when it ends.
     let onRecording: (Bool) -> Void
 
@@ -18,6 +19,7 @@ struct ShortcutRecorder: NSViewRepresentable {
         button.shortcut = shortcut
         button.onChange = { shortcut = $0 }
         button.onRecording = onRecording
+        button.allowsLoneFunctionKey = allowsLoneFunctionKey
     }
 }
 
@@ -25,6 +27,7 @@ final class ShortcutRecorderButton: NSButton {
     var shortcut: Shortcut? { didSet { updateTitle() } }
     var onChange: ((Shortcut?) -> Void)?
     var onRecording: ((Bool) -> Void)?
+    var allowsLoneFunctionKey = false
 
     private var windowObserver: NSObjectProtocol?
 
@@ -107,7 +110,12 @@ final class ShortcutRecorderButton: NSButton {
             break
         }
         let modifiers = event.modifierFlags.intersection([.control, .option, .shift, .command])
-        let allowed = modifiers.contains(.control) || modifiers.isSuperset(of: [.option, .command])
+        let allowed = ShortcutRules.isAllowed(
+            ShortcutRules.Modifiers(
+                control: modifiers.contains(.control), option: modifiers.contains(.option),
+                shift: modifiers.contains(.shift), command: modifiers.contains(.command)),
+            isHighFunctionKey: Self.highFunctionKeys.contains(Int(event.keyCode)),
+            allowsLoneFunctionKey: allowsLoneFunctionKey)
         guard allowed, let key = Self.keyName(event) else {
             NSSound.beep()
             return
@@ -120,8 +128,12 @@ final class ShortcutRecorderButton: NSButton {
         kVK_Space: "Space", kVK_Return: "↩", kVK_Tab: "⇥", kVK_LeftArrow: "←", kVK_RightArrow: "→",
         kVK_UpArrow: "↑", kVK_DownArrow: "↓", kVK_Home: "↖", kVK_End: "↘", kVK_PageUp: "⇞", kVK_PageDown: "⇟",
         kVK_F1: "F1", kVK_F2: "F2", kVK_F3: "F3", kVK_F4: "F4", kVK_F5: "F5", kVK_F6: "F6", kVK_F7: "F7",
-        kVK_F8: "F8", kVK_F9: "F9", kVK_F10: "F10", kVK_F11: "F11", kVK_F12: "F12",
+        kVK_F8: "F8", kVK_F9: "F9", kVK_F10: "F10", kVK_F11: "F11", kVK_F12: "F12", kVK_F13: "F13",
+        kVK_F14: "F14", kVK_F15: "F15", kVK_F16: "F16", kVK_F17: "F17", kVK_F18: "F18", kVK_F19: "F19",
     ]
+
+    /// F13–F19: no Mac shortcut uses them, so one alone can be a global shortcut.
+    private static let highFunctionKeys: Set<Int> = [kVK_F13, kVK_F14, kVK_F15, kVK_F16, kVK_F17, kVK_F18, kVK_F19]
 
     /// The key as the current Latin keyboard layout labels it, so `L` stays `L` while a Cyrillic
     /// layout is active.

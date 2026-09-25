@@ -15,6 +15,8 @@ final class ViewerOverlayView: NSView {
     var ruler: RulerController?
     /// The selected reference layer gets a frame and corner handles for scaling.
     var references: ReferencesController?
+    /// The Select tool's selection and an Option-drag's region.
+    var selection: SelectionController?
     /// Source pixels per point of the captured display, for the ruler's lengths in points.
     var sourceScale: () -> CGFloat = { 1 }
     /// The Viewer's drawable pixels per point (`MTKView.drawableScale`): zoom and pan are in drawable
@@ -38,6 +40,7 @@ final class ViewerOverlayView: NSView {
         drawSelectedReference(drawableScale: drawableScale)
         drawCrosshair(drawableScale: drawableScale)
         drawRuler(drawableScale: drawableScale)
+        drawSelection(drawableScale: drawableScale)
     }
 
     private func drawCrosshair(drawableScale: CGFloat) {
@@ -91,6 +94,65 @@ final class ViewerOverlayView: NSView {
     /// A rect in drawable pixels as this view's points.
     private static func points(_ rect: CGRect, scale: CGFloat) -> CGRect {
         CGRect(x: rect.minX / scale, y: rect.minY / scale, width: rect.width / scale, height: rect.height / scale)
+    }
+
+    // MARK: Selection
+
+    /// The Select tool's selection, solid, with its handles and its size and place; or an
+    /// Option-drag's region, dashed, with the size of the image it copies.
+    private func drawSelection(drawableScale scale: CGFloat) {
+        guard let selection else { return }
+        if let region = selection.region {
+            let rect = Self.points(region, scale: scale)
+            let outline = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
+            outline.lineWidth = 3
+            NSColor.black.withAlphaComponent(0.7).setStroke()
+            outline.stroke()
+            outline.lineWidth = 1
+            outline.setLineDash([4, 3], count: 2, phase: 0)
+            NSColor.white.setStroke()
+            outline.stroke()
+            Self.drawChip("\(Int(region.width)) × \(Int(region.height)) px · let go to copy", below: rect, in: bounds)
+            return
+        }
+        guard selection.isToolOn, let rect = selection.selection else { return }
+        let state = zoomPan.state
+        let placed = Self.points(state.imageRect(origin: rect.origin, size: rect.size), scale: scale)
+        NSColor.systemBlue.withAlphaComponent(0.08).setFill()
+        placed.fill()
+        let outline = NSBezierPath(rect: placed.insetBy(dx: 0.5, dy: 0.5))
+        outline.lineWidth = 1
+        NSColor.systemBlue.setStroke()
+        outline.stroke()
+        let side = SelectionController.handleSize
+        for handle in SelectionHandle.allCases {
+            let center = PixelSelection.handlePoint(handle, of: rect, in: state)
+            let box = CGRect(x: center.x / scale - side / 2, y: center.y / scale - side / 2, width: side, height: side)
+            NSColor.white.setFill()
+            box.fill()
+            NSColor.systemBlue.setStroke()
+            let border = NSBezierPath(rect: box.insetBy(dx: 0.5, dy: 0.5))
+            border.lineWidth = 1
+            border.stroke()
+        }
+        Self.drawChip(PixelSelection.label(rect), below: placed, in: bounds)
+    }
+
+    private static let chipAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: NSColor.white,
+    ]
+
+    /// A dark label under `rect`'s bottom-left corner, or over its top when there is no room below.
+    private static func drawChip(_ text: String, below rect: CGRect, in bounds: CGRect) {
+        let size = (text as NSString).size(withAttributes: chipAttributes)
+        let chipSize = CGSize(width: (size.width + 14).rounded(.up), height: (size.height + 4).rounded(.up))
+        var origin = CGPoint(x: rect.minX, y: rect.maxY + 6)
+        if origin.y + chipSize.height > bounds.maxY { origin.y = rect.minY - 6 - chipSize.height }
+        origin.x = min(max(origin.x, bounds.minX + 4), bounds.maxX - chipSize.width - 4)
+        let chip = CGRect(origin: CGPoint(x: origin.x.rounded(), y: origin.y.rounded()), size: chipSize)
+        NSColor.black.withAlphaComponent(0.78).setFill()
+        NSBezierPath(roundedRect: chip, xRadius: 5, yRadius: 5).fill()
+        (text as NSString).draw(at: CGPoint(x: chip.minX + 7, y: chip.minY + 2), withAttributes: chipAttributes)
     }
 
     // MARK: Ruler
@@ -243,13 +305,50 @@ final class ViewerOverlayView: NSView {
     }
 }
 
-/// Shown over the image while the view is frozen (mockup variant B): an accent border around the
-/// image area and a chip at its top. Never in Copy View, which draws the frame itself.
+/// Over the image while the view is frozen or a delayed freeze counts down (docs/product.md, Freeze
+/// frame): an accent border around the image area and a chip at its top — solid and "Frozen · Space
+/// to resume" when frozen, dashed with a shrinking ring and the seconds left while counting down.
+/// After a freeze from another app a second chip at the bottom says how it happened. Never in Copy
+/// View, which draws the frame itself.
 final class FrozenIndicatorView: NSView {
-    private static let text = "Frozen · Space to resume" as NSString
+    enum State: Equatable {
+        case hidden
+        /// `hint`: how it was frozen, after the global shortcut.
+        case frozen(hint: String?)
+        /// A delayed freeze happens at `deadline`, `total` seconds after it was asked for.
+        case countdown(deadline: Date, total: TimeInterval)
+
+        var isFrozen: Bool {
+            if case .frozen = self { return true }
+            return false
+        }
+    }
+
+    var state = State.hidden {
+        didSet {
+            guard state != oldValue else { return }
+            isHidden = state == .hidden
+            needsDisplay = true
+            ticker?.invalidate()
+            ticker = nil
+            if case .countdown = state {
+                ticker = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.needsDisplay = true }
+                }
+            }
+        }
+    }
+
+    private var ticker: Timer?
+
+    private static let frozenText = "Frozen · Space to resume" as NSString
     private static let attributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: NSColor.white,
     ]
+    private static let digitAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .bold), .foregroundColor: NSColor.white,
+    ]
+    private static let darkFill = NSColor(srgbRed: 28 / 255, green: 28 / 255, blue: 30 / 255, alpha: 0.9)
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -260,18 +359,81 @@ final class FrozenIndicatorView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        switch state {
+        case .hidden:
+            return
+        case .frozen(let hint):
+            drawBorder(dashed: false)
+            let size = Self.frozenText.size(withAttributes: Self.attributes)
+            let chip = CGRect(
+                x: (bounds.midX - size.width / 2 - 10).rounded(), y: 12, width: (size.width + 20).rounded(.up),
+                height: (size.height + 10).rounded(.up))
+            NSColor.systemBlue.setFill()
+            NSBezierPath(roundedRect: chip, xRadius: 8, yRadius: 8).fill()
+            Self.frozenText.draw(at: CGPoint(x: chip.minX + 10, y: chip.minY + 5), withAttributes: Self.attributes)
+            if let hint { drawHint(hint) }
+        case .countdown(let deadline, let total):
+            drawBorder(dashed: true)
+            drawCountdown(remaining: max(0, deadline.timeIntervalSinceNow), total: total)
+        }
+    }
+
+    private func drawBorder(dashed: Bool) {
         NSColor.systemBlue.setStroke()
         let border = NSBezierPath(rect: bounds.insetBy(dx: 1.5, dy: 1.5))
         border.lineWidth = 3
+        if dashed { border.setLineDash([10, 6], count: 2, phase: 0) }
         border.stroke()
+    }
 
-        let size = Self.text.size(withAttributes: Self.attributes)
-        let chip = CGRect(
-            x: (bounds.midX - size.width / 2 - 10).rounded(), y: 12, width: (size.width + 20).rounded(.up),
-            height: (size.height + 10).rounded(.up))
-        NSColor.systemBlue.setFill()
-        NSBezierPath(roundedRect: chip, xRadius: 8, yRadius: 8).fill()
-        Self.text.draw(at: CGPoint(x: chip.minX + 10, y: chip.minY + 5), withAttributes: Self.attributes)
+    /// A dark pill at the top: a ring that empties as the seconds run out, the seconds left in it,
+    /// and "Freezing in 2 s · Esc to cancel".
+    private func drawCountdown(remaining: TimeInterval, total: TimeInterval) {
+        let seconds = Int(remaining.rounded(.up))
+        let text = "Freezing in \(seconds) s · Esc to cancel" as NSString
+        let size = text.size(withAttributes: Self.attributes)
+        let ring: CGFloat = 26
+        let pill = CGRect(
+            x: (bounds.midX - (6 + ring + 8 + size.width + 14) / 2).rounded(), y: 10,
+            width: (6 + ring + 8 + size.width + 14).rounded(.up), height: ring + 12)
+        Self.darkFill.setFill()
+        NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2).fill()
+
+        let center = CGPoint(x: pill.minX + 6 + ring / 2, y: pill.midY)
+        let radius = (ring - 2.5) / 2
+        let track = NSBezierPath(
+            ovalIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+        track.lineWidth = 2.5
+        NSColor.systemBlue.withAlphaComponent(0.25).setStroke()
+        track.stroke()
+        // Flipped view: growing angles run clockwise, from the top.
+        let fraction = total > 0 ? CGFloat(remaining / total) : 0
+        let arc = NSBezierPath()
+        arc.appendArc(
+            withCenter: center, radius: radius, startAngle: -90, endAngle: -90 + 360 * fraction, clockwise: false)
+        arc.lineWidth = 2.5
+        NSColor.systemBlue.setStroke()
+        arc.stroke()
+        let digits = "\(seconds)" as NSString
+        let digitSize = digits.size(withAttributes: Self.digitAttributes)
+        digits.draw(
+            at: CGPoint(x: (center.x - digitSize.width / 2).rounded(), y: (center.y - digitSize.height / 2).rounded()),
+            withAttributes: Self.digitAttributes)
+        text.draw(
+            at: CGPoint(x: pill.minX + 6 + ring + 8, y: (pill.midY - size.height / 2).rounded()),
+            withAttributes: Self.attributes)
+    }
+
+    /// "Frozen by F13 from Simulator — let go of the mouse, then zoom, pan, copy" at the bottom.
+    private func drawHint(_ hint: String) {
+        let text = hint as NSString
+        let size = text.size(withAttributes: Self.attributes)
+        let pill = CGRect(
+            x: (bounds.midX - size.width / 2 - 12).rounded(), y: (bounds.maxY - 20 - size.height - 12).rounded(),
+            width: (size.width + 24).rounded(.up), height: (size.height + 12).rounded(.up))
+        Self.darkFill.setFill()
+        NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2).fill()
+        text.draw(at: CGPoint(x: pill.minX + 12, y: pill.minY + 6), withAttributes: Self.attributes)
     }
 }
 

@@ -57,7 +57,8 @@ final class ReferencesController {
     }
 
     /// The layer's image, or `nil` while it loads. A design image can be large, so it is decoded off
-    /// the main thread; the Viewer draws it and the panel shows it once it is there.
+    /// the main thread; the Viewer draws it and the panel shows it once it is there. Past
+    /// `ImageBudget` only its top-left part is kept.
     func image(for layer: ReferenceLayer) -> CGImage? {
         if let image = images[layer.id] { return image }
         guard loading.insert(layer.id).inserted else { return nil }
@@ -67,6 +68,9 @@ final class ReferencesController {
             loading.remove(layer.id)
             guard let image, stack.layers.contains(where: { $0.id == layer.id }) else { return }
             images[layer.id] = image.value
+            // A layer imported before the budget was sized by the whole image.
+            let size = CGSize(width: image.value.width, height: image.value.height)
+            if layer.imageSize != size { update(layer.id) { $0.imageSize = size } }
             onChange?()
         }
         return nil
@@ -78,7 +82,10 @@ final class ReferencesController {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
             let image = CGImageSourceCreateImageAtIndex(source, 0, options)
         else { return nil }
-        return UncheckedSendable(value: image)
+        let kept = ImageBudget.fitted(width: image.width, height: image.height)
+        guard kept != (image.width, image.height) else { return UncheckedSendable(value: image) }
+        return image.cropping(to: CGRect(x: 0, y: 0, width: kept.width, height: kept.height))
+            .map { UncheckedSendable(value: $0) }
     }
 
     func update(_ change: (inout ReferenceStack) -> Void) {

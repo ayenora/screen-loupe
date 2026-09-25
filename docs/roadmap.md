@@ -4,7 +4,15 @@ What comes after the current version. Every item is measured against the princip
 
 ## Next
 
-- **First public release.** A signed, notarized download and possibly the Mac App Store; the plan is in [release.md](release.md).
+- **First public release.** A signed, notarized download and possibly the Mac App Store.
+
+### Capturing
+
+Decided to build; the details settle when each moves into product.md.
+
+- **A frozen frame is an image.** To the Viewer, freezing and looking at a picture are the same thing, technically and as a concept: every tool works on both. The two items below follow from that.
+- **Recent captures.** A panel with the last four images copied or saved, kept in memory only and gone on quit: switch between them, look at one in the Viewer as a frozen frame, copy it again, save it to a file, delete it. Short-term memory of the viewer, not a screenshot library.
+- **Open an image** in the Viewer as a frozen frame, with zoom, ruler, Color Meter and references, to look at a file with the same pixel-true tools.
 
 ## The version after: colour
 
@@ -41,7 +49,7 @@ Ordered by how much each strengthens the core experience.
 
 ### Each needs its own decision
 
-- **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-history line in "Not in scope".
+- **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not in scope".
 - **Act through the Viewer.** Clicks and scrolls in the Viewer go to the real spot on screen, making the Viewer a true zoomed monitor. Needs the Accessibility permission to post events and has to feel safe; a bigger design question than the rest.
 - **HDR/EDR content.** The capture is SDR today, so HDR highlights are clipped in the Viewer and the Color Meter.
 
@@ -52,4 +60,4 @@ Ordered by how much each strengthens the core experience.
 
 ## Not planned
 
-The line in product.md, "Not in scope", holds: no OCR, annotations, drawing, image editing, screenshot history, cloud sync, accounts, telemetry, subscriptions or AI features, and no web technologies in the app.
+The line in product.md, "Not in scope", holds: no OCR, annotations, drawing, image editing, a screenshot library, cloud sync, accounts, telemetry, subscriptions or AI features, and no web technologies in the app.

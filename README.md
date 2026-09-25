@@ -17,10 +17,9 @@ Built with Swift, AppKit, ScreenCaptureKit and Metal, with no third-party depend
 
 ## Documentation
 
-- [Product](docs/product.md) — who it is for, principles, features, how it compares
+- [Product](docs/product.md) — who it is for, principles, features
 - [Technical design](docs/design.md) — pipeline, coordinate systems, architecture, risks, verification
 - [Roadmap](docs/roadmap.md) — what comes next
-- [Release plan](docs/release.md) — Developer ID download and the Mac App Store
 
 ## Requirements
 

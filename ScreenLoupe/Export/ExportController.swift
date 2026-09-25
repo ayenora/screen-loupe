@@ -18,8 +18,9 @@ final class ExportController {
     var canExport: Bool { viewer.showsCapture && frameStore.latestFrame != nil }
 
     func copyView() {
+        let what = viewer.hasSelection ? "Selection" : "View"
         guard let image = viewImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
-        viewer.showToast("View copied")
+        viewer.showToast("\(what) copied")
     }
 
     func copySource() {
@@ -35,7 +36,8 @@ final class ExportController {
         save(sourceImage(), kind: "Source")
     }
 
-    /// What the Viewer shows, with the grid only when Settings › Screenshots includes it.
+    /// What the Viewer shows, or just the Select tool's selection while there is one, with the grid
+    /// only when Settings › Screenshots includes it.
     private func viewImage() -> CGImage? {
         guard canExport else { return nil }
         return viewer.renderViewImage(showsGrid: settings.settings.gridInCopyView)

@@ -95,6 +95,25 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.toggleFreeze()
     }
 
+    @objc func freezeNow(_ sender: Any?) {
+        windows.freezeNow()
+    }
+
+    /// Freeze in 3, 5 or 10 seconds: the menu item's tag.
+    @objc func freezeAfterDelay(_ sender: Any?) {
+        guard let seconds = (sender as? NSMenuItem)?.tag, seconds > 0 else { return }
+        windows.freeze(after: seconds)
+    }
+
+    /// Escape in the Viewer.
+    @objc func cancelFreezeCountdown(_ sender: Any?) {
+        builtWindows?.cancelFreezeCountdown()
+    }
+
+    @objc func toggleSelectTool(_ sender: Any?) {
+        windows.viewer.toggleSelectTool()
+    }
+
     @objc func sizeViewerToArea(_ sender: Any?) {
         windows.viewer.sizeToArea()
     }
@@ -155,7 +174,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         case .toggleViewer: windows.toggleViewer()
         case .copyView: windows.export.copyView()
         case .copySource: windows.export.copySource()
+        case .toggleFreeze: windows.toggleFreeze(hint: frozenFromAnotherAppHint())
         }
+    }
+
+    /// "Frozen by F13 from Simulator — let go of the mouse, then zoom, pan, copy", when the global
+    /// Freeze shortcut is pressed while another app is in front: the mouse may be held down there.
+    private func frozenFromAnotherAppHint() -> String? {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+            app.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else { return nil }
+        let key = settings.settings.shortcuts.toggleFreeze.map { " by \($0.displayString)" } ?? ""
+        let from = app.localizedName.map { " from \($0)" } ?? ""
+        return "Frozen\(key)\(from) — let go of the mouse, then zoom, pan, copy"
     }
 }
 
@@ -176,8 +207,14 @@ extension AppController: NSMenuItemValidation {
             return builtWindows?.viewer.showsCapture == true
         case #selector(toggleFreeze(_:)):
             let isFrozen = builtWindows?.isFrozen == true
-            menuItem.state = isFrozen ? .on : .off
-            return isFrozen || canExport
+            let isCounting = builtWindows?.isFreezeCountingDown == true
+            menuItem.state = isFrozen || isCounting ? .on : .off
+            return isFrozen || isCounting || canExport
+        case #selector(freezeNow(_:)), #selector(freezeAfterDelay(_:)):
+            return builtWindows?.isFrozen == true || canExport
+        case #selector(toggleSelectTool(_:)):
+            menuItem.state = builtWindows?.viewer.isSelectToolOn == true ? .on : .off
+            return builtWindows?.viewer.showsCapture == true
         case #selector(sizeViewerToArea(_:)):
             return builtWindows?.viewer.canSizeToArea == true
         case #selector(copyView(_:)), #selector(NSText.copy(_:)), #selector(copySource(_:)), #selector(saveView(_:)),
