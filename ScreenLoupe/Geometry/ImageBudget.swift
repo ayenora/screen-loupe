@@ -34,6 +34,23 @@ enum ImageBudget {
 }
 
 extension CaptureGeometry {
+    /// A frame of this geometry cut to `rect`, whole pixels of the area from its top-left: the area
+    /// becomes `rect` and the captured image the part of it inside `rect`. `offset` is where that
+    /// part starts in the captured image, to copy from. `nil` when none of the image is inside.
+    /// For a recent capture of a selection or a region (docs/product.md, Recent Captures).
+    func cropped(toArea rect: CGRect) -> (geometry: CaptureGeometry, offset: PixelSize)? {
+        let image = CGRect(
+            x: imageOrigin.x, y: imageOrigin.y, width: CGFloat(outputSize.width), height: CGFloat(outputSize.height))
+        let inside = image.intersection(rect.integral)
+        guard !inside.isNull, inside.width >= 1, inside.height >= 1 else { return nil }
+        var next = self
+        next.areaSize = PixelSize(width: Int(rect.integral.width), height: Int(rect.integral.height))
+        next.imageOrigin = CGPoint(x: inside.minX - rect.integral.minX, y: inside.minY - rect.integral.minY)
+        next.outputSize = PixelSize(width: Int(inside.width), height: Int(inside.height))
+        let offset = PixelSize(width: Int(inside.minX - imageOrigin.x), height: Int(inside.minY - imageOrigin.y))
+        return (next, offset)
+    }
+
     /// A frame of this geometry kept as a recent capture: the area cut to `ImageBudget` from its
     /// top-left, and the captured image cut to the part inside it, which stays at the same place.
     /// The captured image's top-left part of `outputSize` is what to copy. `nil` when none of the

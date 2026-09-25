@@ -98,7 +98,7 @@ enum OverlayStyle {
     static func cursor(for target: OverlayHitTarget?) -> NSCursor {
         switch target {
         case nil: return .arrow
-        case .pin: return .pointingHand
+        case .pin, .raiseViewer: return .pointingHand
         case .move: return .openHand
         case .resize(let handle): return resizeCursor(for: handle)
         }

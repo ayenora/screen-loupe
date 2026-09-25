@@ -101,6 +101,14 @@ struct ViewRegionTests {
                 == CGRect(x: 0, y: 250, width: 30, height: 50))
         #expect(ViewRegion.rect(from: CGPoint(x: 10, y: 10), to: CGPoint(x: 10.3, y: 40), viewport: viewport) == nil)
     }
+
+    @Test func aRegionKeepsEverySourcePixelItTouches() {
+        // At 800% with the image at (16, 8): viewport 20…43 × 12…30 is source 0.5…3.375 × 0.5…2.75.
+        let region = CGRect(x: 20, y: 12, width: 23, height: 18)
+        #expect(ViewRegion.sourceRect(of: region, in: state) == CGRect(x: 0, y: 0, width: 4, height: 3))
+        // Beside the image there is nothing to keep.
+        #expect(ViewRegion.sourceRect(of: CGRect(x: 0, y: 0, width: 10, height: 5), in: state) == nil)
+    }
 }
 
 struct CroppedStateTests {

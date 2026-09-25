@@ -65,6 +65,28 @@ struct ImageBudgetTests {
         #expect(straddling.fittedToImageBudget() == nil)
     }
 
+    @Test func aCaptureOfASelectionKeepsJustItsPixels() {
+        let whole = geometry(area: PixelSize(width: 880, height: 540), output: PixelSize(width: 880, height: 540))
+        let cut = whole.cropped(toArea: CGRect(x: 100, y: 40, width: 12, height: 5))
+        #expect(cut?.geometry.areaSize == PixelSize(width: 12, height: 5))
+        #expect(cut?.geometry.outputSize == PixelSize(width: 12, height: 5))
+        #expect(cut?.geometry.imageOrigin == .zero)
+        #expect(cut?.offset == PixelSize(width: 100, height: 40))
+    }
+
+    @Test func aCutOverTheOtherDisplayKeepsItsImagePartWhereItIs() {
+        // The captured image starts 300 px into the area; the cut starts 50 px before it.
+        let straddling = geometry(
+            area: PixelSize(width: 900, height: 500), output: PixelSize(width: 600, height: 500),
+            imageOrigin: CGPoint(x: 300, y: 0))
+        let cut = straddling.cropped(toArea: CGRect(x: 250, y: 10, width: 100, height: 20))
+        #expect(cut?.geometry.areaSize == PixelSize(width: 100, height: 20))
+        #expect(cut?.geometry.imageOrigin == CGPoint(x: 50, y: 0))
+        #expect(cut?.geometry.outputSize == PixelSize(width: 50, height: 20))
+        #expect(cut?.offset == PixelSize(width: 0, height: 10))
+        #expect(straddling.cropped(toArea: CGRect(x: 0, y: 0, width: 100, height: 20)) == nil)
+    }
+
     @Test func sizesRoundToWholePixels() {
         #expect(ImageBudget.fitted(CGSize(width: 25600, height: 19200)) == CGSize(width: 4096, height: 4096))
         #expect(ImageBudget.fitted(CGSize(width: 99.6, height: 50.2)) == CGSize(width: 100, height: 50))

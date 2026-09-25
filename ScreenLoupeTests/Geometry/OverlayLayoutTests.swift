@@ -152,5 +152,21 @@ struct OverlayPositionBoxTests {
         #expect(l.hitTarget(at: CGPoint(x: l.tabRect.minX + 5, y: l.tabRect.midY), pinned: true) == nil)
         #expect(l.hitTarget(at: CGPoint(x: 100, y: 100), pinned: true) == nil)
         #expect(l.hitTarget(at: CGPoint(x: 100, y: 100)) == .resize(.bottomLeft))
+        #expect(l.hitTarget(at: CGPoint(x: l.raiseRect.midX, y: l.raiseRect.midY), pinned: true) == .raiseViewer)
+    }
+
+    @Test func theRaiseButtonSitsBesideThePinAwayFromTheTab() {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        #expect(l.pinRect.minX == l.tabRect.maxX + 4)
+        #expect(l.raiseRect.minX == l.pinRect.maxX + 4)
+        #expect(l.raiseRect.minY == l.tabRect.minY)
+    }
+
+    @Test func atTheRightEdgeBothButtonsMoveLeftOfTheTab() {
+        // The tab hugs the right margin: no room for the buttons on its right.
+        let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
+        #expect(l.pinRect.maxX == l.tabRect.minX - 4)
+        #expect(l.raiseRect.maxX == l.pinRect.minX - 4)
+        #expect(l.windowFrame.contains(l.raiseRect))
     }
 }

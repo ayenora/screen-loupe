@@ -60,12 +60,14 @@ final class RecentCaptures {
     /// Called after a capture is added or removed.
     @ObservationIgnored var onChange: (() -> Void)?
 
-    /// A capture of `frame`, copied now so it no longer depends on the stream. `image` is what was
-    /// copied or saved, for the thumbnail and the size. `nil` when nothing of the frame is kept.
+    /// A capture of `frame`, or of just `area` of it (source pixels), copied now so it no longer
+    /// depends on the stream. `image` is what was copied or saved, for the thumbnail and the size.
+    /// `nil` when nothing of the frame is kept.
     static func capture(
-        of frame: CapturedFrame, kind: String, image: CGImage, zoom: CGFloat, offset: CGPoint, selection: CGRect?
+        of frame: CapturedFrame, area: CGRect?, kind: String, image: CGImage, zoom: CGFloat, offset: CGPoint,
+        selection: CGRect?
     ) -> RecentCapture? {
-        guard let kept = frame.copiedForKeeping() else { return nil }
+        guard let kept = frame.copiedForKeeping(area: area) else { return nil }
         return RecentCapture(
             frame: kept, kind: kind, imageSize: PixelSize(width: image.width, height: image.height), date: Date(),
             thumbnail: thumbnail(of: image), zoom: zoom, offset: offset, selection: selection)

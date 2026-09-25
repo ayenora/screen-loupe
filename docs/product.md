@@ -31,6 +31,7 @@ A frame above every other window that marks the region being inspected.
 - Arrow keys move it by one pixel, Shift + arrow by ten; Option resizes instead of moving.
 - On hover a narrow box beside the frame shows its edges — L, T, R, B — from the top-left corner of its display, in the tab's units (points, or pixels when only pixels are chosen). It sits right of the frame, or left of it when there is no room.
 - The pin button right of the tab (left of it at the screen's edge) locks the frame: pinned, it neither moves nor resizes, and shows no handles. The pin is kept between launches.
+- The button beside the pin brings the Viewer forward, pinned or not: a click in the area can bring another app's window over the Viewer, a maximized one hiding it altogether.
 - It doesn't follow the mouse and doesn't depend on the Viewer: it stays where you placed it.
 
 ### Viewer
@@ -39,7 +40,7 @@ A regular macOS window that shows the Capture Area live.
 
 - Moved, resized, taken full screen or placed on another display; none of that changes the Capture Area.
 - Toolbar: zoom presets and the current zoom on the left; freeze (with a menu of delays), Select, ruler, grid, the pointer (with a menu of styles), Color Meter, References, Recent Captures, Copy, Save and Keep on Top on the right.
-- **Keep Viewer on Top** keeps it above other apps' windows.
+- **Keep Viewer on Top** keeps it above other apps' windows, full-screen apps included: it shows on every Space. macOS lets only an app without a Dock icon float over another app's full screen, so while it is on the app runs from the menu bar only: no Dock icon, no app menu. The Viewer can't go full screen itself meanwhile; turning it on takes a full-screen Viewer out of full screen first. Turned off over a full-screen app, the Viewer leaves it, that app keeps the focus, and the Viewer comes back on the next ordinary Space.
 - **Size Window to Area** (View menu, ⌥⌘0) sizes the Viewer so the whole magnified area shows at the current zoom, without panning. The zoom doesn't change. The window never grows beyond its screen: it moves to stay on it, and an image bigger than the screen still pans.
 - When access to the screen is missing or capture breaks, the Viewer says so and offers a way out; it is never an empty window without an explanation.
 
@@ -92,7 +93,7 @@ Space in the Viewer, the pause button in the toolbar, View › Freeze Frame or t
 The last four pictures copied or saved in the Viewer, kept to study later: take a transient state quickly, then zoom, measure and pick colours on it at leisure instead of on the live view. The toolbar's Recent Captures button opens the panel.
 
 - Every copy and save in the Viewer adds one, newest on top: Copy View and Copy Source, Save View and Save Source, an Option-drag, a selection, and the global Copy View and Copy Source shortcuts. A fifth pushes out the oldest. They are kept in memory only and gone when the app quits.
-- A capture keeps the Capture Area's pixels at native resolution, not the copied image, so every tool works on real screen pixels. It opens as it was shown: its zoom, pan and selection. The clipboard and the file still get what was asked for.
+- A capture keeps the Capture Area's pixels at native resolution, not the copied image, so every tool works on real screen pixels; a copy of a selection or an Option-drag keeps just the screen pixels it covers. It opens as it was shown: its zoom, pan and selection. The clipboard and the file still get what was asked for.
 - On top, apart from the captures, a Live row that can't be deleted: the live view, what the Capture Area shows now. It is chosen whenever no capture shows, and clicking it goes back to live.
 - Below it one row per capture: a thumbnail of what was copied, what it was (View 800%, Selection, Region, Source), the size of that image in pixels and the time. The × deletes it. The list scrolls when the column is short.
 - Clicking a row shows that capture in the Viewer in place of the live view, with a purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" at its top. Zoom, pan, the ruler, the grid, Select, the Color Meter, Copy and Save work on it as on the live view; each capture keeps its own zoom, pan and selection. Copies made from a capture add none.
@@ -167,6 +168,7 @@ Screen Recording access is needed to see the screen. Without it the Viewer expla
 
 - A menu bar item: Show Viewer, Show/Hide Capture Area, Copy View, Copy Source, Reset Zoom, Keep Viewer on Top, Settings, Quit.
 - Closing the Viewer hides the Capture Area too, so no frame is left on screen without its Viewer; the app keeps running in the menu bar.
+- One copy runs at a time: launching another — a second build, `open -n` — brings the running one's Viewer forward and quits.
 
 ### Global shortcuts
 
