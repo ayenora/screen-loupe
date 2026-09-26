@@ -120,6 +120,46 @@ struct CaptureAreaEditingTests {
     func arrowKeys(key: CaptureAreaEditing.ArrowKey, resize: Bool, expected: CGRect) {
         #expect(CaptureAreaEditing.nudged(rect, key: key, step: 0.5, resize: resize) == expected)
     }
+
+    // The wider side (200) decides; the corner opposite the handle stays put.
+    @Test(arguments: [
+        (OverlayHandle.topLeft, CGRect(x: 100, y: 100, width: 200, height: 200)),
+        (.topRight, CGRect(x: 100, y: 100, width: 200, height: 200)),
+        (.bottomLeft, CGRect(x: 100, y: 0, width: 200, height: 200)),
+        (.bottomRight, CGRect(x: 100, y: 0, width: 200, height: 200)),
+    ])
+    func shiftOnACornerSquaresTheArea(handle: OverlayHandle, expected: CGRect) {
+        #expect(CaptureAreaEditing.squared(rect, handle: handle) == expected)
+    }
+
+    // The taller side (150) decides, so only the dragged vertical edge moves.
+    @Test(arguments: [
+        (OverlayHandle.topLeft, CGRect(x: 30, y: 100, width: 150, height: 150)),
+        (.topRight, CGRect(x: 100, y: 100, width: 150, height: 150)),
+        (.bottomLeft, CGRect(x: 30, y: 100, width: 150, height: 150)),
+        (.bottomRight, CGRect(x: 100, y: 100, width: 150, height: 150)),
+    ])
+    func theTallerSideDecidesToo(handle: OverlayHandle, expected: CGRect) {
+        let tall = CGRect(x: 100, y: 100, width: 80, height: 150)
+        #expect(CaptureAreaEditing.squared(tall, handle: handle) == expected)
+    }
+
+    @Test func halfPointEdgesOnRetinaStayOnTheGrid() {
+        let retina = CGRect(x: 100.5, y: 100, width: 80.5, height: 150)
+        #expect(
+            CaptureAreaEditing.squared(retina, handle: .bottomLeft) == CGRect(x: 31, y: 100, width: 150, height: 150))
+    }
+
+    @Test(arguments: [OverlayHandle.top, .bottom, .left, .right])
+    func shiftOnAnEdgeChangesNothing(handle: OverlayHandle) {
+        #expect(CaptureAreaEditing.squared(rect, handle: handle) == rect)
+    }
+
+    @Test func aMinimumWidthGrowsToTheHeight() {
+        let narrow = CGRect(x: 100, y: 100, width: 64, height: 120)
+        #expect(
+            CaptureAreaEditing.squared(narrow, handle: .bottomRight) == CGRect(x: 100, y: 100, width: 120, height: 120))
+    }
 }
 
 struct OverlayPositionBoxTests {

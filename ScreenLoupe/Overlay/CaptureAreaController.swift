@@ -296,7 +296,15 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
             applyEdited(EdgeSnapping.moved(moved, targets: targets), snap: .move, persist: false)
         case .resize(let handle):
             let resized = CaptureAreaEditing.resized(drag.startRect, handle: handle, by: delta)
-            applyEdited(EdgeSnapping.resized(resized, handle: handle, targets: targets), snap: .edges, persist: false)
+            var rect = EdgeSnapping.resized(resized, handle: handle, targets: targets)
+            // With Shift a corner keeps the area square, after ⌘-snapping: the longer side wins. Squared
+            // after the pixel snap, so both sides come out the same whole number of pixels. Squared twice:
+            // the square can end up owned by a display with another scale, whose grid the second pass uses.
+            if NSEvent.modifierFlags.contains(.shift) {
+                let square = CaptureAreaEditing.squared(snapped(rect, .edges), handle: handle)
+                rect = CaptureAreaEditing.squared(snapped(square, .edges), handle: handle)
+            }
+            applyEdited(rect, snap: .edges, persist: false)
         case .pin, .raiseViewer, .pickWindow:
             break
         }

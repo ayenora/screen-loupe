@@ -201,6 +201,18 @@ enum CaptureAreaEditing {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
+    /// `rect` made square for a Shift-drag of a corner `handle`: the longer side decides, and the
+    /// corner opposite the handle stays put. An edge handle leaves `rect` as it is.
+    static func squared(_ rect: CGRect, handle: OverlayHandle) -> CGRect {
+        let movesX = handle.movesMinX || handle.movesMaxX
+        let movesY = handle.movesMinY || handle.movesMaxY
+        guard movesX && movesY else { return rect }
+        let side = max(rect.width, rect.height)
+        let x = handle.movesMinX ? rect.maxX - side : rect.minX
+        let y = handle.movesMinY ? rect.maxY - side : rect.minY
+        return CGRect(x: x, y: y, width: side, height: side)
+    }
+
     enum ArrowKey: Sendable { case left, right, up, down }
 
     /// Arrow-key editing: moves by `step`, or with `resize` grows/shrinks keeping the top-left corner
