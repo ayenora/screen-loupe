@@ -29,6 +29,7 @@
 				Geometry/ReferenceLayers.swift,
 				Geometry/ShortcutRules.swift,
 				Geometry/SizeText.swift,
+				Geometry/StudioPlacement.swift,
 				Geometry/ViewerSelection.swift,
 				Geometry/ViewerWindowFit.swift,
 				Geometry/WindowMagnet.swift,

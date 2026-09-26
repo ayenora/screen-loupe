@@ -293,3 +293,49 @@ struct OverlayNoticeTests {
         #expect(plain.windowFrame == layout(capture).windowFrame.intersection(plain.windowFrame))
     }
 }
+
+/// The Screenshot studio's frame: the pick button alone beside the tab.
+struct OverlayLayoutWithoutLockButtonsTests {
+    private func layout(_ capture: CGRect) -> OverlayLayout {
+        OverlayLayout(
+            captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, noticeWidth: 140,
+            lockButtons: false)
+    }
+
+    @Test func thePickButtonSitsBesideTheTab() {
+        let l = layout(CGRect(x: 400, y: 100, width: 200, height: 100))
+        #expect(l.pickRect == CGRect(x: l.tabRect.maxX + 4, y: l.tabRect.minY, width: 22, height: 22))
+        #expect(l.pinRect.isNull)
+        #expect(l.pinMenuRect.isNull)
+        #expect(l.raiseRect.isNull)
+        #expect(l.hitTarget(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY)) == .pickWindow)
+        #expect(l.isInHoverZone(CGPoint(x: l.pickRect.midX, y: l.pickRect.midY)))
+    }
+
+    @Test func atTheRightEdgeThePickButtonMovesLeftOfTheTab() {
+        let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
+        #expect(l.pickRect.maxX == l.tabRect.minX - 4)
+        #expect(l.noticeRect.maxX == l.pickRect.minX - 4)
+    }
+
+    @Test func theNoticeSitsLeftOfTheTab() {
+        let l = layout(CGRect(x: 400, y: 100, width: 200, height: 100))
+        #expect(l.noticeRect.maxX == l.tabRect.minX - 4)
+        #expect(l.windowFrame.contains(l.noticeRect))
+    }
+
+    @Test func theWindowHoldsOnlyTheFrameAndItsParts() {
+        let capture = CGRect(x: 400, y: 100, width: 200, height: 100)
+        let l = OverlayLayout(
+            captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, lockButtons: false)
+        #expect(l.windowFrame == capture.insetBy(dx: -40, dy: -40).union(l.tabRect.insetBy(dx: -8, dy: -8)).integral)
+    }
+
+    @Test func handlesAndTheBandStillWork() {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        #expect(l.hitTarget(at: CGPoint(x: 300, y: 100)) == .resize(.bottomRight))
+        #expect(l.hitTarget(at: CGPoint(x: 97, y: 120)) == .move)
+        #expect(l.hitTarget(at: CGPoint(x: l.tabRect.midX, y: l.tabRect.midY)) == .move)
+        #expect(l.hitTarget(at: CGPoint(x: 150, y: 150)) == nil)
+    }
+}

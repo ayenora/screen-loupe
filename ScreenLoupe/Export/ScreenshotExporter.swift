@@ -71,10 +71,11 @@ enum ScreenshotExporter {
     }
 
     /// Puts the image on the clipboard as PNG and TIFF, so both design tools and older apps can paste it.
+    /// `png` is the image's PNG when it is already encoded.
     @MainActor
     @discardableResult
-    static func copy(_ image: CGImage) -> Bool {
-        guard let png = pngData(image) else { return false }
+    static func copy(_ image: CGImage, png: Data? = nil) -> Bool {
+        guard let png = png ?? pngData(image) else { return false }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setData(png, forType: .png)

@@ -11,6 +11,12 @@ extension Settings {
     var frameStyleSettings: FrameStyleSettings {
         FrameStyleSettings(color: frameColor, lineWidth: frameLineWidth, showsLabelAtRest: showsSizeAtRest)
     }
+
+    /// The Screenshot studio's frame: its own orange, the line and the label at rest as the Capture
+    /// Area's.
+    var studioFrameStyleSettings: FrameStyleSettings {
+        FrameStyleSettings(color: .studio, lineWidth: frameLineWidth, showsLabelAtRest: showsSizeAtRest)
+    }
 }
 
 /// The frame's colours and line, from Settings › Capture Area.

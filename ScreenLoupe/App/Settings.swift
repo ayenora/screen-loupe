@@ -11,6 +11,11 @@ struct Settings: Codable, Equatable {
     var captureAreaLocked = false
     /// Keep the Viewer above the windows of other apps.
     var viewerAlwaysOnTop = false
+    /// The Screenshot studio's frame in AppKit global coordinates, and its palette's origin.
+    var studioFrame: CGRect?
+    var studioPaletteOrigin: CGPoint?
+    /// Keep the studio's palette above the windows of other apps.
+    var studioOnTop = false
     /// Where screenshots are saved; the Desktop when unset.
     var screenshotDirectory: String?
     /// Viewer overlays and the Color Meter panel.
@@ -73,6 +78,9 @@ struct Settings: Codable, Equatable {
         captureAreaLocked = c.value(
             .captureAreaLocked, or: legacy?.value(.captureAreaPinned, or: d.captureAreaLocked) ?? d.captureAreaLocked)
         viewerAlwaysOnTop = c.value(.viewerAlwaysOnTop, or: d.viewerAlwaysOnTop)
+        studioFrame = c.value(.studioFrame, or: d.studioFrame)
+        studioPaletteOrigin = c.value(.studioPaletteOrigin, or: d.studioPaletteOrigin)
+        studioOnTop = c.value(.studioOnTop, or: d.studioOnTop)
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)
@@ -151,6 +159,8 @@ struct SettingsColor: Codable, Hashable, Sendable {
     static let green = SettingsColor(48, 209, 88)
     static let purple = SettingsColor(191, 90, 242)
     static let white = SettingsColor(255, 255, 255)
+    /// The Screenshot studio's frame, apart from every Capture Area preset.
+    static let studio = SettingsColor(240, 127, 26)
 }
 
 /// A panel at the right of the Viewer.

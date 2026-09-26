@@ -74,7 +74,9 @@ struct OverlayMetrics: Sendable {
     static let standard = OverlayMetrics()
 }
 
-/// Where every part of the Capture Area frame goes, in AppKit global coordinates.
+/// Where every part of the Capture Area frame goes, in AppKit global coordinates. The Screenshot
+/// studio's frame is laid out the same way without the lock buttons: its pin, ▾ and raise button are
+/// `.null`, so nothing hit-tests or hovers there, and the pick button sits beside the tab.
 struct OverlayLayout: Equatable, Sendable {
     var captureRect: CGRect
     var tabRect: CGRect
@@ -97,7 +99,8 @@ struct OverlayLayout: Equatable, Sendable {
 
     init(
         captureRect: CGRect, screenFrame: CGRect, tabWidth: CGFloat, labelWidth: CGFloat,
-        positionSize: CGSize = .zero, noticeWidth: CGFloat = 0, metrics m: OverlayMetrics = .standard
+        positionSize: CGSize = .zero, noticeWidth: CGFloat = 0, lockButtons: Bool = true,
+        metrics m: OverlayMetrics = .standard
     ) {
         self.captureRect = captureRect
         let r = captureRect
@@ -119,25 +122,33 @@ struct OverlayLayout: Equatable, Sendable {
             r.midX - tabWidth / 2, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - tabWidth)
         tabRect = CGRect(x: tabX.rounded(), y: tabY.rounded(), width: tabWidth, height: m.tabHeight)
         // The pin with its ▾, the raise and pick buttons: right of the tab, or left of it at the
-        // screen's right edge, the pin next to the tab either way.
+        // screen's right edge, the pin next to the tab either way. Without the lock buttons, the pick
+        // button alone.
         let button = m.tabHeight + m.pinGap
-        let split = m.tabHeight + m.pinMenuWidth + m.pinGap
+        let split = lockButtons ? m.tabHeight + m.pinMenuWidth + m.pinGap : 0
+        let raise = lockButtons ? button : 0
         var pinX = tabRect.maxX + m.pinGap
         var raiseX = pinX + split
-        var pickX = raiseX + button
+        var pickX = raiseX + raise
         if pickX + m.tabHeight > screen.maxX - m.screenMargin {
             pinX = tabRect.minX - split
-            raiseX = pinX - button
+            raiseX = pinX - raise
             pickX = raiseX - button
         }
-        pinRect = CGRect(x: pinX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
-        pinMenuRect = CGRect(x: pinRect.maxX, y: tabRect.minY, width: m.pinMenuWidth, height: m.tabHeight)
-        raiseRect = CGRect(x: raiseX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
+        let buttonsOnRight = pickX > tabRect.maxX
+        if lockButtons {
+            pinRect = CGRect(x: pinX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
+            pinMenuRect = CGRect(x: pinRect.maxX, y: tabRect.minY, width: m.pinMenuWidth, height: m.tabHeight)
+            raiseRect = CGRect(x: raiseX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
+        } else {
+            pinRect = .null
+            pinMenuRect = .null
+            raiseRect = .null
+        }
         pickRect = CGRect(x: pickX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
 
         // Notice: left of the tab, or past the pick button when the tab is at the screen's left edge.
         // With the buttons left of the tab, past the pick button on that side.
-        let buttonsOnRight = pinX > tabRect.maxX
         var noticeX = (buttonsOnRight ? tabRect.minX : pickRect.minX) - m.pinGap - noticeWidth
         if buttonsOnRight, noticeX < screen.minX + m.screenMargin {
             noticeX = pickRect.maxX + m.pinGap

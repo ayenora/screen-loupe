@@ -9,6 +9,7 @@ enum MainMenu {
         menu.addItem(submenuItem(fileMenu(target: target)))
         menu.addItem(submenuItem(editMenu(target: target)))
         menu.addItem(submenuItem(viewMenu(target: target)))
+        menu.addItem(submenuItem(screenshotMenu(target: target)))
         let window = windowMenu(target: target)
         menu.addItem(submenuItem(window))
         NSApp.windowsMenu = window
@@ -117,6 +118,28 @@ enum MainMenu {
         let fullScreen = menu.addItem(
             withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreen.keyEquivalentModifierMask = [.command, .control]
+        return menu
+    }
+
+    /// The Screenshot studio (docs/product.md, Screenshot studio): everything its palette does, so it
+    /// works with the palette out of reach.
+    private static func screenshotMenu(target: AppController) -> NSMenu {
+        let menu = NSMenu(title: "Screenshot")
+        let studio = menu.addItem(
+            withTitle: "Show Screenshot Studio", action: #selector(AppController.toggleScreenshotStudio(_:)),
+            keyEquivalent: "")
+        studio.target = target
+        let onTop = menu.addItem(
+            withTitle: "Keep Studio on Top", action: #selector(AppController.toggleStudioOnTop(_:)), keyEquivalent: "")
+        onTop.target = target
+        menu.addItem(.separator())
+        let capture = menu.addItem(
+            withTitle: "Capture", action: #selector(AppController.captureStudio(_:)), keyEquivalent: "")
+        capture.target = target
+        let copy = menu.addItem(withTitle: "Copy", action: #selector(AppController.copyStudio(_:)), keyEquivalent: "")
+        copy.target = target
+        let save = menu.addItem(withTitle: "Save…", action: #selector(AppController.saveStudio(_:)), keyEquivalent: "")
+        save.target = target
         return menu
     }
 

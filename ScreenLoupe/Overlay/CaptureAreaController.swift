@@ -1,7 +1,43 @@
 import AppKit
 
-/// Owns the Capture Area: its rect, the overlay window, dragging, arrow keys, hover, the magnet and
-/// persistence.
+/// Which frame a `CaptureAreaController` runs. Both share the overlay window, drawing, dragging,
+/// ⌘-snapping, pixel snapping, the arrow keys, Fit to Window and the notice; only the Capture Area
+/// has the pin's locks, the magnet, the raise button and the outline of the part the Viewer shows.
+enum OverlayFrameKind {
+    /// The Capture Area the Viewer shows.
+    case captureArea
+    /// The Screenshot studio's frame (docs/product.md, Screenshot studio): orange, no locks.
+    case studio
+
+    /// Where its rect is kept between launches.
+    var savedRect: WritableKeyPath<Settings, CGRect?> {
+        switch self {
+        case .captureArea: \.captureArea
+        case .studio: \.studioFrame
+        }
+    }
+
+    /// The settings it is drawn with.
+    var style: KeyPath<Settings, FrameStyleSettings> {
+        switch self {
+        case .captureArea: \.frameStyleSettings
+        case .studio: \.studioFrameStyleSettings
+        }
+    }
+
+    /// The pin with its locks and the magnet, and the raise button.
+    var hasLocks: Bool { self == .captureArea }
+
+    var name: String {
+        switch self {
+        case .captureArea: "Capture Area"
+        case .studio: "Studio Frame"
+        }
+    }
+}
+
+/// Owns a frame above the screen — the Capture Area, or the Screenshot studio's frame (`kind`): its
+/// rect, the overlay window, dragging, arrow keys, hover, the magnet and persistence.
 @MainActor
 final class CaptureAreaController {
     /// The captured rect, in AppKit global coordinates, snapped to its display's pixel grid.
@@ -31,6 +67,7 @@ final class CaptureAreaController {
         converter?.captureGeometry(for: GlobalRect(rect: captureRect))
     }
 
+    private let kind: OverlayFrameKind
     private let window = CaptureOverlayWindow()
     private let view: CaptureOverlayView
     private let settings: SettingsStore
@@ -74,10 +111,17 @@ final class CaptureAreaController {
     private var noticeTimer: Timer?
 
     private static let defaultSize = CGSize(width: 320, height: 200)
+    /// The rect with nothing kept, from the main display's visible frame; `nil` for the Capture
+    /// Area's own default.
+    private let makeDefaultRect: ((CGRect) -> CGRect)?
 
-    init(settings: SettingsStore) {
+    init(
+        settings: SettingsStore, kind: OverlayFrameKind = .captureArea, defaultRect: ((CGRect) -> CGRect)? = nil
+    ) {
         self.settings = settings
-        view = CaptureOverlayView(style: FrameStyle(settings.settings.frameStyleSettings))
+        self.kind = kind
+        makeDefaultRect = defaultRect
+        view = CaptureOverlayView(style: FrameStyle(settings.settings[keyPath: kind.style]), lockButtons: kind.hasLocks)
         window.contentView = view
         view.delegate = self
         refreshDisplays()
@@ -91,11 +135,12 @@ final class CaptureAreaController {
                 })
         }
         // Settings › Capture Area. Each first call repeats what init just set up, harmlessly.
-        settings.observe(\.frameStyleSettings) { [weak self] in self?.view.style = FrameStyle($0) }
+        settings.observe(kind.style) { [weak self] in self?.view.style = FrameStyle($0) }
         settings.observe(\.sizeUnits) { [weak self] _ in
             guard let self else { return }
             apply(captureRect, persist: false)
         }
+        guard kind.hasLocks else { return }
         // The magnet's window doesn't survive a relaunch: a Magnet mode comes up off.
         settings.update { if $0.captureAreaLock == .magnet { $0.captureAreaLocked = false } }
         settings.observe(\.captureAreaLock) { [weak self] in self?.view.lock = $0 }
@@ -109,6 +154,9 @@ final class CaptureAreaController {
     // MARK: Visibility
 
     var isVisible: Bool { window.isVisible }
+
+    /// The overlay window's number, to leave it out of a screenshot.
+    var windowNumber: Int { window.windowNumber }
 
     func show() {
         window.orderFrontRegardless()
@@ -146,7 +194,9 @@ final class CaptureAreaController {
     }
 
     private func initialRect() -> CGRect {
-        if var saved = settings.settings.captureArea, converter?.owningDisplay(for: GlobalRect(rect: saved)) != nil {
+        if var saved = settings.settings[keyPath: kind.savedRect],
+            converter?.owningDisplay(for: GlobalRect(rect: saved)) != nil
+        {
             let minimum = CaptureAreaEditing.minimumSize
             saved.size = CGSize(width: max(saved.width, minimum.width), height: max(saved.height, minimum.height))
             return saved
@@ -157,6 +207,7 @@ final class CaptureAreaController {
     private func defaultRect() -> CGRect {
         let screen =
             (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
+        if let makeDefaultRect { return makeDefaultRect(screen) }
         let size = Self.defaultSize
         // Left of centre, so the Viewer fits beside it on first launch (docs/design.md §7, acceptance step 3).
         let centerX = screen.minX + screen.width * 0.3
@@ -170,7 +221,7 @@ final class CaptureAreaController {
     /// Locked or not: the pin guards against a stray drag, and picking is a deliberate command. An
     /// attached magnet moves to the picked window.
     func pickWindow(onPicked: @escaping () -> Void) {
-        pick(hint: "Click to fit the Capture Area · Esc to cancel") { [weak self] picked in
+        pick(hint: "Click to fit the \(kind.name) · Esc to cancel") { [weak self] picked in
             guard let self else { return }
             let minimum = CaptureAreaEditing.minimumSize
             var rect = picked.frame
@@ -249,7 +300,7 @@ final class CaptureAreaController {
         } else if magnetMoved {
             // Saved once the window stops, not on every step of its move.
             magnetMoved = false
-            settings.update { $0.captureArea = captureRect }
+            settings.update { $0[keyPath: kind.savedRect] = captureRect }
         }
     }
 
@@ -274,14 +325,14 @@ final class CaptureAreaController {
         magnet = nil
         if magnetMoved {
             magnetMoved = false
-            settings.update { $0.captureArea = captureRect }
+            settings.update { $0[keyPath: kind.savedRect] = captureRect }
         }
     }
 
     // MARK: Notice
 
     /// Shows `text` beside the tab for a moment, then fades it.
-    private func showNotice(_ text: String) {
+    func showNotice(_ text: String) {
         noticeText = text
         apply(captureRect, persist: false)
         view.setNotice(text)
@@ -331,14 +382,15 @@ final class CaptureAreaController {
             tabWidth: OverlayStyle.tabWidth(for: tabText),
             labelWidth: OverlayStyle.labelWidth(for: labelText),
             positionSize: positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines),
-            noticeWidth: noticeText.map(OverlayStyle.labelWidth(for:)) ?? 0
+            noticeWidth: noticeText.map(OverlayStyle.labelWidth(for:)) ?? 0,
+            lockButtons: kind.hasLocks
         )
         self.layout = layout
         window.setFrame(layout.windowFrame, display: false)
         view.update(layout: layout, tabText: tabText, labelText: labelText, positionLines: positionLines)
 
         if persist {
-            settings.update { $0.captureArea = rect }
+            settings.update { $0[keyPath: kind.savedRect] = rect }
         }
         onChange?()
     }
@@ -444,7 +496,8 @@ final class CaptureAreaController {
 // MARK: - Mouse and keys
 
 extension CaptureAreaController: CaptureOverlayViewDelegate {
-    private var lock: CaptureAreaLock? { settings.settings.activeCaptureAreaLock }
+    /// The studio's frame has no locks.
+    private var lock: CaptureAreaLock? { kind.hasLocks ? settings.settings.activeCaptureAreaLock : nil }
 
     func overlayView(_ view: CaptureOverlayView, hitTargetAt point: CGPoint) -> OverlayHitTarget? {
         layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock)
@@ -519,7 +572,7 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
         guard drag != nil else { return }
         drag = nil
         rememberMagnetPlacement()
-        settings.update { $0.captureArea = captureRect }
+        settings.update { $0[keyPath: kind.savedRect] = captureRect }
         mouseMovedAnywhere()
     }
 

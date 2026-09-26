@@ -103,6 +103,26 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.viewer.toggleAlwaysOnTop()
     }
 
+    @objc func toggleScreenshotStudio(_ sender: Any?) {
+        windows.studio.toggle()
+    }
+
+    @objc func toggleStudioOnTop(_ sender: Any?) {
+        windows.studio.toggleKeepOnTop()
+    }
+
+    @objc func captureStudio(_ sender: Any?) {
+        windows.studio.capture()
+    }
+
+    @objc func copyStudio(_ sender: Any?) {
+        windows.studio.copy()
+    }
+
+    @objc func saveStudio(_ sender: Any?) {
+        windows.studio.save()
+    }
+
     @objc func resetZoom(_ sender: Any?) {
         windows.resetZoom()
     }
@@ -241,6 +261,15 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleViewerAlwaysOnTop(_:)):
             menuItem.state = settings.settings.viewerAlwaysOnTop ? .on : .off
             return true
+        case #selector(toggleScreenshotStudio(_:)):
+            let isVisible = builtWindows?.studio.isVisible == true
+            menuItem.title = isVisible ? "Hide Screenshot Studio" : "Show Screenshot Studio"
+            return true
+        case #selector(toggleStudioOnTop(_:)):
+            menuItem.state = settings.settings.studioOnTop ? .on : .off
+            return true
+        case #selector(captureStudio(_:)), #selector(copyStudio(_:)), #selector(saveStudio(_:)):
+            return builtWindows?.studio.isVisible == true
         case #selector(toggleMeasuringRuler(_:)):
             menuItem.state = builtWindows?.viewer.isRulerOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true

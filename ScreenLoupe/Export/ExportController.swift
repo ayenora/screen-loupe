@@ -57,27 +57,48 @@ final class ExportController {
             return NSSound.beep()
         }
         let keepCapture = viewer.captureKeeper(kind, image: image)
+        savePNG(png, kind: kind == .source ? "Source" : "View", sheetOn: window) { [weak self] url in
+            keepCapture?()
+            self?.viewer.showToast("Saved \(url.lastPathComponent)")
+        }
+    }
+
+    /// The save panel for a PNG named after `kind` (Settings › Screenshots), in the folder used last:
+    /// a sheet on `window`, or a panel of its own without one (the Screenshot studio). `onSaved` runs
+    /// once the file is written. Returns the panel, open until the user saves or cancels.
+    @discardableResult
+    func savePNG(
+        _ png: Data, kind: String, sheetOn window: NSWindow?, onSaved: @escaping (URL) -> Void
+    ) -> NSSavePanel {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = ScreenshotExporter.fileName(
-            kind: kind == .source ? "Source" : "View", style: settings.settings.fileNameStyle)
+        panel.nameFieldStringValue = ScreenshotExporter.fileName(kind: kind, style: settings.settings.fileNameStyle)
         panel.directoryURL =
             settings.settings.screenshotDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
-        panel.beginSheetModal(for: window) { [weak self] response in
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             do {
                 try png.write(to: url, options: .atomic)
-                keepCapture?()
                 self?.settings.update { $0.screenshotDirectory = url.deletingLastPathComponent().path }
-                self?.viewer.showToast("Saved \(url.lastPathComponent)")
+                onSaved(url)
                 if self?.settings.settings.revealsSavedFile == true {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 }
             } catch {
-                NSAlert(error: error).beginSheetModal(for: window)
+                if let window {
+                    NSAlert(error: error).beginSheetModal(for: window)
+                } else {
+                    NSAlert(error: error).runModal()
+                }
             }
         }
+        if let window {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
+        }
+        return panel
     }
 }

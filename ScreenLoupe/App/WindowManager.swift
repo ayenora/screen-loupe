@@ -1,12 +1,13 @@
 import AppKit
 
 /// Owns the two independent windows — the Capture Area overlay and the Viewer — and the capture
-/// stream between them.
+/// stream between them, and the Screenshot studio beside them.
 @MainActor
 final class WindowManager {
     let captureArea: CaptureAreaController
     let viewer: ViewerWindowController
     let export: ExportController
+    let studio: StudioController
     private let capture = ScreenCaptureManager()
     private let zoomPan = ZoomPanController()
     private let project = ProjectStore()
@@ -24,6 +25,7 @@ final class WindowManager {
             permissions: permissions, settings: settings, frameStore: capture.frameStore, zoomPan: zoomPan,
             inspector: inspector, project: project)
         export = ExportController(frameStore: capture.frameStore, settings: settings, viewer: viewer)
+        studio = StudioController(settings: settings, permissions: permissions, export: export)
 
         capture.onFrame = { [weak self] in
             // A still picture in the Viewer (frozen, a recent capture) stays put; the live frame
@@ -76,6 +78,15 @@ final class WindowManager {
         // The frame's raise button: a click in the area may have sent another app's window over the Viewer.
         captureArea.onRaiseViewer = { [weak self] in self?.showViewer() }
         captureArea.onPickWindow = { [weak self] in self?.pickWindow() }
+        // The studio has no permission flow of its own: the Viewer explains and asks.
+        studio.capturedAppWindows = { [weak self] in
+            guard let self else { return [] }
+            return [captureArea.windowNumber] + (viewer.window.map { [$0.windowNumber] } ?? [])
+        }
+        studio.onNeedsPermission = { [weak self] deniedByCapture in
+            if deniedByCapture { self?.viewer.setCaptureProblem(.permissionDenied) }
+            self?.showViewer()
+        }
         viewer.placeOnFirstLaunch(beside: captureArea.captureRect)
     }
 
@@ -281,6 +292,7 @@ final class WindowManager {
 
     func displaysChanged() {
         captureArea.screenParametersChanged()
+        studio.screenParametersChanged()
         capture.displaysChanged()
         updateCapture()
     }

@@ -18,7 +18,8 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 /// The line is always drawn. The band, the handles, the tab and the position box fade in on hover;
 /// the muted size label shows at rest. A frame whose lock stops resizing shows no band or handles.
 /// The dashed outline of the part the Viewer shows, and a notice beside the tab, fade in and out as
-/// the controller asks.
+/// the controller asks. Without `lockButtons` (the Screenshot studio's frame) there is no pin and no
+/// raise button, only the pick button beside the tab.
 /// Subviews never take the mouse, so every event lands here.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
@@ -40,6 +41,8 @@ final class CaptureOverlayView: NSView {
     /// Picks a window for the area to take.
     private let pickButton = TabButtonView(
         image: TabButtonView.symbol("macwindow"), onImage: TabButtonView.symbol("macwindow"))
+    /// The pin with its ▾ and the raise button are shown.
+    private let lockButtons: Bool
     private var isDragging = false
     private var isRevealed = false
     private var isViewedPartShown = false
@@ -83,8 +86,9 @@ final class CaptureOverlayView: NSView {
         }
     }
 
-    init(style: FrameStyle) {
+    init(style: FrameStyle, lockButtons: Bool = true) {
         self.style = style
+        self.lockButtons = lockButtons
         decorations.style = style
         viewedPartOutline.style = style
         tab.style = style
@@ -94,9 +98,8 @@ final class CaptureOverlayView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        for subview in [
-            viewedPartOutline, decorations, label, positionBox, tab, pinButton, raiseButton, pickButton, notice,
-        ] as [NSView] {
+        let buttons: [NSView] = lockButtons ? [pinButton, raiseButton, pickButton] : [pickButton]
+        for subview in [viewedPartOutline, decorations, label, positionBox, tab] + buttons + [notice] {
             addSubview(subview)
         }
         decorations.alphaValue = 0
@@ -135,8 +138,10 @@ final class CaptureOverlayView: NSView {
         positionBox.lines = positionLines
         positionBox.frame = local(layout.positionRect)
         notice.frame = local(layout.noticeRect)
-        pinButton.frame = local(layout.pinRect.union(layout.pinMenuRect))
-        raiseButton.frame = local(layout.raiseRect)
+        if lockButtons {
+            pinButton.frame = local(layout.pinRect.union(layout.pinMenuRect))
+            raiseButton.frame = local(layout.raiseRect)
+        }
         pickButton.frame = local(layout.pickRect)
         tab.text = tabText
         tab.showsShadow = layout.tabPlacement == .inside
@@ -510,8 +515,8 @@ private final class PositionBoxView: NSView {
     }
 }
 
-/// The muted size shown at rest, and the notice beside the tab.
-private final class SizeLabelView: NSView {
+/// The muted size shown at rest, the notice beside the tab, and the studio palette's hover label.
+final class SizeLabelView: NSView {
     var text = "" { didSet { if text != oldValue { needsDisplay = true } } }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }

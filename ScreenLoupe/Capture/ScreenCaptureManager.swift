@@ -208,7 +208,7 @@ final class ScreenCaptureManager: NSObject {
         }
     }
 
-    private static func isPermissionError(_ error: any Error) -> Bool {
+    static func isPermissionError(_ error: any Error) -> Bool {
         let nsError = error as NSError
         return nsError.domain == SCStreamErrorDomain && nsError.code == SCStreamError.userDeclined.rawValue
     }
