@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Orbit — Billing</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font: 14px/20px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    color: #1d2330;
+    background: #f3f4f8;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    height: 56px; padding: 0 32px; display: flex; align-items: center; gap: 12px;
+    background: #fff; border-bottom: 1px solid #e3e5ec;
+  }
+  .logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #6d5dfc, #e0569b);
+  }
+  header b { font-size: 16px; }
+  header nav { margin-left: 32px; display: flex; gap: 24px; color: #6b7285; }
+  header nav .on { color: #1d2330; font-weight: 600; }
+  .avatar {
+    margin-left: auto; width: 32px; height: 32px; border-radius: 16px;
+    background: #ffcf5c; color: #7a4b00; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  main { padding: 40px 32px; display: flex; gap: 32px; align-items: flex-start; }
+  h1 { font-size: 24px; line-height: 32px; margin-bottom: 8px; }
+  .intro { width: 360px; color: #6b7285; }
+  .intro p { margin-bottom: 24px; }
+  .swatches { display: flex; gap: 8px; }
+  .swatches i { width: 40px; height: 40px; border-radius: 8px; }
+
+  /* The component: the design export is exactly this frame. */
+  .frame { width: 408px; height: 388px; padding: 24px; background: #f3f4f8; flex: none; }
+  .card {
+    position: relative; width: 360px; height: 340px; padding: 24px;
+    background: #fff; border: 1px solid #e3e5ec; border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(29, 35, 48, .06), 0 4px 12px rgba(29, 35, 48, .06);
+  }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    background: #efeaff; color: #5b47f5; font-size: 12px; font-weight: 600;
+  }
+  .card h2 { font-size: 20px; line-height: 28px; margin: 12px 0 4px; }
+  .price { font-size: 32px; line-height: 40px; font-weight: 700; }
+  .price small { font-size: 14px; font-weight: 400; color: #6b7285; }
+  .card ul { list-style: none; padding: 0; margin: 16px 0; color: #3b4254; }
+  .card li { display: flex; gap: 8px; align-items: center; height: 24px; }
+  .card li svg { flex: none; }
+  .button {
+    position: absolute; left: 24px; right: 24px; bottom: 24px; height: 44px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 0; border-radius: 10px; color: #fff; font: inherit; font-weight: 600;
+    background: linear-gradient(135deg, #6d5dfc, #8a4df0);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 2px 6px rgba(91, 71, 245, .35);
+  }
+
+  /* The build as coded, with the mismatches a design check should catch. */
+  body:not(.design) .button { bottom: 22px; border-radius: 8px; }
+
+  /* Design export: only the frame, at the window's top-left. */
+  body.export header, body.export .intro { display: none; }
+  body.export main { padding: 0; }
+</style>
+</head>
+<body>
+<script>
+  if (location.hash === "#design" || location.hash === "#export") document.body.classList.add("design");
+  if (location.hash === "#export") document.body.classList.add("export");
+</script>
+<header>
+  <div class="logo"></div>
+  <b>Orbit</b>
+  <nav><span>Projects</span><span>Team</span><span class="on">Billing</span><span>Settings</span></nav>
+  <div class="avatar">A</div>
+</header>
+<main>
+  <section class="intro">
+    <h1>Choose your plan</h1>
+    <p>Upgrade any time. Your projects, history and team stay exactly as they are.</p>
+    <div class="swatches">
+      <i style="background:#6d5dfc"></i><i style="background:#e0569b"></i><i style="background:#ffcf5c"></i>
+      <i style="background:#2fbf8f"></i><i style="background:#1d2330"></i>
+    </div>
+  </section>
+  <div class="frame">
+    <div class="card">
+      <span class="badge">Most popular</span>
+      <h2>Pro</h2>
+      <div class="price">$12 <small>per seat / month</small></div>
+      <ul>
+        <li><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#2fbf8f"/><path d="M4.5 8.2l2.3 2.3 4.7-4.8" stroke="#fff" stroke-width="1.6" fill="none"/></svg>Unlimited projects</li>
+        <li><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#2fbf8f"/><path d="M4.5 8.2l2.3 2.3 4.7-4.8" stroke="#fff" stroke-width="1.6" fill="none"/></svg>Version history, 90 days</li>
+        <li><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#2fbf8f"/><path d="M4.5 8.2l2.3 2.3 4.7-4.8" stroke="#fff" stroke-width="1.6" fill="none"/></svg>Priority support</li>
+      </ul>
+      <button class="button">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M9 1L3 9h4l-1 6 6-8H8l1-6z" fill="#fff"/></svg>
+        Upgrade to Pro
+      </button>
+    </div>
+  </div>
+</main>
+</body>
+</html>
