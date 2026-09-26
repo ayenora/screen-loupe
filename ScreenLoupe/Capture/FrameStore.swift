@@ -1,8 +1,9 @@
 import CoreVideo
 import Foundation
 
-/// A picture the Viewer shows: a frame of the stream, frozen or not, or a recent capture. Every tool
-/// reads it through `layout`; only what follows the live Capture Area needs `geometry`.
+/// A picture the Viewer shows: a frame of the stream, frozen or not, a recent capture or an opened
+/// image. Every tool reads it through `layout`; only what follows the live Capture Area needs
+/// `geometry`.
 struct ViewerFrame: @unchecked Sendable {
     /// IOSurface-backed BGRA buffer. Never written to after capture, so sharing it across threads is
     /// safe; that is why the struct is `@unchecked Sendable`.
@@ -10,16 +11,27 @@ struct ViewerFrame: @unchecked Sendable {
     let layout: FrameLayout
     /// The display the pixels come from, for their colour space; sRGB without one.
     let displayID: CGDirectDisplayID?
+    /// An opened image's own colour space, which its pixels are in; `nil` for a picture of the
+    /// screen, whose colour space is its display's (`colorSpace`).
+    let imageColorSpace: CGColorSpace?
     /// The geometry the stream captured it with: a live frame, or one frozen from it. A recent
-    /// capture is a picture of its own, whose pixels no longer map onto the Capture
+    /// capture or an opened image is a picture of its own, whose pixels don't map onto the Capture
     /// Area, so it has none: the crosshair, the cursor, the part the Viewer shows and following the
     /// area's edges don't apply to it.
     let geometry: CaptureGeometry?
 
-    init(pixelBuffer: CVPixelBuffer, layout: FrameLayout, displayID: CGDirectDisplayID?) {
+    /// Whether the buffer's alpha is the picture's own, straight (not premultiplied): an opened
+    /// image's transparency. Frames of the screen are opaque, whatever their alpha bytes hold.
+    var hasAlpha: Bool { imageColorSpace != nil }
+
+    init(
+        pixelBuffer: CVPixelBuffer, layout: FrameLayout, displayID: CGDirectDisplayID?,
+        imageColorSpace: CGColorSpace? = nil
+    ) {
         self.pixelBuffer = pixelBuffer
         self.layout = layout
         self.displayID = displayID
+        self.imageColorSpace = imageColorSpace
         geometry = nil
     }
 
@@ -28,6 +40,7 @@ struct ViewerFrame: @unchecked Sendable {
         self.pixelBuffer = pixelBuffer
         layout = geometry.layout
         displayID = geometry.display.id
+        imageColorSpace = nil
         self.geometry = geometry
     }
 
@@ -49,16 +62,7 @@ struct ViewerFrame: @unchecked Sendable {
         guard let kept = cut.fittedToImageBudget() else { return nil }
         let width = kept.imageSize.width
         let height = kept.imageSize.height
-        let attributes: [CFString: Any] = [
-            kCVPixelBufferIOSurfacePropertiesKey: [CFString: Any](),
-            kCVPixelBufferMetalCompatibilityKey: true,
-        ]
-        var copy: CVPixelBuffer?
-        guard
-            CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &copy)
-                == kCVReturnSuccess,
-            let copy
-        else { return nil }
+        guard let copy = Self.makeBuffer(width: width, height: height) else { return nil }
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         CVPixelBufferLockBaseAddress(copy, [])
         defer {
@@ -76,6 +80,20 @@ struct ViewerFrame: @unchecked Sendable {
             memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
         }
         return ViewerFrame(pixelBuffer: copy, layout: kept, displayID: displayID)
+    }
+
+    /// An IOSurface-backed, Metal-compatible BGRA buffer, drawn like a live frame.
+    static func makeBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [CFString: Any](),
+            kCVPixelBufferMetalCompatibilityKey: true,
+        ]
+        var buffer: CVPixelBuffer?
+        guard
+            CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &buffer)
+                == kCVReturnSuccess
+        else { return nil }
+        return buffer
     }
 }
 
@@ -99,16 +117,16 @@ final class FrameStore: @unchecked Sendable {
         set { lock.withLock { frozen = newValue ? frozen ?? frame : nil } }
     }
 
-    /// A recent capture shown in place of the live frame (docs/product.md, Recent Captures). Above a
-    /// frozen frame, which comes back when it goes.
+    /// A recent capture, or an opened image, shown in place of the live frame (docs/product.md,
+    /// Recent Captures, Open Image). Above a frozen frame, which comes back when it goes.
     var shownCapture: ViewerFrame? {
         get { lock.withLock { capture } }
         set { lock.withLock { capture = newValue } }
     }
 
-    /// What the Viewer shows in place of the live frame: a recent capture, or else the frozen frame.
-    /// `nil` while it is live. Live frames are still stored meanwhile, so the view is current when
-    /// it goes back to live.
+    /// What the Viewer shows in place of the live frame: a recent capture or an opened image, or else
+    /// the frozen frame. `nil` while it is live. Live frames are still stored meanwhile, so the view
+    /// is current when it goes back to live.
     var still: ViewerFrame? {
         lock.withLock { capture ?? frozen }
     }

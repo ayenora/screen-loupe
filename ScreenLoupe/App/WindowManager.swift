@@ -60,6 +60,7 @@ final class WindowManager {
         viewer.onClose = { [weak self] in
             guard let self else { return }
             isViewerOpen = false
+            imageRequest += 1
             viewer.showLive()
             setFrozen(false)
             saveViewerState()
@@ -135,6 +136,53 @@ final class WindowManager {
         captureArea.pickWindow { [weak self] in
             guard let self, !isViewerOpen else { return }
             showViewer()
+        }
+    }
+
+    /// Counts image files asked for, so only the latest one shows; closing the Viewer counts too.
+    private var imageRequest = 0
+    /// The open panel is up, as a sheet on the Viewer or on its own; Open Image waits for it.
+    private(set) var isChoosingImage = false
+
+    /// File › Open Image… (docs/product.md, Open Image): the chosen image is decoded off the main
+    /// thread, then shows in the Viewer, which opens for it. A file that can't be read changes
+    /// nothing and says so.
+    func openImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = ImageFileLoader.openableTypes
+        panel.message = "Choose an image to inspect in the Viewer."
+        isChoosingImage = true
+        let open: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            self?.isChoosingImage = false
+            guard response == .OK, let url = panel.url, let self else { return }
+            imageRequest += 1
+            let request = imageRequest
+            let wasOpen = isViewerOpen
+            Task {
+                let frame = await ImageFileLoader.frame(at: url)
+                // A later file was asked for, or the Viewer it was for has closed.
+                guard request == self.imageRequest, !wasOpen || self.isViewerOpen else { return }
+                guard let frame else { return self.imageFailed(url) }
+                self.showViewer()
+                self.viewer.showImage(frame, name: url.lastPathComponent)
+            }
+        }
+        if isViewerOpen, let window = viewer.window {
+            panel.beginSheetModal(for: window, completionHandler: open)
+        } else {
+            NSApp.activate()
+            open(panel.runModal())
+        }
+    }
+
+    private func imageFailed(_ url: URL) {
+        let alert = NSAlert()
+        alert.messageText = "The image couldn't be opened."
+        alert.informativeText = url.lastPathComponent
+        if isViewerOpen, let window = viewer.window {
+            alert.beginSheetModal(for: window, completionHandler: nil)
+        } else {
+            alert.runModal()
         }
     }
 
@@ -245,7 +293,7 @@ final class WindowManager {
     /// Streams while the Viewer is open and allowed to capture. Stops otherwise, so the system's
     /// screen-recording indicator goes away together with the Viewer.
     private func updateCapture() {
-        let active = isViewerOpen && viewer.showsCapture
+        let active = isViewerOpen && viewer.canCapture
         capture.capture(active ? captureArea.captureGeometry : nil)
     }
 }

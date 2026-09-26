@@ -105,7 +105,7 @@ final class ViewerView: MTKView {
             selection?.areaOriginMoved(by: shift)
             ruler?.areaOriginMoved(by: shift)
             references?.areaOriginMoved(by: shift)
-            matchColorSpace(ofDisplay: frame.displayID)
+            matchColorSpace(of: frame)
         }
         requestDraw()
     }
@@ -140,14 +140,22 @@ final class ViewerView: MTKView {
 
     private var colorSpaceDisplayID: CGDirectDisplayID?
 
-    /// Frames come in the source display's color space (ScreenCaptureKit's default). Tagging the layer
-    /// with it lets the system color-match when the Viewer sits on a display with another profile;
-    /// on the same display the values pass through unchanged.
-    private func matchColorSpace(ofDisplay displayID: CGDirectDisplayID?) {
-        // The layer has no colour space until the first frame.
-        guard colorspace == nil || displayID != colorSpaceDisplayID else { return }
-        colorSpaceDisplayID = displayID
-        colorspace = NSScreen.colorSpace(forDisplay: displayID)
+    /// Frames come in the source display's color space (ScreenCaptureKit's default), an opened image
+    /// in its own. Tagging the layer with it lets the system color-match when the Viewer sits on a
+    /// display with another profile; on the same display the values pass through unchanged.
+    private func matchColorSpace(of frame: ViewerFrame) {
+        if let space = frame.imageColorSpace {
+            colorSpaceDisplayID = nil
+            if colorspace != space { colorspace = space }
+            return
+        }
+        // The layer has no colour space until the first frame; the display's is looked up only
+        // when the display changes.
+        guard colorspace == nil || colorSpaceDisplayID == nil || frame.displayID != colorSpaceDisplayID else {
+            return
+        }
+        colorSpaceDisplayID = frame.displayID
+        colorspace = frame.colorSpace
     }
 
     // MARK: Coordinates

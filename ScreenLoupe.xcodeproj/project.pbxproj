@@ -23,6 +23,7 @@
 				Geometry/EdgeSnapping.swift,
 				Geometry/FrameLayout.swift,
 				Geometry/ImageBudget.swift,
+				Geometry/ImageOrientation.swift,
 				Geometry/LenientDecoding.swift,
 				Geometry/OverlayLayout.swift,
 				Geometry/ReferenceLayers.swift,

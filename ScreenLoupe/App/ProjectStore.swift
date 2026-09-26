@@ -76,7 +76,10 @@ final class ProjectStore {
             return nil
         }
         // A larger image shows only its top-left part (`ReferencesController.image(for:)`).
-        let kept = ImageBudget.fitted(width: width, height: height)
+        // A photo taken turned shows upright (`ImageFileLoader.image(at:)`), its sides swapped.
+        let orientation = ImageOrientation(exif: properties[kCGImagePropertyOrientation] as? Int ?? 1)
+        let upright = orientation.swapsSides ? (width: height, height: width) : (width: width, height: height)
+        let kept = ImageBudget.fitted(width: upright.width, height: upright.height)
         return ReferenceLayer(
             id: id, name: url.lastPathComponent, fileName: fileName,
             imageSize: CGSize(width: kept.width, height: kept.height))

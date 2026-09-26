@@ -45,6 +45,10 @@ enum MainMenu {
 
     private static func fileMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "File")
+        let open = menu.addItem(
+            withTitle: "Open Image…", action: #selector(AppController.openImage(_:)), keyEquivalent: "o")
+        open.target = target
+        menu.addItem(.separator())
         let saveView = menu.addItem(
             withTitle: "Save View…", action: #selector(AppController.saveView(_:)), keyEquivalent: "s")
         saveView.target = target

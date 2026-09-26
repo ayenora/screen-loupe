@@ -29,3 +29,17 @@ extension DisplayInfo {
         self.init(id: number.uint32Value, globalFrame: screen.frame, scale: screen.backingScaleFactor)
     }
 }
+
+extension ViewerFrame {
+    /// The colour space the pixels are in: an opened image's own, else the display's they come from.
+    var colorSpace: CGColorSpace {
+        imageColorSpace ?? NSScreen.colorSpace(forDisplay: displayID)
+    }
+
+    /// The name of that colour space for the Color Meter, such as "Display P3" or an image's
+    /// profile; `nil` when the system has none (`ColorSample` then names it).
+    var colorSpaceName: String? {
+        if let imageColorSpace { return NSColorSpace(cgColorSpace: imageColorSpace)?.localizedName }
+        return displayID.flatMap { NSScreen.screen(forDisplay: $0) }?.colorSpace?.localizedName
+    }
+}

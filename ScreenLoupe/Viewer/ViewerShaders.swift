@@ -37,6 +37,9 @@ enum ViewerShaders {
             float zoom;
             // The pixel grid: 0 none, 1 auto lines, 2 dark lines, 3 light lines.
             float grid;
+            // 1: the frame's alpha is its own, straight (an opened image); 0: the frame is opaque.
+            float straightAlpha;
+            float unused[3];
         };
 
         fragment float4 quadFragment(QuadVertex in [[stage_in]], texture2d<float> frame [[texture(0)]],
@@ -45,6 +48,9 @@ enum ViewerShaders {
             // out below 1:1 is linearly filtered (docs/design.md §2.3).
             constexpr sampler pixels(mag_filter::nearest, min_filter::linear, address::clamp_to_edge);
             float4 color = frame.sample(pixels, in.uv);
+            // Premultiplied for source-over blending onto the background. A frame of the screen is
+            // opaque, whatever its alpha bytes hold.
+            color = uniforms.straightAlpha > 0.5 ? float4(color.rgb * color.a, color.a) : float4(color.rgb, 1.0);
             if (uniforms.grid > 0.5) {
                 // How far into its source pixel this drawable pixel is, in drawable pixels. The first
                 // drawable pixel of every source pixel (left and top edge) becomes the grid line, so
@@ -55,7 +61,8 @@ enum ViewerShaders {
                     float3 line = uniforms.grid > 2.5 ? float3(1.0)
                         : uniforms.grid > 1.5 ? float3(0.0)
                         : (luma > 0.5 ? float3(0.0) : float3(1.0));
-                    color.rgb = mix(color.rgb, line, 0.22);
+                    // The opaque line over the (premultiplied) pixel, so it shows on transparent ones too.
+                    color = mix(color, float4(line, 1.0), 0.22);
                 }
             }
             return color;

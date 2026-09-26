@@ -87,6 +87,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.showViewer()
     }
 
+    @objc func openImage(_ sender: Any?) {
+        windows.openImage()
+    }
+
     @objc func toggleCaptureArea(_ sender: Any?) {
         windows.toggleCaptureArea()
     }
@@ -255,6 +259,8 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleSelectTool(_:)):
             menuItem.state = builtWindows?.viewer.isSelectToolOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true
+        case #selector(openImage(_:)):
+            return builtWindows?.isChoosingImage != true
         case #selector(sizeViewerToArea(_:)):
             return builtWindows?.viewer.canSizeToArea == true
         case #selector(copyView(_:)), #selector(NSText.copy(_:)), #selector(copySource(_:)), #selector(saveView(_:)),

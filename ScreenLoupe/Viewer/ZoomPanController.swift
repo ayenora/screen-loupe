@@ -27,11 +27,16 @@ final class ZoomPanController {
 
     private var hasContent: Bool { state.contentSize.width > 0 && state.contentSize.height > 0 }
 
+    /// Fit once the viewport is known, instead of the restored zoom: an opened image in a Viewer not
+    /// laid out yet.
+    private var fitsFirstViewport = false
+
     func setViewport(_ size: CGSize) {
         guard size != state.viewportSize else { return }
         let first = state.viewportSize == .zero
         state.viewportSize = size
         state = first && hasContent ? initialState() : state.clamped()
+        if first { fitsFirstViewport = false }
         changed()
     }
 
@@ -50,7 +55,7 @@ final class ZoomPanController {
 
     /// The first frame: the restored zoom, centred, or Fit.
     private func initialState() -> ZoomPanState {
-        guard let restoredZoom, state.viewportSize != .zero else { return state.fitted() }
+        guard !fitsFirstViewport, let restoredZoom, state.viewportSize != .zero else { return state.fitted() }
         var next = state
         next.zoom = min(max(restoredZoom, ZoomPanState.zoomRange.lowerBound), ZoomPanState.zoomRange.upperBound)
         return next.centered()
@@ -59,6 +64,13 @@ final class ZoomPanController {
     func fit() {
         state = state.fitted()
         changed()
+    }
+
+    /// Fit for a picture that opens fitted (docs/product.md, Open Image): now, and once more when the
+    /// viewport is first known, if it isn't yet.
+    func fitWhenShown() {
+        fitsFirstViewport = state.viewportSize == .zero
+        fit()
     }
 
     /// Zooms around `anchor` (a viewport point), or around the viewport centre.
@@ -75,6 +87,7 @@ final class ZoomPanController {
     /// Back to a zoom and pan kept earlier: a recent capture as it was left, or the live view after
     /// one. Kept inside the image as any pan is.
     func restore(zoom: CGFloat, offset: CGPoint) {
+        fitsFirstViewport = false
         var next = state
         next.zoom = zoom
         next.offset = offset

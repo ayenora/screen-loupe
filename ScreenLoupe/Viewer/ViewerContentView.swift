@@ -147,8 +147,8 @@ final class ViewerContentView: NSStackView {
             guard let self else { return }
             sidePanels.show(layout)
             references.isActive = layout.showsReferences
-            // Closing Recent Captures goes back to live.
-            if !layout.showsCaptures { captures.show(nil) }
+            // Closing Recent Captures goes back to live; an opened image doesn't depend on the panel.
+            if !layout.showsCaptures, captures.openedImage == nil { captures.show(nil) }
             sidePanelLayout = layout
             applyMouseModes()
         }
@@ -194,8 +194,18 @@ final class ViewerContentView: NSStackView {
 
     // MARK: Recent Captures
 
-    /// Whether a recent capture shows in place of the live view.
+    /// Whether a recent capture, or an opened image, shows in place of the live view.
     var isShowingCapture: Bool { captures.shownID != nil }
+
+    /// Shows an opened image in place of the live view (docs/product.md, Open Image), as a recent
+    /// capture shows, fitted to the Viewer when it shows (`show`). `name` is its file's.
+    func showImage(_ frame: ViewerFrame, name: String) {
+        // Its zoom and pan are never read: it opens fitted, and is gone once something else shows.
+        captures.showOpened(
+            RecentCapture(
+                frame: frame, kind: name, imageSize: frame.layout.size, date: Date(), thumbnail: nil,
+                zoom: zoomPan.state.zoom, offset: .zero, selection: nil))
+    }
 
     /// What a copy or save was made of, for its recent capture.
     enum CaptureKind: Equatable {
@@ -208,6 +218,7 @@ final class ViewerContentView: NSStackView {
     /// Captures): the returned call adds it, now for a copy, once written for a save. The frame and
     /// how the Viewer shows it are taken now; a view, a selection or a region keeps just its pixels,
     /// framed as it was, and only a source copy keeps the whole area. `nil` while a recent capture shows: copies made from one add none.
+    /// Nor do copies made from an opened image.
     func captureKeeper(_ kind: CaptureKind, image: CGImage) -> (() -> Void)? {
         guard !isShowingCapture, let frame = frameStore.shownFrame else { return nil }
         let state = zoomPan.state
@@ -253,7 +264,10 @@ final class ViewerContentView: NSStackView {
         // The next picture is not an edge drag of the last one.
         viewerView.forgetAreaOrigin()
         viewerView.frameArrived()
-        if let new {
+        if let new, new.id == captures.openedImage?.id {
+            zoomPan.fitWhenShown()
+            selection.keptSelection = nil
+        } else if let new {
             zoomPan.restore(zoom: new.zoom, offset: new.offset)
             selection.keptSelection = new.selection
         } else if let live = liveView {
@@ -266,8 +280,9 @@ final class ViewerContentView: NSStackView {
         onShowCapture?()
     }
 
-    /// The purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" while a capture shows; the
-    /// frozen indicator of the live view waits under it.
+    /// The purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" while a capture shows, or
+    /// "photo.png · Esc for live" for an opened image; the frozen indicator of the live view waits
+    /// under it.
     private func showCaptureIndicator() {
         let shown = captures.shown
         captureIndicator.state = shown.map { .capture(label: captures.label(for: $0)) } ?? .hidden

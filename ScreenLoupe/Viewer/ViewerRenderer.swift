@@ -66,14 +66,16 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         descriptor.colorAttachments[0].pixelFormat = Self.pixelFormat
         let checkerDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
         checkerDescriptor.fragmentFunction = library.makeFunction(name: "checkerFragment")
-        let referenceDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
-        referenceDescriptor.fragmentFunction = library.makeFunction(name: "referenceFragment")
-        let blending = referenceDescriptor.colorAttachments[0]!
+        // The frame and the reference layers blend premultiplied source-over: an opened image's
+        // transparent pixels show the background, as reference layers do.
+        let blending = descriptor.colorAttachments[0]!
         blending.isBlendingEnabled = true
         blending.sourceRGBBlendFactor = .one
         blending.sourceAlphaBlendFactor = .one
         blending.destinationRGBBlendFactor = .oneMinusSourceAlpha
         blending.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        let referenceDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
+        referenceDescriptor.fragmentFunction = library.makeFunction(name: "referenceFragment")
 
         var cache: CVMetalTextureCache?
         guard let pipeline = try? device.makeRenderPipelineState(descriptor: descriptor),
@@ -203,11 +205,14 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
                 var quad = Self.ndc(
                     scene.state.imageRect(origin: frame.layout.imageOrigin, size: size), in: scene.size)
                 let zoom = scene.state.zoom
-                var fragment = SIMD4<Float>(
-                    Float(size.width), Float(size.height), Float(zoom), Self.gridMode(scene.style, zoom: zoom))
+                var fragment = (
+                    SIMD4<Float>(
+                        Float(size.width), Float(size.height), Float(zoom), Self.gridMode(scene.style, zoom: zoom)),
+                    SIMD4<Float>(frame.hasAlpha ? 1 : 0, 0, 0, 0)
+                )
                 encoder.setRenderPipelineState(pipeline)
                 encoder.setVertexBytes(&quad, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
-                encoder.setFragmentBytes(&fragment, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                encoder.setFragmentBytes(&fragment, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 0)
                 encoder.setFragmentTexture(metalTexture, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }

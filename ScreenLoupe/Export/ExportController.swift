@@ -47,8 +47,7 @@ final class ExportController {
 
     private func sourceImage() -> CGImage? {
         guard canExport, let frame = frameStore.shownFrame else { return nil }
-        return ScreenshotExporter.sourceImage(
-            from: frame, colorSpace: NSScreen.colorSpace(forDisplay: frame.displayID))
+        return ScreenshotExporter.sourceImage(from: frame, colorSpace: frame.colorSpace)
     }
 
     /// The image is taken when the command is given, before the save panel opens; so is its recent

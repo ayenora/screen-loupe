@@ -8,7 +8,8 @@ struct RecentCapture: Identifiable {
     let id = UUID()
     /// The frame, in a buffer of its own, cut to `ImageBudget`.
     let frame: ViewerFrame
-    /// What was copied or saved: "View · 800%", "Selection", "Region" or "Source".
+    /// What was copied or saved: "View · 800%", "Selection", "Region" or "Source"; an opened image's
+    /// file name.
     let kind: String
     /// The size of the copied or saved image.
     let imageSize: PixelSize
@@ -43,16 +44,21 @@ final class RecentCaptures {
     private(set) var captures: [RecentCapture] = []
     /// The capture the Viewer shows, or `nil` for the live view.
     private(set) var shownID: UUID?
+    /// An image file shown in place of the live view (docs/product.md, Open Image): shown as a capture
+    /// is, but not one of the list. Kept only while it shows.
+    private(set) var openedImage: RecentCapture?
     /// The panel's content scale, 1 at the side column's narrowest.
     var scale: CGFloat = 1
 
     /// Called with the capture shown before and the one shown now (`nil`: the live view).
     @ObservationIgnored var onShow: ((_ old: RecentCapture?, _ new: RecentCapture?) -> Void)?
 
-    var shown: RecentCapture? { captures.first { $0.id == shownID } }
+    var shown: RecentCapture? { openedImage ?? captures.first { $0.id == shownID } }
 
-    /// "Capture 2 of 4 · 14:20:05 · Esc for live", over the Viewer while `capture` shows.
+    /// "Capture 2 of 4 · 14:20:05 · Esc for live", or "photo.png · Esc for live" for an opened image,
+    /// over the Viewer while `capture` shows.
     func label(for capture: RecentCapture) -> String {
+        if capture.id == openedImage?.id { return "\(capture.kind) · Esc for live" }
         let number = (captures.firstIndex { $0.id == capture.id } ?? 0) + 1
         return "Capture \(number) of \(captures.count) · \(capture.time) · Esc for live"
     }
@@ -84,12 +90,21 @@ final class RecentCaptures {
         onChange?()
     }
 
-    /// Shows a capture in the Viewer, or the live view for `nil`.
+    /// Shows a capture in the Viewer, or the live view for `nil`. An opened image that showed is gone.
     func show(_ id: UUID?) {
         guard id != shownID else { return }
         let old = shown
         shownID = id
+        openedImage = nil
         onShow?(old, shown)
+    }
+
+    /// Shows an opened image in the Viewer, in place of what showed.
+    func showOpened(_ image: RecentCapture) {
+        let old = shown
+        openedImage = image
+        shownID = image.id
+        onShow?(old, image)
     }
 
     func remove(_ id: UUID) {

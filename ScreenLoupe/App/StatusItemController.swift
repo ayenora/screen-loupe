@@ -15,6 +15,7 @@ final class StatusItemController {
             Self.item("Fit Capture Area to Window…", #selector(AppController.pickWindowForCaptureArea(_:)), target))
         menu.addItem(Self.item("Keep Viewer on Top", #selector(AppController.toggleViewerAlwaysOnTop(_:)), target))
         menu.addItem(.separator())
+        menu.addItem(Self.item("Open Image…", #selector(AppController.openImage(_:)), target))
         menu.addItem(Self.item("Copy View", #selector(AppController.copyView(_:)), target))
         menu.addItem(Self.item("Copy Source", #selector(AppController.copySource(_:)), target))
         menu.addItem(Self.item("Reset Zoom", #selector(AppController.resetZoom(_:)), target))

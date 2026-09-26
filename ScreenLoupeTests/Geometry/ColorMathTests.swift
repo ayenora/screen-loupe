@@ -23,6 +23,32 @@ struct ColorMathTests {
         #expect(grey.hex == "#808080")
     }
 
+    @Test func anOpenedImageKeepsAnRGBSpaceAndGetsSRGBOtherwise() throws {
+        #expect(CGColorSpace.rgbSpace(forImageIn: displayP3) == displayP3)
+        #expect(CGColorSpace.rgbSpace(forImageIn: nil) == sRGB)
+        let palette = try #require(CGColorSpace(indexedBaseSpace: displayP3, last: 0, colorTable: [255, 0, 0]))
+        #expect(CGColorSpace.rgbSpace(forImageIn: palette) == displayP3)
+        let gray = try #require(CGColorSpace(name: CGColorSpace.genericGrayGamma2_2))
+        #expect(CGColorSpace.rgbSpace(forImageIn: gray) == sRGB)
+        let cmyk = try #require(CGColorSpace(name: CGColorSpace.genericCMYK))
+        #expect(CGColorSpace.rgbSpace(forImageIn: cmyk) == sRGB)
+        let float = try #require(CGColorSpace(name: CGColorSpace.extendedLinearSRGB))
+        #expect(CGColorSpace.rgbSpace(forImageIn: float) == sRGB)
+    }
+
+    @Test func aTranslucentPixelNamesItsOpacityInEveryFormat() {
+        let sample = ColorSample(red: 255, green: 0, blue: 0, alpha: 128, colorSpace: sRGB)
+        #expect(sample.hex == "#FF000080")
+        #expect(sample.cssRGB == "rgba(255, 0, 0, 0.502)")
+        #expect(sample.swiftUI == "Color(red: 1.000, green: 0.000, blue: 0.000, opacity: 0.502)")
+        #expect(sample.appKit == "NSColor(srgbRed: 1.000, green: 0.000, blue: 0.000, alpha: 0.502)")
+        #expect(sample.nativeValues == "1.000 0.000 0.000")
+        // A pinned colour is kept by its HEX and comes back with its opacity.
+        #expect(ColorSample(srgbHex: sample.hex) == ColorSample(srgbHex: "#FF000080"))
+        #expect(ColorSample(srgbHex: sample.hex).alpha == sample.alpha)
+        #expect(ColorSample(srgbHex: "#FF0000").alpha == 1)
+    }
+
     @Test func formats() {
         let sample = ColorSample(srgbHex: "#0A6FE0")
         #expect(sample.hex == "#0A6FE0")

@@ -168,7 +168,9 @@ final class ColorMeterPanel: NSView {
         case nil: sourceLabel.stringValue = "Point at a pixel"
         }
         let sample = probe?.sample
-        swatch.color = sample.map { NSColor(srgbRed: $0.srgb.red, green: $0.srgb.green, blue: $0.srgb.blue, alpha: 1) }
+        swatch.color = sample.map {
+            NSColor(srgbRed: $0.srgb.red, green: $0.srgb.green, blue: $0.srgb.blue, alpha: $0.alpha)
+        }
         for format in Format.allCases {
             let text = probe.flatMap { value(format, sample: sample, probe: $0) }
             values[format] = text
@@ -311,7 +313,8 @@ private final class PinRow: NSStackView {
         remove = IconButton("xmark", label: "Remove", target: target, action: #selector(ColorMeterPanel.removePin(_:)))
         super.init(frame: .zero)
         swatch.color = NSColor(
-            srgbRed: pin.sample.srgb.red, green: pin.sample.srgb.green, blue: pin.sample.srgb.blue, alpha: 1)
+            srgbRed: pin.sample.srgb.red, green: pin.sample.srgb.green, blue: pin.sample.srgb.blue,
+            alpha: pin.sample.alpha)
         swatch.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate(swatchSize)
         hex.isSelectable = true

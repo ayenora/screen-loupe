@@ -10,15 +10,19 @@ struct ColorSample: Equatable, Sendable {
     var nativeSpaceName: String
     /// Components 0...1 in sRGB, clamped: colours outside sRGB are clipped for HEX.
     var srgb: (red: Double, green: Double, blue: Double)
+    /// Opacity 0...1, straight: 1 for the screen, an opened image's own (docs/product.md, Open Image).
+    var alpha: Double
 
     static func == (a: ColorSample, b: ColorSample) -> Bool {
-        a.native == b.native && a.nativeSpaceName == b.nativeSpaceName && a.srgb == b.srgb
+        a.native == b.native && a.nativeSpaceName == b.nativeSpaceName && a.srgb == b.srgb && a.alpha == b.alpha
     }
 
-    /// Builds a sample from 8-bit components captured in `colorSpace`. `spaceName` overrides the name
-    /// shown for it: a display's ICC-based space often has no system name.
-    init(red: UInt8, green: UInt8, blue: UInt8, colorSpace: CGColorSpace, spaceName: String? = nil) {
+    /// Builds a sample from 8-bit components captured in `colorSpace`, not premultiplied. `spaceName`
+    /// overrides the name shown for it: a display's ICC-based space often has no system name.
+    init(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8 = 255, colorSpace: CGColorSpace, spaceName: String? = nil)
+    {
         native = (Double(red) / 255, Double(green) / 255, Double(blue) / 255)
+        self.alpha = Double(alpha) / 255
         nativeSpaceName = spaceName ?? Self.displayName(of: colorSpace)
         let components: [CGFloat] = [CGFloat(native.red), CGFloat(native.green), CGFloat(native.blue), 1]
         let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -32,8 +36,15 @@ struct ColorSample: Equatable, Sendable {
         }
     }
 
+    /// `#RRGGBB`, or `#RRGGBBAA` with an opacity.
     init(srgbHex hex: String) {
-        let value = UInt32(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0
+        let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        var value = UInt32(digits, radix: 16) ?? 0
+        alpha = 1
+        if digits.count == 8 {
+            alpha = Double(value & 0xFF) / 255
+            value >>= 8
+        }
         let components = (
             Double((value >> 16) & 0xFF) / 255, Double((value >> 8) & 0xFF) / 255, Double(value & 0xFF) / 255
         )
@@ -49,27 +60,36 @@ struct ColorSample: Equatable, Sendable {
         (Self.byte(srgb.red), Self.byte(srgb.green), Self.byte(srgb.blue))
     }
 
-    /// `#18191C`
+    /// Whether the colour is not fully opaque; only then do the formats name the opacity.
+    var isTranslucent: Bool { alpha < 1 }
+
+    /// `#18191C`, or `#18191C80` when translucent.
     var hex: String {
         let c = srgb8
-        return String(format: "#%02X%02X%02X", c.red, c.green, c.blue)
+        let rgb = String(format: "#%02X%02X%02X", c.red, c.green, c.blue)
+        return isTranslucent ? rgb + String(format: "%02X", Self.byte(alpha)) : rgb
     }
 
-    /// `rgb(24, 25, 28)`
+    /// `rgb(24, 25, 28)`, or `rgba(24, 25, 28, 0.502)` when translucent.
     var cssRGB: String {
         let c = srgb8
-        return "rgb(\(c.red), \(c.green), \(c.blue))"
+        guard isTranslucent else { return "rgb(\(c.red), \(c.green), \(c.blue))" }
+        return "rgba(\(c.red), \(c.green), \(c.blue), \(Self.decimal(alpha)))"
     }
 
-    /// `Color(red: 0.094, green: 0.098, blue: 0.110)` — SwiftUI, sRGB.
+    /// `Color(red: 0.094, green: 0.098, blue: 0.110)` — SwiftUI, sRGB; with `opacity:` when translucent.
     var swiftUI: String {
-        "Color(red: \(Self.decimal(srgb.red)), green: \(Self.decimal(srgb.green)), blue: \(Self.decimal(srgb.blue)))"
+        let opacity = isTranslucent ? ", opacity: \(Self.decimal(alpha))" : ""
+        return
+            "Color(red: \(Self.decimal(srgb.red)), green: \(Self.decimal(srgb.green)), blue: \(Self.decimal(srgb.blue))\(opacity))"
     }
 
     /// `NSColor(srgbRed: 0.094, green: 0.098, blue: 0.110, alpha: 1)` — AppKit; UIKit's is the same
     /// with `UIColor(red:…)`.
     var appKit: String {
-        "NSColor(srgbRed: \(Self.decimal(srgb.red)), green: \(Self.decimal(srgb.green)), blue: \(Self.decimal(srgb.blue)), alpha: 1)"
+        let opacity = isTranslucent ? Self.decimal(alpha) : "1"
+        return
+            "NSColor(srgbRed: \(Self.decimal(srgb.red)), green: \(Self.decimal(srgb.green)), blue: \(Self.decimal(srgb.blue)), alpha: \(opacity))"
     }
 
     /// `0.094 0.098 0.110` in the display's own colour space.
@@ -102,5 +122,20 @@ struct ColorSample: Equatable, Sendable {
         if name == CGColorSpace.displayP3 as String { return "Display P3" }
         if name == CGColorSpace.sRGB as String { return "sRGB" }
         return name.replacingOccurrences(of: "kCGColorSpace", with: "")
+    }
+}
+
+extension CGColorSpace {
+    /// The colour space an opened image's pixels are kept in, as 8-bit BGRA like a captured frame
+    /// (docs/design.md §2): the image's own when it is RGB, and a palette's RGB base for an indexed
+    /// one, so the values stay as they are; sRGB for anything else (gray, CMYK, an extended-range
+    /// space of a float image, which 8 bits can't hold), which is converted.
+    /// ImageIO already gives an image without a profile sRGB.
+    static func rgbSpace(forImageIn space: CGColorSpace?) -> CGColorSpace {
+        let rgb = space?.model == .indexed ? space?.baseColorSpace : space
+        guard let rgb, rgb.model == .rgb, !CGColorSpaceUsesExtendedRange(rgb) else {
+            return CGColorSpace(name: CGColorSpace.sRGB)!
+        }
+        return rgb
     }
 }

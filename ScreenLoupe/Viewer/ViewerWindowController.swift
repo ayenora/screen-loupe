@@ -17,6 +17,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     private let content: ViewerContentView
     private let toolbar: ViewerToolbar
     private var showsPermissionView: Bool?
+    /// Screen Recording access as last checked.
+    private var hasAccess: Bool?
     /// ScreenCaptureKit refused for lack of permission although the preflight said yes. The
     /// preflight can stay stale until relaunch, so this holds until then.
     private var permissionDeniedByCapture = false
@@ -58,6 +60,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.onShowCapture = { [weak self] in
             guard let self else { return }
             toolbar.setShowingCapture(isShowingCapture)
+            // An opened image shows without access; the explanation comes back when it goes.
+            refreshContent()
             onShowCapture?()
         }
         content.statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
@@ -164,6 +168,15 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.captures.show(nil)
     }
 
+    // MARK: Open Image
+
+    /// Shows an opened image in place of the live view (docs/product.md, Open Image). Without Screen
+    /// Recording access the content comes in for it first; it fits once the content has its size.
+    func showImage(_ frame: ViewerFrame, name: String) {
+        if showsPermissionView == true { showContent(true) }
+        content.showImage(frame, name: name)
+    }
+
     // MARK: Freeze frame
 
     /// Frozen, counting down to a freeze, or live: the image area and the toolbar's pause button.
@@ -198,8 +211,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Content
 
-    /// Whether the Viewer shows the capture rather than the permission explanation.
+    /// Whether the Viewer shows the capture, or an opened image, rather than the permission
+    /// explanation.
     var showsCapture: Bool { showsPermissionView == false }
+
+    /// Whether Screen Recording access lets the stream run.
+    var canCapture: Bool { hasAccess == true }
 
     func frameArrived() {
         content.viewerView.frameArrived()
@@ -242,15 +259,25 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Swaps between the permission explanation and the capture when the permission state changes.
+    /// An opened image shows without access too (docs/product.md, Open Image).
     func refreshContent() {
-        let needsPermission = !permissions.hasScreenRecordingAccess || permissionDeniedByCapture
-        guard needsPermission != showsPermissionView else { return }
-        showsPermissionView = needsPermission
-        window?.toolbar = needsPermission ? nil : toolbar.toolbar
-        window?.contentView = needsPermission ? PermissionView(permissions: permissions) : content
-        if !needsPermission {
-            window?.makeFirstResponder(content.viewerView)
+        let access = permissions.hasScreenRecordingAccess && !permissionDeniedByCapture
+        let needsPermission = !access && !isShowingCapture
+        guard access != hasAccess || needsPermission != showsPermissionView else { return }
+        hasAccess = access
+        if needsPermission != showsPermissionView {
+            showContent(!needsPermission)
         }
         onPermissionChange?()
+    }
+
+    /// The capture's content, or the permission explanation.
+    private func showContent(_ showsContent: Bool) {
+        showsPermissionView = !showsContent
+        window?.toolbar = showsContent ? toolbar.toolbar : nil
+        window?.contentView = showsContent ? content : PermissionView(permissions: permissions)
+        if showsContent {
+            window?.makeFirstResponder(content.viewerView)
+        }
     }
 }

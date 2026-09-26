@@ -61,6 +61,7 @@ To copy just a part of the view:
 - **Pixel grid:** lines on the pixel boundaries from 800% on.
 - **References:** lay design exports over the live pixels, set opacity, or switch to Difference — matching pixels turn black. To try it, open the [example page](examples/reference-check/) and add its [design export](examples/reference-check/design-export.png) as a reference.
 - **Recent Captures:** your last four copies and saves, kept to zoom, measure and pick colours on later. The Live row goes back to the live view.
+- **Open Image** (File › Open Image…, ⌘O, or the menu bar item): look at an image file — a screenshot, a design export, a photo — with the same tools: zoom, ruler, Color Meter (with opacity for transparent pixels), references, Copy and Save. Its colours stay in its own colour profile. Escape goes back to live.
 
 ## Keyboard shortcuts
 
@@ -68,6 +69,7 @@ In the Viewer:
 
 | Shortcut | Action |
 |---|---|
+| ⌘O | Open Image… |
 | ⌘C / ⇧⌘C | Copy View / Copy Source |
 | ⌘S / ⇧⌘S | Save View… / Save Source… |
 | Space | Freeze / resume |
