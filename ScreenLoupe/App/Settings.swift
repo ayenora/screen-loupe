@@ -26,6 +26,8 @@ struct Settings: Codable, Equatable {
     var studioLeavesOutDock = false
     var studioLeavesOutDesktopIcons = false
     var studioBackground = StudioBackground.screen
+    /// Whether a One Window picture keeps the window's shadow.
+    var studioWindowShadow = true
     /// Where screenshots are saved; the Desktop when unset.
     var screenshotDirectory: String?
     /// Viewer overlays and the Color Meter panel.
@@ -98,6 +100,7 @@ struct Settings: Codable, Equatable {
         studioLeavesOutDock = c.value(.studioLeavesOutDock, or: d.studioLeavesOutDock)
         studioLeavesOutDesktopIcons = c.value(.studioLeavesOutDesktopIcons, or: d.studioLeavesOutDesktopIcons)
         studioBackground = c.studioBackground(.studioBackground)
+        studioWindowShadow = c.value(.studioWindowShadow, or: d.studioWindowShadow)
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)

@@ -33,6 +33,13 @@ enum ScreenWindows {
         return list.first.flatMap { window($0, converter: converter) }
     }
 
+    /// The name and process of the app owning the window numbered `id`, each `nil` when the list
+    /// doesn't give it.
+    static func owner(_ id: CGWindowID) -> (name: String?, pid: pid_t?) {
+        let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]])?.first
+        return (info?[kCGWindowOwnerName as String] as? String, info?[kCGWindowOwnerPID as String] as? pid_t)
+    }
+
     /// The windows on screen front to back as `LeftOutWindows.dimmedRects` takes them
     /// (`LeftOutWindows.isInStack`): other apps' ordinary and floating windows, and of this app's
     /// only those numbered in `own`.
@@ -53,9 +60,10 @@ enum ScreenWindows {
 
     /// The numbers of every window that exists, on screen or not: a window minimised, hidden with
     /// its app or on another Space is among them, a closed one isn't. Reads the whole list, about
-    /// 2 ms, so it is read only now and then.
-    static func existingIDs() -> Set<CGWindowID> {
-        guard let list = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else { return [] }
+    /// 2 ms, so it is read only now and then. `nil` when the list can't be read: nothing is known
+    /// to have closed.
+    static func existingIDs() -> Set<CGWindowID>? {
+        guard let list = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else { return nil }
         return Set(list.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
     }
 

@@ -22,6 +22,7 @@ final class StudioPalette: NSPanel {
     /// Called with the Background button, to open the backgrounds beside it.
     var onBackground: ((NSView) -> Void)?
     var onToggleLeaveOutWindows: (() -> Void)?
+    var onToggleOneWindow: (() -> Void)?
     var onToggleLeaveOutDock: (() -> Void)?
     var onToggleOnTop: (() -> Void)?
     var onHide: (() -> Void)?
@@ -47,6 +48,25 @@ final class StudioPalette: NSPanel {
         }
     }
 
+    /// While the window for One Window is picked, the palette floats above the picker's panels as
+    /// well, so its One Window button can cancel it.
+    var isPickingOneWindow = false {
+        didSet {
+            updateLevel()
+            updateOneWindowButton()
+        }
+    }
+
+    /// Whether One Window has a window.
+    var hasOneWindow = false {
+        didSet { updateOneWindowButton() }
+    }
+
+    /// Filled while the window is picked and while one is chosen.
+    private func updateOneWindowButton() {
+        oneWindowButton.state = isPickingOneWindow || hasOneWindow ? .on : .off
+    }
+
     /// Filled while a background other than the screen is chosen.
     var hasBackground = false {
         didSet { backgroundButton.state = hasBackground ? .on : .off }
@@ -58,7 +78,7 @@ final class StudioPalette: NSPanel {
     }
 
     private func updateLevel() {
-        if isPickingWindows {
+        if isPickingWindows || isPickingOneWindow {
             level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         } else {
             level = keepsOnTop ? .floating : .normal
@@ -74,6 +94,7 @@ final class StudioPalette: NSPanel {
     private let aspectLockButton = PaletteButton()
     private let backgroundButton = PaletteButton()
     private let leaveOutWindowsButton = PaletteButton()
+    private let oneWindowButton = PaletteButton()
     private let dockButton = PaletteButton()
     private let saveButton = PaletteButton()
     private let hoverLabel = HoverLabelWindow()
@@ -111,6 +132,8 @@ final class StudioPalette: NSPanel {
         leaveOutWindowsButton.setButtonType(.pushOnPushOff)
         leaveOutWindowsButton.alternateImage = NSImage(
             systemSymbolName: "rectangle.on.rectangle.slash.fill", accessibilityDescription: "Leave Out Windows")
+        Self.configure(oneWindowButton, "macwindow", "One Window", #selector(oneWindowClicked))
+        oneWindowButton.setButtonType(.pushOnPushOff)
         Self.configure(dockButton, "dock.rectangle", "Leave Out the Dock", #selector(dockClicked))
         dockButton.setButtonType(.pushOnPushOff)
 
@@ -134,6 +157,7 @@ final class StudioPalette: NSPanel {
             separators[1],
             backgroundButton,
             leaveOutWindowsButton,
+            oneWindowButton,
             dockButton,
             separators[2],
             onTopButton,
@@ -254,6 +278,12 @@ final class StudioPalette: NSPanel {
     @objc private func leaveOutWindowsClicked(_ sender: NSButton) {
         sender.state = isPickingWindows ? .on : .off
         onToggleLeaveOutWindows?()
+    }
+
+    /// Shows the mode, not the click.
+    @objc private func oneWindowClicked(_ sender: NSButton) {
+        updateOneWindowButton()
+        onToggleOneWindow?()
     }
 
     /// Shows the setting, not the click.

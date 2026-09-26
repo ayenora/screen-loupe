@@ -32,6 +32,7 @@
 				Geometry/StudioBackground.swift,
 				Geometry/StudioComposite.swift,
 				Geometry/StudioLeaveOut.swift,
+				Geometry/StudioOneWindow.swift,
 				Geometry/StudioPlacement.swift,
 				Geometry/StudioSizes.swift,
 				Geometry/ViewerSelection.swift,

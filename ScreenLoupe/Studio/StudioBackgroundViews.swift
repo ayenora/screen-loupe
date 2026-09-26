@@ -2,13 +2,16 @@ import AppKit
 import SwiftUI
 
 /// The Background list beside the palette (docs/product.md, Screenshot studio): the screen, a few
-/// colours and a colour of one's own, calm gradients, and an image. Shown in `StudioListPanel`, as
+/// colours and a colour of one's own, calm gradients, an image, and whether a One Window picture
+/// keeps the window's shadow. Shown in `StudioListPanel`, as
 /// the Size list is.
 struct StudioBackgroundList: View {
     let current: StudioBackground
     let choose: (StudioBackground) -> Void
     let chooseCustomColor: () -> Void
     let chooseImage: () -> Void
+    let windowShadow: Bool
+    let toggleWindowShadow: () -> Void
     /// The swatch under the pointer, named in its section's header: tooltips don't show while
     /// another app is active.
     @State private var hovered: String?
@@ -50,6 +53,8 @@ struct StudioBackgroundList: View {
             .padding(.horizontal, 8)
             Divider().padding(.vertical, 4)
             SizeRow(title: imageTitle, isChecked: isImage, action: chooseImage)
+            Divider().padding(.vertical, 4)
+            SizeRow(title: "Window Shadow", isChecked: windowShadow, action: toggleWindowShadow)
         }
         .padding(6)
         .frame(width: 240)

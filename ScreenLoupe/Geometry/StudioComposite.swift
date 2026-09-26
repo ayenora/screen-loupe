@@ -71,6 +71,36 @@ enum StudioComposite {
         return context.makeImage()
     }
 
+    /// A lone window's picture: `window` (already cut to its visible pixels) centred in a picture of
+    /// `frame` pixels in `space` (`OneWindowPicture.centredOrigin`), drawn at its own size without
+    /// interpolation, colour-matched into `space` as `composited` does. Over `fill`, the result is
+    /// opaque; without one, the rest is transparent and the window's pixels, its shadow's alpha
+    /// among them, are copied unchanged. `nil` when no context can be made or the window is larger
+    /// than the frame.
+    static func centred(
+        _ window: CGImage, in frame: PixelSize, space: CGColorSpace, over fill: StudioFill?
+    )
+        -> CGImage?
+    {
+        let size = PixelSize(width: window.width, height: window.height)
+        guard OneWindowPicture.fits(size, in: frame), frame.width > 0, frame.height > 0 else { return nil }
+        let tagged = window.colorSpace == nil ? window.copy(colorSpace: space) ?? window : window
+        let alpha: CGImageAlphaInfo = fill == nil ? .premultipliedFirst : .noneSkipFirst
+        guard
+            let context = CGContext(
+                data: nil, width: frame.width, height: frame.height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: space, bitmapInfo: alpha.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        fill?.draw(in: context, size: CGSize(width: frame.width, height: frame.height))
+        let origin = OneWindowPicture.centredOrigin(of: size, in: frame)
+        // CoreGraphics counts y from the bottom.
+        let rect = CGRect(
+            x: origin.x, y: frame.height - origin.y - size.height, width: size.width, height: size.height)
+        context.interpolationQuality = .none
+        context.draw(tagged, in: rect)
+        return context.makeImage()
+    }
+
     /// The longest side, in pixels, a background image of `imageSize` (upright) needs to be
     /// decoded at so it still covers the largest picture a display of `display` pixels allows
     /// without being scaled up: the image scaled to cover it, but never larger than the image. At

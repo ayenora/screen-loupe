@@ -66,6 +66,11 @@ final class CaptureAreaController {
     /// resizes freely. The arrow keys don't keep it.
     var aspectRatio: CGFloat?
 
+    /// Added to the tab after the size, as `size · note`; `nil` for the size alone.
+    var tabNote: String? {
+        didSet { if tabNote != oldValue { apply(captureRect, persist: false) } }
+    }
+
     /// The rect's size in pixels of the display it is on, or `nil` when it is on no display.
     var pixelSize: PixelSize? {
         guard let converter, let display = converter.owningDisplay(for: GlobalRect(rect: captureRect)) else {
@@ -408,7 +413,8 @@ final class CaptureAreaController {
         let scale = display?.scale ?? 1
 
         let units = settings.settings.sizeUnits
-        let tabText = SizeText.tab(rect.size, scale: scale, units: units)
+        let size = SizeText.tab(rect.size, scale: scale, units: units)
+        let tabText = tabNote.map { "\(size) · \($0)" } ?? size
         let labelText = SizeText.label(rect.size, scale: scale, units: units)
         // L T R B from the top-left corner of the display the area is on.
         let local = display.flatMap { display in

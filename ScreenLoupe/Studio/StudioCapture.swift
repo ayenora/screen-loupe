@@ -7,7 +7,7 @@ import OSLog
 /// frame, palette and hover label, menus, alerts — except the ones the caller names: the Viewer and
 /// the Capture Area frame, which are captured like any other window on screen. It also leaves out
 /// the Dock, the desktop icons, the wallpaper and chosen windows of other apps, as asked, and lays
-/// a background under what is left.
+/// a background under what is left. Or, for One Window, takes one window alone.
 @MainActor
 enum StudioCapture {
     struct NoDisplayError: LocalizedError {
@@ -57,6 +57,79 @@ enum StudioCapture {
         }
         return StudioComposite.composited(image, in: NSScreen.colorSpace(forDisplay: display.displayID), over: fill)
             ?? image
+    }
+
+    /// Why One Window captured nothing; each is said beside the tab.
+    enum WindowProblem: Error {
+        /// Not among the on-screen windows: closed, minimised, hidden or on another Space.
+        case notListed
+        /// Its pixels aren't the frame display's: it would have to be scaled.
+        case otherScale
+        /// The window, or the window with its shadow, is larger than the frame.
+        case largerThanFrame
+    }
+
+    struct WindowCaptureError: LocalizedError {
+        var errorDescription: String?
+    }
+
+    /// One Window's picture: the window numbered `id` alone with `SCContentFilter(desktopIndependentWindow:)`,
+    /// with or without its `shadow`, at its native pixels, centred in a picture of `frame` pixels
+    /// in `display`'s colour space, over `fill` or transparent without one (docs/design.md,
+    /// Screenshot studio). Never scaled: a window on a display of another scale, or larger than
+    /// the frame, gives a `WindowProblem`.
+    static func window(
+        _ id: CGWindowID, frame: PixelSize, display: DisplayInfo, shadow: Bool, over fill: StudioFill?
+    ) async throws -> CGImage {
+        let content = try await withTimeout(seconds: callTimeout) {
+            try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        }
+        guard let window = content.windows.first(where: { $0.windowID == id }) else { throw WindowProblem.notListed }
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        guard CGFloat(filter.pointPixelScale) == display.scale else { throw WindowProblem.otherScale }
+        // The window alone first: if it doesn't fit, it doesn't with its shadow either.
+        let windowPixels = PixelSize(
+            width: Int((window.frame.width * display.scale).rounded()),
+            height: Int((window.frame.height * display.scale).rounded()))
+        guard OneWindowPicture.fits(windowPixels, in: frame) else { throw WindowProblem.largerThanFrame }
+        // Room to spare around the frame's size: ScreenCaptureKit scales a window down to fit the
+        // output but never up, so one that fits the frame comes at its own size.
+        let output = OneWindowPicture.captureSize(frame: frame)
+        let configuration = SCStreamConfiguration()
+        configuration.width = output.width
+        configuration.height = output.height
+        configuration.captureResolution = .best
+        configuration.scalesToFit = false
+        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        configuration.showsCursor = false
+        configuration.backgroundColor = CGColor.clear
+        configuration.ignoreShadowsSingleWindow = !shadow
+        // A window partly off the screen comes whole.
+        configuration.ignoreGlobalClipSingleWindow = true
+        let image = try await withTimeout(seconds: callTimeout) {
+            try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        }
+        log.info(
+            """
+            One window: content \(String(describing: filter.contentRect), privacy: .public) pt at \
+            \(filter.pointPixelScale)×, window \(String(describing: window.frame), privacy: .public) pt, \
+            image \(image.width) × \(image.height) px in \(String(describing: image.colorSpace?.name), privacy: .public)
+            """)
+        // Where the window and its shadow are is told by alpha alone.
+        guard StudioComposite.hasAlpha(image) else {
+            throw WindowCaptureError(errorDescription: "The window's capture has no alpha.")
+        }
+        guard let bounds = OneWindowPicture.visibleBounds(of: image) else {
+            throw WindowCaptureError(errorDescription: "The window's capture is empty.")
+        }
+        guard OneWindowPicture.fits(bounds.size, in: frame) else { throw WindowProblem.largerThanFrame }
+        guard
+            let cut = image.cropping(
+                to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height)),
+            let picture = StudioComposite.centred(
+                cut, in: frame, space: NSScreen.colorSpace(forDisplay: display.id), over: fill)
+        else { throw WindowCaptureError(errorDescription: "The window's picture couldn't be made.") }
+        return picture
     }
 
     private static let log = Logger(category: "studio")

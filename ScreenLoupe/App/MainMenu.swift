@@ -165,6 +165,11 @@ enum MainMenu {
             withTitle: "Bring Back All Windows", action: #selector(AppController.bringBackStudioWindows(_:)),
             keyEquivalent: "")
         bringBack.target = target
+        // Retitled Stop One Window while a window is chosen.
+        let oneWindow = menu.addItem(
+            withTitle: "Capture One Window…", action: #selector(AppController.toggleStudioOneWindow(_:)),
+            keyEquivalent: "")
+        oneWindow.target = target
         let dock = menu.addItem(
             withTitle: "Leave Out the Dock", action: #selector(AppController.toggleStudioLeaveOutDock(_:)),
             keyEquivalent: "")
@@ -198,6 +203,11 @@ enum MainMenu {
         let image = menu.addItem(
             withTitle: "Image…", action: #selector(AppController.chooseStudioBackgroundImage(_:)), keyEquivalent: "")
         image.target = target
+        menu.addItem(.separator())
+        let shadow = menu.addItem(
+            withTitle: "Window Shadow", action: #selector(AppController.toggleStudioWindowShadow(_:)), keyEquivalent: ""
+        )
+        shadow.target = target
         return menu
     }
 

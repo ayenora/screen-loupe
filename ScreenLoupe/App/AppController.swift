@@ -159,6 +159,14 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.bringBackAllWindows()
     }
 
+    @objc func toggleStudioOneWindow(_ sender: Any?) {
+        windows.studio.toggleOneWindow()
+    }
+
+    @objc func toggleStudioWindowShadow(_ sender: Any?) {
+        windows.studio.toggleWindowShadow()
+    }
+
     @objc func toggleStudioLeaveOutDock(_ sender: Any?) {
         windows.studio.toggleLeaveOutDock()
     }
@@ -346,6 +354,16 @@ extension AppController: NSMenuItemValidation {
             return builtWindows?.studio.isVisible == true
         case #selector(bringBackStudioWindows(_:)):
             return builtWindows?.studio.hasLeftOutWindows == true
+        case #selector(toggleStudioOneWindow(_:)):
+            // Checked while the window is picked; a chosen window can be let go also while the
+            // studio is hidden.
+            let mode = builtWindows?.studio.oneWindowMode ?? .off
+            menuItem.title = mode.chosen == nil ? "Capture One Window…" : "Stop One Window"
+            menuItem.state = mode.isPicking ? .on : .off
+            return mode.chosen != nil || builtWindows?.studio.isVisible == true
+        case #selector(toggleStudioWindowShadow(_:)):
+            menuItem.state = settings.settings.studioWindowShadow ? .on : .off
+            return true
         case #selector(toggleStudioLeaveOutDock(_:)):
             menuItem.state = settings.settings.studioLeavesOutDock ? .on : .off
             return true
