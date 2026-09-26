@@ -15,12 +15,28 @@ enum OverlayHandle: CaseIterable, Sendable {
 enum OverlayHitTarget: Equatable, Sendable {
     case move
     case resize(OverlayHandle)
-    /// The pin button beside the tab.
+    /// The pin button beside the tab: turns the chosen lock on and off.
     case pin
+    /// The ▾ attached to the pin: the menu of locks.
+    case pinMenu
     /// The button beside the pin that brings the Viewer forward.
     case raiseViewer
     /// The button after it that picks a window for the area to take.
     case pickWindow
+}
+
+/// What keeps the Capture Area in place while the pin is on (docs/product.md, Capture Area). Moving
+/// is blocked by every lock; Fit to Window works with any, as a deliberate command.
+enum CaptureAreaLock: String, Codable, CaseIterable, Sendable {
+    /// Neither moves nor resizes.
+    case pinned
+    /// Doesn't move, but every handle still resizes it.
+    case fixedPosition
+
+    var allowsResize: Bool { self == .fixedPosition }
+
+    /// Arrow keys: a move never, a resize (with Option) only when the handles resize too.
+    func allowsNudge(resizing: Bool) -> Bool { resizing && allowsResize }
 }
 
 enum TabPlacement: Equatable, Sendable {
@@ -43,6 +59,8 @@ struct OverlayMetrics: Sendable {
     var labelHeight: CGFloat = 16
     /// The square pin button beside the tab, as tall as the tab.
     var pinGap: CGFloat = 4
+    /// The ▾ attached to the pin's right, which opens the menu of locks.
+    var pinMenuWidth: CGFloat = 13
     /// The position box beside the frame, outside the band and handles.
     var positionGap: CGFloat = 12
     var screenMargin: CGFloat = 6
@@ -61,6 +79,8 @@ struct OverlayLayout: Equatable, Sendable {
     var tabPlacement: TabPlacement
     var labelRect: CGRect
     var pinRect: CGRect
+    /// The pin's ▾, attached on its right.
+    var pinMenuRect: CGRect
     /// The button that brings the Viewer forward, beside the pin, away from the tab.
     var raiseRect: CGRect
     /// The button that picks a window for the area, after the raise button.
@@ -93,18 +113,20 @@ struct OverlayLayout: Equatable, Sendable {
         let tabX = Self.clamp(
             r.midX - tabWidth / 2, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - tabWidth)
         tabRect = CGRect(x: tabX.rounded(), y: tabY.rounded(), width: tabWidth, height: m.tabHeight)
-        // The pin, raise and pick buttons: right of the tab, or left of it at the screen's right
-        // edge, the pin next to the tab either way.
+        // The pin with its ▾, the raise and pick buttons: right of the tab, or left of it at the
+        // screen's right edge, the pin next to the tab either way.
         let button = m.tabHeight + m.pinGap
+        let split = m.tabHeight + m.pinMenuWidth + m.pinGap
         var pinX = tabRect.maxX + m.pinGap
-        var raiseX = pinX + button
+        var raiseX = pinX + split
         var pickX = raiseX + button
         if pickX + m.tabHeight > screen.maxX - m.screenMargin {
-            pinX = tabRect.minX - button
+            pinX = tabRect.minX - split
             raiseX = pinX - button
             pickX = raiseX - button
         }
         pinRect = CGRect(x: pinX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
+        pinMenuRect = CGRect(x: pinRect.maxX, y: tabRect.minY, width: m.pinMenuWidth, height: m.tabHeight)
         raiseRect = CGRect(x: raiseX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
         pickRect = CGRect(x: pickX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
 
@@ -138,6 +160,7 @@ struct OverlayLayout: Equatable, Sendable {
             .union(labelRect.insetBy(dx: -8, dy: -8))
             .union(positionRect.insetBy(dx: -8, dy: -8))
             .union(pinRect.insetBy(dx: -8, dy: -8))
+            .union(pinMenuRect.insetBy(dx: -8, dy: -8))
             .union(raiseRect.insetBy(dx: -8, dy: -8))
             .union(pickRect.insetBy(dx: -8, dy: -8))
             .integral
@@ -151,17 +174,21 @@ struct OverlayLayout: Equatable, Sendable {
         return CGRect(x: x - size / 2, y: y - size / 2, width: size, height: size)
     }
 
-    /// What pressing at `point` does, or `nil` when the press belongs to the app underneath. A pinned
-    /// frame only answers its buttons: picking a window is a command, not a drag.
-    func hitTarget(at point: CGPoint, metrics m: OverlayMetrics = .standard, pinned: Bool = false) -> OverlayHitTarget?
-    {
+    /// What pressing at `point` does, or `nil` when the press belongs to the app underneath. A locked
+    /// frame answers its buttons and, when `lock` allows resizing, its handles, but never moves:
+    /// picking a window is a command, not a drag.
+    func hitTarget(
+        at point: CGPoint, metrics m: OverlayMetrics = .standard, lock: CaptureAreaLock? = nil
+    ) -> OverlayHitTarget? {
         if pinRect.contains(point) { return .pin }
+        if pinMenuRect.contains(point) { return .pinMenu }
         if raiseRect.contains(point) { return .raiseViewer }
         if pickRect.contains(point) { return .pickWindow }
-        if pinned { return nil }
+        if let lock, !lock.allowsResize { return nil }
         for handle in OverlayHandle.allCases where handleRect(handle, size: m.handleHitSize).contains(point) {
             return .resize(handle)
         }
+        if lock != nil { return nil }
         if tabRect.contains(point) { return .move }
         let outer = captureRect.insetBy(dx: -(m.lineWidth + m.bandWidth), dy: -(m.lineWidth + m.bandWidth))
         if outer.contains(point) && !captureRect.contains(point) { return .move }
@@ -171,7 +198,8 @@ struct OverlayLayout: Equatable, Sendable {
     /// Whether the cursor is close enough to the frame to reveal the handles and the tab.
     func isInHoverZone(_ point: CGPoint, metrics m: OverlayMetrics = .standard) -> Bool {
         if tabRect.contains(point) || labelRect.contains(point) || positionRect.contains(point)
-            || pinRect.contains(point) || raiseRect.contains(point) || pickRect.contains(point)
+            || pinRect.contains(point) || pinMenuRect.contains(point) || raiseRect.contains(point)
+            || pickRect.contains(point)
         {
             return true
         }

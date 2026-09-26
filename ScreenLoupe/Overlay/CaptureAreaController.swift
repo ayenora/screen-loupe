@@ -63,7 +63,8 @@ final class CaptureAreaController {
             guard let self else { return }
             apply(captureRect, persist: false)
         }
-        settings.observe(\.captureAreaPinned) { [weak self] in self?.view.isPinned = $0 }
+        settings.observe(\.captureAreaLock) { [weak self] in self?.view.lock = $0 }
+        settings.observe(\.captureAreaLocked) { [weak self] in self?.view.isLocked = $0 }
     }
 
     // MARK: Visibility
@@ -122,7 +123,7 @@ final class CaptureAreaController {
     // MARK: Picking a window
 
     /// Lets the user pick a window, then makes the area that window, shown, and calls `onPicked`.
-    /// Pinned or not: the pin guards against a stray drag, and picking is a deliberate command.
+    /// Locked or not: the pin guards against a stray drag, and picking is a deliberate command.
     func pickWindow(onPicked: @escaping () -> Void) {
         guard picker == nil, let converter else { return }
         let picker = WindowPicker(windows: ScreenWindows.frames(converter: converter), tint: view.style.accent) {
@@ -258,16 +259,20 @@ final class CaptureAreaController {
 // MARK: - Mouse and keys
 
 extension CaptureAreaController: CaptureOverlayViewDelegate {
-    private var isPinned: Bool { settings.settings.captureAreaPinned }
+    private var lock: CaptureAreaLock? { settings.settings.activeCaptureAreaLock }
 
     func overlayView(_ view: CaptureOverlayView, hitTargetAt point: CGPoint) -> OverlayHitTarget? {
-        layout?.hitTarget(at: point, metrics: view.style.metrics, pinned: isPinned)
+        layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock)
     }
 
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint) {
-        let target = layout?.hitTarget(at: point, metrics: view.style.metrics, pinned: isPinned)
+        let target = layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock)
         if target == .pin {
-            settings.update { $0.captureAreaPinned.toggle() }
+            settings.update { $0.captureAreaLocked.toggle() }
+            return
+        }
+        if target == .pinMenu {
+            view.showLockMenu()
             return
         }
         if target == .raiseViewer {
@@ -278,10 +283,11 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
             onPickWindow?()
             return
         }
-        // A pinned frame stays put. Otherwise the window only receives presses on its drawn pixels,
-        // and anything that isn't a handle moves it.
-        guard !isPinned else { return }
-        drag = Drag(target: target ?? .move, startMouse: point, startRect: captureRect)
+        // A locked frame takes only the handles its lock allows, which the hit test already left out.
+        // Otherwise the window only receives presses on its drawn pixels, and anything that isn't a
+        // handle moves it.
+        guard let target = target ?? (lock == nil ? .move : nil) else { return }
+        drag = Drag(target: target, startMouse: point, startRect: captureRect)
         updateReveal()
     }
 
@@ -305,7 +311,7 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
                 rect = CaptureAreaEditing.squared(snapped(square, .edges), handle: handle)
             }
             applyEdited(rect, snap: .edges, persist: false)
-        case .pin, .raiseViewer, .pickWindow:
+        case .pin, .pinMenu, .raiseViewer, .pickWindow:
             break
         }
     }
@@ -326,8 +332,15 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
         mouseMovedAnywhere()
     }
 
+    /// A lock chosen from the pin's ▾ is also turned on.
+    func overlayView(_ view: CaptureOverlayView, didChoose lock: CaptureAreaLock) {
+        settings.update {
+            $0.captureAreaLock = lock
+            $0.captureAreaLocked = true
+        }
+    }
+
     func overlayView(_ view: CaptureOverlayView, keyDown event: NSEvent) -> Bool {
-        guard !isPinned else { return false }
         let key: CaptureAreaEditing.ArrowKey
         switch event.specialKey {
         case .leftArrow?: key = .left
@@ -341,6 +354,7 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
         let flags = event.modifierFlags
         let step = (flags.contains(.shift) ? 10 : 1) / scale
         let resize = flags.contains(.option)
+        if let lock, !lock.allowsNudge(resizing: resize) { return false }
         let next = CaptureAreaEditing.nudged(captureRect, key: key, step: step, resize: resize)
         applyEdited(next, snap: resize ? .edges : .move, persist: true)
         return true

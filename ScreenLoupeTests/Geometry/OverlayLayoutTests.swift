@@ -188,26 +188,69 @@ struct OverlayPositionBoxTests {
 
     @Test func pinnedFrameOnlyAnswersItsButtons() {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
-        #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), pinned: true) == .pin)
-        #expect(l.hitTarget(at: CGPoint(x: l.tabRect.minX + 5, y: l.tabRect.midY), pinned: true) == nil)
-        #expect(l.hitTarget(at: CGPoint(x: 100, y: 100), pinned: true) == nil)
+        #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), lock: .pinned) == .pin)
+        #expect(l.hitTarget(at: CGPoint(x: l.pinMenuRect.midX, y: l.pinMenuRect.midY), lock: .pinned) == .pinMenu)
+        #expect(l.hitTarget(at: CGPoint(x: l.tabRect.minX + 5, y: l.tabRect.midY), lock: .pinned) == nil)
+        #expect(l.hitTarget(at: CGPoint(x: 100, y: 100), lock: .pinned) == nil)
         #expect(l.hitTarget(at: CGPoint(x: 100, y: 100)) == .resize(.bottomLeft))
-        #expect(l.hitTarget(at: CGPoint(x: l.raiseRect.midX, y: l.raiseRect.midY), pinned: true) == .raiseViewer)
-        #expect(l.hitTarget(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY), pinned: true) == .pickWindow)
+        #expect(l.hitTarget(at: CGPoint(x: l.raiseRect.midX, y: l.raiseRect.midY), lock: .pinned) == .raiseViewer)
+        #expect(l.hitTarget(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY), lock: .pinned) == .pickWindow)
+    }
+
+    @Test(arguments: [
+        // Every handle still resizes.
+        (CGPoint(x: 100, y: 200), OverlayHitTarget?.some(.resize(.topLeft))),
+        (CGPoint(x: 300, y: 150), .resize(.right)),
+        (CGPoint(x: 200, y: 99), .resize(.bottom)),
+        (CGPoint(x: 300, y: 100), .resize(.bottomRight)),
+        // The band and the tab don't move it: the press goes to the app underneath.
+        (CGPoint(x: 97, y: 120), nil),
+        (CGPoint(x: 250, y: 203), nil),
+        (CGPoint(x: 200, y: 220), nil),
+        (CGPoint(x: 150, y: 150), nil),
+    ])
+    func fixedPositionFrameResizesButDoesNotMove(point: CGPoint, expected: OverlayHitTarget?) {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        #expect(l.hitTarget(at: point, lock: .fixedPosition) == expected)
+    }
+
+    @Test func fixedPositionFrameAnswersItsButtons() {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), lock: .fixedPosition) == .pin)
+        #expect(
+            l.hitTarget(at: CGPoint(x: l.pinMenuRect.midX, y: l.pinMenuRect.midY), lock: .fixedPosition) == .pinMenu)
+        #expect(
+            l.hitTarget(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY), lock: .fixedPosition) == .pickWindow)
+    }
+
+    @Test func onlyPinnedBlocksResizing() {
+        #expect(!CaptureAreaLock.pinned.allowsResize)
+        #expect(CaptureAreaLock.fixedPosition.allowsResize)
+    }
+
+    @Test func arrowKeysOnlyResizeAFixedPositionFrame() {
+        #expect(!CaptureAreaLock.pinned.allowsNudge(resizing: false))
+        #expect(!CaptureAreaLock.pinned.allowsNudge(resizing: true))
+        #expect(!CaptureAreaLock.fixedPosition.allowsNudge(resizing: false))
+        #expect(CaptureAreaLock.fixedPosition.allowsNudge(resizing: true))
     }
 
     @Test func theButtonsFollowThePinAwayFromTheTab() {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.pinRect.minX == l.tabRect.maxX + 4)
-        #expect(l.raiseRect.minX == l.pinRect.maxX + 4)
+        #expect(l.pinMenuRect == CGRect(x: l.pinRect.maxX, y: l.pinRect.minY, width: 13, height: 22))
+        #expect(l.raiseRect.minX == l.pinMenuRect.maxX + 4)
         #expect(l.pickRect.minX == l.raiseRect.maxX + 4)
         #expect(l.pickRect.minY == l.tabRect.minY)
+        #expect(l.isInHoverZone(CGPoint(x: l.pinMenuRect.midX, y: l.pinMenuRect.midY)))
     }
 
     @Test func atTheRightEdgeAllButtonsMoveLeftOfTheTab() {
-        // The tab hugs the right margin: no room for the buttons on its right.
+        // The tab hugs the right margin: no room for the buttons on its right. The ▾ stays on the
+        // pin's right, between it and the tab.
         let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
-        #expect(l.pinRect.maxX == l.tabRect.minX - 4)
+        #expect(l.pinMenuRect.maxX == l.tabRect.minX - 4)
+        #expect(l.pinMenuRect.minX == l.pinRect.maxX)
         #expect(l.raiseRect.maxX == l.pinRect.minX - 4)
         #expect(l.pickRect.maxX == l.raiseRect.minX - 4)
         #expect(l.windowFrame.contains(l.pickRect))

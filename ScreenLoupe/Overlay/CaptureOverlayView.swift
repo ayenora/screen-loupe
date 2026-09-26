@@ -7,6 +7,8 @@ protocol CaptureOverlayViewDelegate: AnyObject {
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint)
     func overlayView(_ view: CaptureOverlayView, mouseDraggedTo point: CGPoint)
     func overlayViewMouseUp(_ view: CaptureOverlayView)
+    /// A lock was chosen from the pin's ▾.
+    func overlayView(_ view: CaptureOverlayView, didChoose lock: CaptureAreaLock)
     /// Returns whether the key was handled.
     func overlayView(_ view: CaptureOverlayView, keyDown event: NSEvent) -> Bool
 }
@@ -14,8 +16,8 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 /// Draws the Capture Area frame and turns mouse and key events into delegate calls.
 ///
 /// The line is always drawn. The band, the handles, the tab and the position box fade in on hover;
-/// the muted size label shows at rest. A pinned frame shows no band or handles. Subviews never take
-/// the mouse, so every event lands here.
+/// the muted size label shows at rest. A frame whose lock stops resizing shows no band or handles.
+/// Subviews never take the mouse, so every event lands here.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
 
@@ -24,6 +26,7 @@ final class CaptureOverlayView: NSView {
     private let tab = GripTabView()
     private let label = SizeLabelView()
     private let positionBox = PositionBoxView()
+    /// The pin with its ▾: shows the chosen lock, filled while it is on.
     private let pinButton = TabButtonView(symbol: "pin", onSymbol: "pin.fill", label: "Pin", onLabel: "Unpin")
     /// Brings the Viewer forward, for when a click in the area sent another app's window over it.
     private let raiseButton = TabButtonView(
@@ -34,13 +37,28 @@ final class CaptureOverlayView: NSView {
     private var isDragging = false
     private var isRevealed = false
 
-    /// Pinned: no band or handles, and the tab's pin is filled.
-    var isPinned = false {
+    /// The lock chosen with the pin's ▾, shown by the pin's symbol.
+    var lock = CaptureAreaLock.pinned {
         didSet {
-            pinButton.isOn = isPinned
+            pinButton.symbol = lock.symbol
+            pinButton.onSymbol = lock.onSymbol
+            pinButton.label = "\(lock.title) Off"
+            pinButton.onLabel = "\(lock.title) On"
             decorations.alphaValue = decorationsAlpha
         }
     }
+
+    /// Locked: the pin is filled, and the band and handles show only if the lock lets them resize. A
+    /// band that doesn't move the frame still shows: the panel takes presses only on drawn pixels, and
+    /// the band lets a handle take one across its whole hit square.
+    var isLocked = false {
+        didSet {
+            pinButton.isOn = isLocked
+            decorations.alphaValue = decorationsAlpha
+        }
+    }
+
+    private var activeLock: CaptureAreaLock? { isLocked ? lock : nil }
 
     var style: FrameStyle {
         didSet {
@@ -70,6 +88,8 @@ final class CaptureOverlayView: NSView {
         decorations.alphaValue = 0
         tab.alphaValue = 0
         positionBox.alphaValue = 0
+        pinButton.menuWidth = OverlayMetrics.standard.pinMenuWidth
+        pinButton.menuLabel = "Pin Mode"
         pinButton.alphaValue = 0
         raiseButton.alphaValue = 0
         pickButton.alphaValue = 0
@@ -96,7 +116,7 @@ final class CaptureOverlayView: NSView {
         label.frame = local(layout.labelRect)
         positionBox.lines = positionLines
         positionBox.frame = local(layout.positionRect)
-        pinButton.frame = local(layout.pinRect)
+        pinButton.frame = local(layout.pinRect.union(layout.pinMenuRect))
         raiseButton.frame = local(layout.raiseRect)
         pickButton.frame = local(layout.pickRect)
         tab.text = tabText
@@ -131,7 +151,7 @@ final class CaptureOverlayView: NSView {
     }
 
     private var labelAlpha: CGFloat { !isRevealed && style.showsLabelAtRest ? 1 : 0 }
-    private var decorationsAlpha: CGFloat { isRevealed && !isPinned ? 1 : 0 }
+    private var decorationsAlpha: CGFloat { isRevealed && activeLock?.allowsResize != false ? 1 : 0 }
 
     private func local(_ rect: CGRect) -> CGRect {
         guard let origin = layout?.windowFrame.origin else { return rect }
@@ -184,7 +204,7 @@ final class CaptureOverlayView: NSView {
         isDragging = true
         let point = NSEvent.mouseLocation
         let target = delegate?.overlayView(self, hitTargetAt: point)
-        if target == .move || (target == nil && !isPinned) {
+        if target == .move || (target == nil && !isLocked) {
             NSCursor.closedHand.set()
         }
         delegate?.overlayView(self, mouseDownAt: point)
@@ -203,6 +223,30 @@ final class CaptureOverlayView: NSView {
     private func updateCursor() {
         guard !isDragging else { return }
         OverlayStyle.cursor(for: delegate?.overlayView(self, hitTargetAt: NSEvent.mouseLocation)).set()
+    }
+
+    // MARK: Lock menu
+
+    /// Pops the menu of locks up under the pin's ▾, the chosen one checked.
+    func showLockMenu() {
+        guard let layout else { return }
+        let menu = NSMenu()
+        for (index, lock) in CaptureAreaLock.allCases.enumerated() {
+            let item = menu.addItem(withTitle: lock.title, action: #selector(lockChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.image = NSImage(systemSymbolName: lock.symbol, accessibilityDescription: nil)
+            item.state = lock == self.lock ? .on : .off
+        }
+        let pin = local(layout.pinRect)
+        menu.popUp(positioning: nil, at: CGPoint(x: pin.minX, y: pin.minY - 4), in: self)
+        // The menu took the mouse-up.
+        isDragging = false
+        updateCursor()
+    }
+
+    @objc private func lockChosen(_ sender: NSMenuItem) {
+        delegate?.overlayView(self, didChoose: CaptureAreaLock.allCases[sender.tag])
     }
 
     // MARK: Keys
@@ -292,14 +336,18 @@ private final class GripTabView: NSView {
 }
 
 /// A square button beside the tab — the pin, the raise and pick buttons: the tab's colour with an outlined
-/// symbol, or the accent with the filled one while it is on.
+/// symbol, or the accent with the filled one while it is on. The pin carries a ▾ on its right, past a
+/// thin divider.
 private final class TabButtonView: NSView {
     var style: FrameStyle? { didSet { needsDisplay = true } }
     var isOn = false { didSet { needsDisplay = true } }
-    private let symbol: String
-    private let onSymbol: String
-    private let label: String
-    private let onLabel: String
+    var symbol: String { didSet { needsDisplay = true } }
+    var onSymbol: String { didSet { needsDisplay = true } }
+    var label: String
+    var onLabel: String
+    /// The ▾ part's width; 0 for a plain button.
+    var menuWidth: CGFloat = 0 { didSet { needsDisplay = true } }
+    var menuLabel = ""
 
     init(symbol: String, onSymbol: String, label: String, onLabel: String) {
         self.symbol = symbol
@@ -319,18 +367,29 @@ private final class TabButtonView: NSView {
         (isOn ? style.accent : style.tabFill).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
         let tint = isOn ? (style.handleFill == .white ? NSColor.white : .black) : style.onTab
-        let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
+        let colour = NSImage.SymbolConfiguration(paletteColors: [tint])
+        let button = CGRect(x: 0, y: 0, width: bounds.width - menuWidth, height: bounds.height)
+        draw(
+            isOn ? onSymbol : symbol, label: isOn ? onLabel : label, in: button,
+            configuration: NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold).applying(colour))
+        guard menuWidth > 0 else { return }
+        tint.withAlphaComponent(0.35).setFill()
+        CGRect(x: button.maxX, y: 4, width: 1, height: bounds.height - 8).fill()
+        draw(
+            "chevron.down", label: menuLabel, in: CGRect(x: button.maxX, y: 0, width: menuWidth, height: bounds.height),
+            configuration: NSImage.SymbolConfiguration(pointSize: 7, weight: .bold).applying(colour))
+    }
+
+    private func draw(_ name: String, label: String, in rect: CGRect, configuration: NSImage.SymbolConfiguration) {
         guard
-            let pin = NSImage(
-                systemSymbolName: isOn ? onSymbol : symbol, accessibilityDescription: isOn ? onLabel : label)?
+            let image = NSImage(systemSymbolName: name, accessibilityDescription: label)?
                 .withSymbolConfiguration(configuration)
         else { return }
-        pin.draw(
+        image.draw(
             in: CGRect(
-                x: ((bounds.width - pin.size.width) / 2).rounded(),
-                y: ((bounds.height - pin.size.height) / 2).rounded(),
-                width: pin.size.width, height: pin.size.height))
+                x: (rect.minX + (rect.width - image.size.width) / 2).rounded(),
+                y: ((rect.height - image.size.height) / 2).rounded(),
+                width: image.size.width, height: image.size.height))
     }
 }
 
@@ -379,5 +438,30 @@ private final class SizeLabelView: NSView {
                 x: ((bounds.width - size.width) / 2).rounded(), y: ((bounds.height - size.height) / 2).rounded()),
             withAttributes: attributes
         )
+    }
+}
+
+/// The pin's ▾ menu and symbols. SF Symbols has no anchor, so Fixed Position shows a map pin standing
+/// on its spot.
+extension CaptureAreaLock {
+    fileprivate var title: String {
+        switch self {
+        case .pinned: "Pinned"
+        case .fixedPosition: "Fixed Position"
+        }
+    }
+
+    fileprivate var symbol: String {
+        switch self {
+        case .pinned: "pin"
+        case .fixedPosition: "mappin.and.ellipse"
+        }
+    }
+
+    fileprivate var onSymbol: String {
+        switch self {
+        case .pinned: "pin.fill"
+        case .fixedPosition: "mappin.and.ellipse"
+        }
     }
 }

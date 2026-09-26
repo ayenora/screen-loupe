@@ -6,8 +6,9 @@ import Observation
 struct Settings: Codable, Equatable {
     /// Capture Area in AppKit global coordinates.
     var captureArea: CGRect?
-    /// A pinned Capture Area neither moves nor resizes.
-    var captureAreaPinned = false
+    /// The lock chosen with the pin's ▾, and whether the pin has it on.
+    var captureAreaLock = CaptureAreaLock.pinned
+    var captureAreaLocked = false
     /// Keep the Viewer above the windows of other apps.
     var viewerAlwaysOnTop = false
     /// Where screenshots are saved; the Desktop when unset.
@@ -66,7 +67,11 @@ struct Settings: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Settings()
         captureArea = c.value(.captureArea, or: d.captureArea)
-        captureAreaPinned = c.value(.captureAreaPinned, or: d.captureAreaPinned)
+        captureAreaLock = c.value(.captureAreaLock, or: d.captureAreaLock)
+        // Saved before the pin had a choice of locks: a plain pin, on or off.
+        let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
+        captureAreaLocked = c.value(
+            .captureAreaLocked, or: legacy?.value(.captureAreaPinned, or: d.captureAreaLocked) ?? d.captureAreaLocked)
         viewerAlwaysOnTop = c.value(.viewerAlwaysOnTop, or: d.viewerAlwaysOnTop)
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
@@ -95,6 +100,13 @@ struct Settings: Codable, Equatable {
         revealsSavedFile = c.value(.revealsSavedFile, or: d.revealsSavedFile)
         shortcuts = c.value(.shortcuts, or: d.shortcuts)
     }
+
+    private enum LegacyKeys: String, CodingKey {
+        case captureAreaPinned
+    }
+
+    /// The lock that holds the Capture Area now, or `nil` while the pin is off.
+    var activeCaptureAreaLock: CaptureAreaLock? { captureAreaLocked ? captureAreaLock : nil }
 }
 
 /// An sRGB colour picked in Settings.
