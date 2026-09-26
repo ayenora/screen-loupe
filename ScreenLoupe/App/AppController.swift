@@ -137,6 +137,16 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.toggleAspectLock()
     }
 
+    /// Screenshot › Delay: the item's tag is the delay in seconds.
+    @objc func chooseStudioDelay(_ sender: NSMenuItem) {
+        guard let delay = StudioDelay(rawValue: sender.tag) else { return }
+        windows.studio.chooseDelay(delay)
+    }
+
+    @objc func toggleStudioPointer(_ sender: Any?) {
+        windows.studio.togglePointer()
+    }
+
     /// Screenshot › Background: the item carries its `StudioBackground`.
     @objc func chooseStudioBackground(_ sender: NSMenuItem) {
         guard let background = sender.representedObject as? StudioBackground else { return }
@@ -332,6 +342,12 @@ extension AppController: NSMenuItemValidation {
             return builtWindows?.studio.isVisible == true
         case #selector(toggleStudioAspectLock(_:)):
             menuItem.state = settings.settings.studioAspectLocked ? .on : .off
+            return true
+        case #selector(chooseStudioDelay(_:)):
+            menuItem.state = menuItem.tag == settings.settings.studioDelay.rawValue ? .on : .off
+            return true
+        case #selector(toggleStudioPointer(_:)):
+            menuItem.state = settings.settings.studioIncludesPointer ? .on : .off
             return true
         case #selector(chooseStudioBackground(_:)):
             let background = menuItem.representedObject as? StudioBackground

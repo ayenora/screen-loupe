@@ -79,6 +79,9 @@ final class CaptureAreaController {
         return converter.pixelSize(of: captureRect.size, scale: display.scale)
     }
 
+    /// The tab and the pick button beside it, in AppKit global coordinates, shown or not.
+    var tabArea: CGRect? { layout.map { $0.tabRect.union($0.pickRect) } }
+
     /// What to capture for the current rect, or `nil` when it is on no display.
     var captureGeometry: CaptureGeometry? {
         converter?.captureGeometry(for: GlobalRect(rect: captureRect))
@@ -275,6 +278,14 @@ final class CaptureAreaController {
             show()
             onPicked()
         }
+    }
+
+    /// Fit to Window's picker is open.
+    var isPickingWindow: Bool { picker != nil }
+
+    /// Closes Fit to Window's picker as a cancel.
+    func stopPickingWindow() {
+        picker?.stop()
     }
 
     /// Opens the window picker; `onPicked` runs only when a window is picked.

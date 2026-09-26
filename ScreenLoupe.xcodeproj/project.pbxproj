@@ -35,6 +35,7 @@
 				Geometry/StudioOneWindow.swift,
 				Geometry/StudioPlacement.swift,
 				Geometry/StudioSizes.swift,
+				Geometry/StudioTimer.swift,
 				Geometry/ViewerSelection.swift,
 				Geometry/ViewerWindowFit.swift,
 				Geometry/WindowMagnet.swift,

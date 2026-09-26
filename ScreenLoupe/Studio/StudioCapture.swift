@@ -17,12 +17,13 @@ enum StudioCapture {
     /// How long a ScreenCaptureKit call may take, as for the stream (docs/design.md §2.1).
     private static let callTimeout: Double = 5
 
-    /// The pixels of `geometry` at the display's native resolution, without the pointer, in the
-    /// display's colour space. `includedWindows` are window numbers of this app's windows to keep;
-    /// `leaveOut` names what else stays out of the picture, and `fill` is laid under what is left.
+    /// The pixels of `geometry` at the display's native resolution, with the pointer when `pointer`
+    /// says so, in the display's colour space. `includedWindows` are window numbers of this app's
+    /// windows to keep; `leaveOut` names what else stays out of the picture, and `fill` is laid
+    /// under what is left.
     static func image(
         of geometry: CaptureGeometry, including includedWindows: [Int], leavingOut leaveOut: StudioLeaveOut,
-        over fill: StudioFill?
+        pointer: Bool, over fill: StudioFill?
     ) async throws -> CGImage {
         let content = try await withTimeout(seconds: callTimeout) {
             try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -37,7 +38,7 @@ enum StudioCapture {
         configuration.captureResolution = .best
         configuration.scalesToFit = false
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
-        configuration.showsCursor = false
+        configuration.showsCursor = pointer
         // Where no window is left, nothing: a fill shows through there.
         configuration.backgroundColor = CGColor.clear
         let filter = filter(
@@ -101,6 +102,7 @@ enum StudioCapture {
         configuration.captureResolution = .best
         configuration.scalesToFit = false
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        // The pointer isn't a part of the window: One Window leaves it out.
         configuration.showsCursor = false
         configuration.backgroundColor = CGColor.clear
         configuration.ignoreShadowsSingleWindow = !shadow

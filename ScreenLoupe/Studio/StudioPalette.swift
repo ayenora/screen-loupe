@@ -19,11 +19,14 @@ final class StudioPalette: NSPanel {
     /// Called with the Size button, to open the sizes beside it.
     var onSize: ((NSView) -> Void)?
     var onToggleAspectLock: (() -> Void)?
+    /// Called with the Timer button, to open the delays beside it.
+    var onTimer: ((NSView) -> Void)?
     /// Called with the Background button, to open the backgrounds beside it.
     var onBackground: ((NSView) -> Void)?
     var onToggleLeaveOutWindows: (() -> Void)?
     var onToggleOneWindow: (() -> Void)?
     var onToggleLeaveOutDock: (() -> Void)?
+    var onTogglePointer: (() -> Void)?
     var onToggleOnTop: (() -> Void)?
     var onHide: (() -> Void)?
     /// Called when a drag of the palette begins.
@@ -77,6 +80,16 @@ final class StudioPalette: NSPanel {
         didSet { dockButton.state = leavesOutDock ? .on : .off }
     }
 
+    /// Filled while a delay is set.
+    var hasDelay = false {
+        didSet { timerButton.state = hasDelay ? .on : .off }
+    }
+
+    /// Filled while pictures include the pointer.
+    var includesPointer = false {
+        didSet { pointerButton.state = includesPointer ? .on : .off }
+    }
+
     private func updateLevel() {
         if isPickingWindows || isPickingOneWindow {
             level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
@@ -96,6 +109,8 @@ final class StudioPalette: NSPanel {
     private let leaveOutWindowsButton = PaletteButton()
     private let oneWindowButton = PaletteButton()
     private let dockButton = PaletteButton()
+    private let timerButton = PaletteButton()
+    private let pointerButton = PaletteButton()
     private let saveButton = PaletteButton()
     private let hoverLabel = HoverLabelWindow()
     private var hoverTimer: Timer?
@@ -136,6 +151,10 @@ final class StudioPalette: NSPanel {
         oneWindowButton.setButtonType(.pushOnPushOff)
         Self.configure(dockButton, "dock.rectangle", "Leave Out the Dock", #selector(dockClicked))
         dockButton.setButtonType(.pushOnPushOff)
+        Self.configure(timerButton, "timer", "Timer", #selector(timerClicked))
+        timerButton.setButtonType(.pushOnPushOff)
+        Self.configure(pointerButton, "cursorarrow", "Include the Pointer", #selector(pointerClicked))
+        pointerButton.setButtonType(.pushOnPushOff)
 
         let separators = (0..<3).map { _ in
             let separator = NSBox()
@@ -154,11 +173,13 @@ final class StudioPalette: NSPanel {
             separators[0],
             Self.button("arrow.up.left.and.arrow.down.right", "Size", #selector(sizeClicked)),
             aspectLockButton,
+            timerButton,
             separators[1],
             backgroundButton,
             leaveOutWindowsButton,
             oneWindowButton,
             dockButton,
+            pointerButton,
             separators[2],
             onTopButton,
             Self.button("eye.slash", "Hide Screenshot Studio", #selector(hideClicked)),
@@ -173,9 +194,9 @@ final class StudioPalette: NSPanel {
         // A group of buttons, then a separator with a little more room on each side.
         stack.setCustomSpacing(6, after: saveButton)
         stack.setCustomSpacing(6, after: separators[0])
-        stack.setCustomSpacing(6, after: aspectLockButton)
+        stack.setCustomSpacing(6, after: timerButton)
         stack.setCustomSpacing(6, after: separators[1])
-        stack.setCustomSpacing(6, after: dockButton)
+        stack.setCustomSpacing(6, after: pointerButton)
         stack.setCustomSpacing(6, after: separators[2])
 
         let background = NSVisualEffectView()
@@ -290,6 +311,18 @@ final class StudioPalette: NSPanel {
     @objc private func dockClicked(_ sender: NSButton) {
         sender.state = leavesOutDock ? .on : .off
         onToggleLeaveOutDock?()
+    }
+
+    /// Shows whether a delay is set, not the click.
+    @objc private func timerClicked(_ sender: NSButton) {
+        sender.state = hasDelay ? .on : .off
+        onTimer?(sender)
+    }
+
+    /// Shows the setting, not the click.
+    @objc private func pointerClicked(_ sender: NSButton) {
+        sender.state = includesPointer ? .on : .off
+        onTogglePointer?()
     }
 
     /// Shows the setting, not the click: the setting sets it back.

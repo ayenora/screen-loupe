@@ -28,6 +28,10 @@ struct Settings: Codable, Equatable {
     var studioBackground = StudioBackground.screen
     /// Whether a One Window picture keeps the window's shadow.
     var studioWindowShadow = true
+    /// How long Capture, Copy and Save wait before taking the picture.
+    var studioDelay = StudioDelay.off
+    /// Whether studio pictures, but One Window's, include the pointer.
+    var studioIncludesPointer = false
     /// Where screenshots are saved; the Desktop when unset.
     var screenshotDirectory: String?
     /// Viewer overlays and the Color Meter panel.
@@ -101,6 +105,8 @@ struct Settings: Codable, Equatable {
         studioLeavesOutDesktopIcons = c.value(.studioLeavesOutDesktopIcons, or: d.studioLeavesOutDesktopIcons)
         studioBackground = c.studioBackground(.studioBackground)
         studioWindowShadow = c.value(.studioWindowShadow, or: d.studioWindowShadow)
+        studioDelay = c.value(.studioDelay, or: d.studioDelay)
+        studioIncludesPointer = c.value(.studioIncludesPointer, or: d.studioIncludesPointer)
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)

@@ -4,8 +4,8 @@ import OSLog
 import SwiftUI
 
 /// The Screenshot studio (docs/product.md, Screenshot studio): its frame, its palette, Capture,
-/// Copy and Save, the frame's sizes and Aspect Lock, what pictures leave out and lay under, and
-/// One Window.
+/// Copy and Save, the frame's sizes and Aspect Lock, the timer, what pictures leave out and lay
+/// under, the pointer, and One Window.
 /// Shown and hidden on its own, apart from the Viewer and the Capture Area.
 ///
 /// The frame is a `CaptureAreaController` of kind `.studio`: the Capture Area's window, drawing,
@@ -31,9 +31,9 @@ final class StudioController {
     private var isCapturing = false
     /// The last save panel; while it is open, the commands bring it forward instead.
     private var savePanel: NSSavePanel?
-    /// The Size or the Background list beside the palette, and which of them it shows.
+    /// The Size, the Timer or the Background list beside the palette, and which of them it shows.
     private let listPanel = StudioListPanel()
-    private enum ListKind { case sizes, background }
+    private enum ListKind { case sizes, timer, background }
     private var shownList: ListKind?
     /// Built the first time Custom Size… is chosen, then kept.
     private var customSizesWindow: NSPanel?
@@ -62,16 +62,21 @@ final class StudioController {
             StudioPlacement.defaultFrame(in: $0, paletteWidth: StudioPalette.width)
         }
         // A window picked with Aspect Lock on gives the lock its ratio, as a size does.
-        frame.onPickWindow = { [weak self] in self?.frame.pickWindow { self?.retakeAspectRatio() } }
+        frame.onPickWindow = { [weak self] in
+            self?.advance(.pickerStarted)
+            self?.frame.pickWindow { self?.retakeAspectRatio() }
+        }
         palette.onCapture = { [weak self] in self?.capture() }
         palette.onCopy = { [weak self] in self?.copy() }
         palette.onSave = { [weak self] in self?.save() }
         palette.onSize = { [weak self] in self?.showSizes(beside: $0) }
         palette.onToggleAspectLock = { [weak self] in self?.toggleAspectLock() }
+        palette.onTimer = { [weak self] in self?.showDelays(beside: $0) }
         palette.onBackground = { [weak self] in self?.showBackgrounds(beside: $0) }
         palette.onToggleLeaveOutWindows = { [weak self] in self?.toggleLeavingOutWindows() }
         palette.onToggleOneWindow = { [weak self] in self?.toggleOneWindow() }
         palette.onToggleLeaveOutDock = { [weak self] in self?.toggleLeaveOutDock() }
+        palette.onTogglePointer = { [weak self] in self?.togglePointer() }
         palette.onToggleOnTop = { [weak self] in self?.toggleKeepOnTop() }
         palette.onHide = { [weak self] in self?.hide() }
         palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
@@ -84,8 +89,13 @@ final class StudioController {
         settings.observe(\.activeStudioAspectRatio) { [weak self] in self?.frame.aspectRatio = $0.map { CGFloat($0) } }
         settings.observe(\.studioLeavesOutDock) { [weak self] in self?.palette.leavesOutDock = $0 }
         settings.observe(\.studioBackground) { [weak self] in self?.palette.hasBackground = $0 != .screen }
-        // The dimmed windows move with the frame.
-        frame.onChange = { [weak self] in self?.updateDimmed() }
+        settings.observe(\.studioDelay) { [weak self] in self?.palette.hasDelay = $0 != .off }
+        settings.observe(\.studioIncludesPointer) { [weak self] in self?.palette.includesPointer = $0 }
+        // The dimmed windows and the countdown move with the frame.
+        frame.onChange = { [weak self] in
+            self?.updateDimmed()
+            self?.updateCountdownPanel()
+        }
         colorTarget.onChange = { [weak self] color in
             let srgb = color.usingColorSpace(.sRGB) ?? .white
             let chosen = BackgroundColor(
@@ -116,6 +126,7 @@ final class StudioController {
         frame.hide()
         palette.orderOut(nil)
         updateDimmed()
+        advance(.hidden)
         send(.hidden)
         updateOneWindowTimer()
     }
@@ -226,6 +237,24 @@ final class StudioController {
         window.level = .normal
         window.hidesOnDeactivate = true
         return window
+    }
+
+    // MARK: Timer
+
+    var delay: StudioDelay { settings.settings.studioDelay }
+
+    func chooseDelay(_ delay: StudioDelay) {
+        settings.update { $0.studioDelay = delay }
+    }
+
+    /// The Timer list beside the palette's Timer button, or closes it while it shows.
+    private func showDelays(beside button: NSView) {
+        toggleList(.timer, beside: button) {
+            StudioTimerList(current: delay) { [weak self] delay in
+                self?.listPanel.dismiss()
+                self?.chooseDelay(delay)
+            }
+        }
     }
 
     // MARK: Clean background
@@ -386,6 +415,10 @@ final class StudioController {
         settings.update { $0.studioLeavesOutDesktopIcons.toggle() }
     }
 
+    func togglePointer() {
+        settings.update { $0.studioIncludesPointer.toggle() }
+    }
+
     // MARK: Leaving out windows
 
     var isLeavingOutWindows: Bool { windowPicker != nil }
@@ -399,6 +432,7 @@ final class StudioController {
         guard isVisible, let converter else { return }
         listPanel.dismiss()
         oneWindowPicker?.stop()
+        advance(.pickerStarted)
         let picker = WindowPicker(
             windows: { ScreenWindows.windows(converter: converter) }, tint: SettingsColor.studio.nsColor,
             hint: { [weak self] window in
@@ -500,6 +534,7 @@ final class StudioController {
     /// button cancels too.
     private func startOneWindowPicker() {
         windowPicker?.stop()
+        advance(.pickerStarted)
         listPanel.dismiss()
         let picker = WindowPicker(
             windows: converter.map { ScreenWindows.windows(converter: $0) } ?? [], tint: SettingsColor.studio.nsColor,
@@ -573,22 +608,94 @@ final class StudioController {
     // MARK: Capture, Copy, Save
 
     /// Copies the frame's pixels to the clipboard, then asks where to save them.
-    func capture() {
-        take { [weak self] image in
-            guard let png = ScreenshotExporter.pngData(image) else { return NSSound.beep() }
-            self?.copy(image, png: png)
-            self?.save(png)
+    func capture() { press(.capture) }
+    func copy() { press(.copy) }
+    func save() { press(.save) }
+
+    /// The countdown before a picture while a delay is set; the clock runs only while it counts.
+    private var countdown = StudioCountdown.idle
+    private var countdownTimer: Timer?
+    private let countdownPanel = StudioCountdownPanel()
+    /// Capture, Copy or Save pressed: `StudioCountdown.after` decides — cancel a running countdown,
+    /// refuse now, take now, or count down, stopping a running window picker first.
+    private func press(_ shot: StudioShot) {
+        let pickerRunning = windowPicker != nil || oneWindowPicker != nil || frame.isPickingWindow
+        advance(
+            .press(
+                shot, delay: delay, check: check, pickerRunning: pickerRunning,
+                at: ProcessInfo.processInfo.systemUptime))
+    }
+
+    /// Moves the countdown on by `event` (`StudioCountdown.after`) and does what that says.
+    private func advance(_ event: StudioCountdown.Event) {
+        let (next, outcome) = countdown.after(event)
+        countdown = next
+        switch outcome {
+        case .none: break
+        case .shootNow(let shot), .refusedNow(let shot): take(shot)
+        case .started(let stopsPicker):
+            if stopsPicker {
+                windowPicker?.stop()
+                oneWindowPicker?.stop()
+                frame.stopPickingWindow()
+            }
+            // 30 times a second for the ring, also while a menu is open or a window is dragged.
+            let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            countdownTimer = timer
+        case .cancelled, .frameOffDisplay, .fire:
+            countdownTimer?.invalidate()
+            countdownTimer = nil
         }
+        if outcome == .frameOffDisplay { frame.showNotice("Frame is not wholly on one display") }
+        updateCountdownPanel()
+        // Gone from the screen first; the filter leaves it out of the picture anyway.
+        if case .fire(let shot) = outcome { take(shot) }
     }
 
-    func copy() {
-        take { [weak self] in self?.copy($0) }
+    private func tick() {
+        let onDisplay = converter?.owningDisplay(for: GlobalRect(rect: frame.captureRect)) != nil
+        advance(.tick(at: ProcessInfo.processInfo.systemUptime, frameOnDisplay: onDisplay))
     }
 
-    func save() {
-        take { [weak self] image in
-            guard let png = ScreenshotExporter.pngData(image) else { return NSSound.beep() }
-            self?.save(png)
+    /// The countdown beside the frame's tab while it runs, following the frame; where the frame is
+    /// on no display, the next tick stops it.
+    private func updateCountdownPanel() {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard countdown.isCounting, let tab = frame.tabArea,
+            let screen = converter?.owningDisplay(for: GlobalRect(rect: frame.captureRect))?.globalFrame
+        else { return countdownPanel.orderOut(nil) }
+        let text = countdown.text(at: now)
+        let rect = StudioCountdown.pillRect(size: countdownPanel.size(for: text), tab: tab, screen: screen)
+        countdownPanel.show(
+            text, seconds: countdown.secondsLeft(at: now), fraction: CGFloat(countdown.fractionLeft(at: now)),
+            in: rect)
+    }
+
+    /// Whether a picture can be taken now (`StudioShotCheck`).
+    private var check: StudioShotCheck {
+        StudioShotCheck(
+            visible: isVisible, capturing: isCapturing, savePanelOpen: savePanel?.isVisible == true,
+            permitted: permissions.hasScreenRecordingAccess, onOneDisplay: frame.isWhollyOnOneDisplay)
+    }
+
+    private func take(_ shot: StudioShot) {
+        switch shot {
+        case .capture:
+            take { [weak self] image in
+                guard let png = ScreenshotExporter.pngData(image) else { return NSSound.beep() }
+                self?.copy(image, png: png)
+                self?.save(png)
+            }
+        case .copy:
+            take { [weak self] in self?.copy($0) }
+        case .save:
+            take { [weak self] image in
+                guard let png = ScreenshotExporter.pngData(image) else { return NSSound.beep() }
+                self?.save(png)
+            }
         }
     }
 
@@ -610,21 +717,21 @@ final class StudioController {
     /// While a save panel is open, brings it forward instead: one panel at a time, and none in the
     /// picture.
     private func take(_ then: @escaping (CGImage) -> Void) {
-        guard isVisible, !isCapturing else { return }
-        if let savePanel, savePanel.isVisible {
+        switch check {
+        case .ignore: return
+        case .bringSavePanelForward:
             NSApp.activate()
-            savePanel.makeKeyAndOrderFront(nil)
+            savePanel?.makeKeyAndOrderFront(nil)
             return
-        }
-        guard permissions.hasScreenRecordingAccess else {
+        case .needsPermission:
             onNeedsPermission?(false)
             return
-        }
-        // A picture holds one display's pixels: a frame reaching onto another display, or off every
-        // display, would give a smaller picture than the frame says.
-        guard frame.isWhollyOnOneDisplay else {
+        case .notOnOneDisplay:
+            // A picture holds one display's pixels: a frame reaching onto another display, or off
+            // every display, would give a smaller picture than the frame says.
             frame.showNotice("Frame is not wholly on one display")
             return
+        case .take: break
         }
         guard let geometry = frame.captureGeometry else { return NSSound.beep() }
         isCapturing = true
@@ -646,7 +753,8 @@ final class StudioController {
                             shadow: current.studioWindowShadow, over: fill)
                     } else {
                         try await StudioCapture.image(
-                            of: geometry, including: included, leavingOut: leaveOut, over: fill)
+                            of: geometry, including: included, leavingOut: leaveOut,
+                            pointer: current.studioIncludesPointer, over: fill)
                     }
                 if isVisible { then(image) }
             } catch  where ScreenCaptureManager.isPermissionError(error) {

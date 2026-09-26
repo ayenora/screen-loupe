@@ -152,6 +152,16 @@ enum MainMenu {
             withTitle: "Lock Aspect Ratio", action: #selector(AppController.toggleStudioAspectLock(_:)),
             keyEquivalent: "")
         aspectLock.target = target
+        let delays = NSMenu(title: "Delay")
+        for delay in StudioDelay.allCases {
+            let item = delays.addItem(
+                withTitle: delay.title, action: #selector(AppController.chooseStudioDelay(_:)), keyEquivalent: "")
+            item.tag = delay.rawValue
+            item.target = target
+        }
+        let delaysItem = submenuItem(delays)
+        delaysItem.title = delays.title
+        menu.addItem(delaysItem)
         menu.addItem(.separator())
         let background = backgroundMenu(target: target)
         let backgroundItem = submenuItem(background)
@@ -178,6 +188,10 @@ enum MainMenu {
             withTitle: "Leave Out Desktop Icons", action: #selector(AppController.toggleStudioLeaveOutDesktopIcons(_:)),
             keyEquivalent: "")
         icons.target = target
+        let pointer = menu.addItem(
+            withTitle: "Include the Pointer", action: #selector(AppController.toggleStudioPointer(_:)),
+            keyEquivalent: "")
+        pointer.target = target
         return menu
     }
 
