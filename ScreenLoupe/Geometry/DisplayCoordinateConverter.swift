@@ -153,6 +153,28 @@ struct DisplayCoordinateConverter: Sendable {
         return (x, y)
     }
 
+    /// The part of the Capture Area the Viewer shows with `state`, in AppKit global points: the
+    /// viewport mapped back to area pixels, as the Pixel Inspector maps a point, then placed with
+    /// `geometry`, the one the shown frame was captured with. `nil` when the Viewer shows the whole
+    /// area.
+    static func viewedPart(of state: ZoomPanState, in geometry: CaptureGeometry) -> GlobalRect? {
+        state.visibleSourceRect.map { globalRect(ofAreaPixels: $0, in: geometry) }
+    }
+
+    /// `pixels` of the Capture Area, counted from its top-left corner in pixels of the capturing
+    /// display, y down, as a rect in AppKit global points.
+    static func globalRect(ofAreaPixels pixels: CGRect, in geometry: CaptureGeometry) -> GlobalRect {
+        let scale = geometry.display.scale
+        let origin = geometry.areaOrigin
+        let display = geometry.display.globalFrame
+        // Display-local points are y down from the display's top edge; global points are y up.
+        return GlobalRect(
+            rect: CGRect(
+                x: display.minX + (origin.x + pixels.minX) / scale,
+                y: display.maxY - (origin.y + pixels.maxY) / scale,
+                width: pixels.width / scale, height: pixels.height / scale))
+    }
+
     // MARK: Capture
 
     /// What to capture for a Capture Area. `nil` when the area is on no display.

@@ -140,4 +140,59 @@ struct ZoomPanStateTests {
             zoom: zoom, contentSize: CGSize(width: 10, height: 10), viewportSize: CGSize(width: 10, height: 10))
         #expect(state.steppedZoom(direction: direction) == expected)
     }
+
+    @Test(arguments: [
+        // viewport ÷ zoom comes out a float step under the content height.
+        (CGSize(width: 3686, height: 1245), CGSize(width: 329, height: 3511)),
+        // The fitted height comes out a float step over the viewport.
+        (CGSize(width: 3466, height: 1855), CGSize(width: 3458, height: 2786)),
+    ])
+    func fitShowsTheWholeImageWithSizesThatDontDivide(viewport: CGSize, content: CGSize) {
+        let state = ZoomPanState(contentSize: content, viewportSize: viewport).fitted()
+        #expect(state.offset.x >= 0)
+        #expect(state.offset.y >= 0)
+        #expect(state.visibleSourceRect == nil)
+    }
+
+    @Test func centeringALargerImageStillGoesPastTheEdges() {
+        let state = ZoomPanState(
+            zoom: 4, contentSize: CGSize(width: 100, height: 50), viewportSize: CGSize(width: 300, height: 100)
+        ).centered()
+        #expect(state.offset == CGPoint(x: -50, y: -50))
+    }
+
+    @Test func visibleSourceRectIsThePartTheViewportShows() {
+        // 400×200 at 8× in an 800×400 viewport: a 100×50 window onto the image.
+        let state = ZoomPanState(
+            zoom: 8, offset: CGPoint(x: -800, y: -400), contentSize: CGSize(width: 400, height: 200),
+            viewportSize: CGSize(width: 800, height: 400))
+        #expect(state.visibleSourceRect == CGRect(x: 100, y: 50, width: 100, height: 50))
+        #expect(
+            state.panned(by: CGPoint(x: 10_000, y: 10_000)).visibleSourceRect
+                == CGRect(x: 0, y: 0, width: 100, height: 50))
+    }
+
+    @Test func visibleSourceRectIsClippedToTheImage() {
+        // 800×200 scaled in a 400×400 viewport: cut left and right, but with room above and below.
+        let state = ZoomPanState(
+            zoom: 2, offset: CGPoint(x: -200, y: 100), contentSize: CGSize(width: 400, height: 100),
+            viewportSize: CGSize(width: 400, height: 400))
+        #expect(state.visibleSourceRect == CGRect(x: 100, y: 0, width: 200, height: 100))
+    }
+
+    @Test func visibleSourceRectKeepsAPartlyShownPixel() {
+        // At 3× a 100 px viewport shows 33⅓ source pixels.
+        let state = ZoomPanState(
+            zoom: 3, offset: .zero, contentSize: CGSize(width: 90, height: 90),
+            viewportSize: CGSize(width: 100, height: 300))
+        #expect(state.visibleSourceRect == CGRect(x: 0, y: 0, width: CGFloat(100) / 3, height: 90))
+    }
+
+    @Test(arguments: [CGFloat(0.5), 1.5])
+    func noVisibleSourceRectWhenTheWholeImageShows(zoom: CGFloat) {
+        let state = ZoomPanState(
+            zoom: zoom, contentSize: CGSize(width: 400, height: 300), viewportSize: CGSize(width: 800, height: 450)
+        ).centered()
+        #expect(state.visibleSourceRect == nil)
+    }
 }

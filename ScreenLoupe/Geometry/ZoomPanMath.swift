@@ -54,6 +54,25 @@ struct ZoomPanState: Equatable, Sendable {
         return (x, y)
     }
 
+    /// The part of the image the viewport shows, in source pixels, clipped to the image; fractional at
+    /// the edges, where a pixel shows only in part. `nil` when the viewport shows the whole image, or
+    /// none of it. An edge a float step short of the image's edge reaches it: at Fit, viewport ÷ zoom
+    /// can come out just under the image's size.
+    var visibleSourceRect: CGRect? {
+        let tolerance: CGFloat = 1e-6
+        let topLeft = sourcePoint(forViewportPoint: .zero)
+        let bottomRight = sourcePoint(forViewportPoint: CGPoint(x: viewportSize.width, y: viewportSize.height))
+        let minX = topLeft.x < tolerance ? 0 : topLeft.x
+        let minY = topLeft.y < tolerance ? 0 : topLeft.y
+        let maxX = bottomRight.x > contentSize.width - tolerance ? contentSize.width : bottomRight.x
+        let maxY = bottomRight.y > contentSize.height - tolerance ? contentSize.height : bottomRight.y
+        let visible = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        guard visible.width > 0, visible.height > 0, visible != CGRect(origin: .zero, size: contentSize) else {
+            return nil
+        }
+        return visible
+    }
+
     /// The view of just `sourceRect` (whole source pixels) at the current zoom: a viewport its size,
     /// with its top-left corner at the viewport's. For copying the Select tool's selection, which may
     /// reach beyond the visible viewport.
@@ -111,10 +130,18 @@ struct ZoomPanState: Equatable, Sendable {
     func centered() -> ZoomPanState {
         var next = self
         next.offset = CGPoint(
-            x: ((viewportSize.width - scaledContentSize.width) / 2).rounded(.down),
-            y: ((viewportSize.height - scaledContentSize.height) / 2).rounded(.down)
+            x: Self.centeredAxis(content: scaledContentSize.width, viewport: viewportSize.width),
+            y: Self.centeredAxis(content: scaledContentSize.height, viewport: viewportSize.height)
         )
         return next
+    }
+
+    /// A fitted image can come out a float step larger than the viewport on its fitting axis; that is
+    /// no slack at all, not a pixel to shift it by. A larger image, at a restored zoom, still centres
+    /// past the edges.
+    private static func centeredAxis(content: CGFloat, viewport: CGFloat) -> CGFloat {
+        let slack = viewport - content
+        return (abs(slack) < 1e-6 ? 0 : slack / 2).rounded(.down)
     }
 
     /// The Capture Area was resized to `size` and its top-left corner moved by `originShift` source

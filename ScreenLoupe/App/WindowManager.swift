@@ -30,12 +30,19 @@ final class WindowManager {
             guard let self, !viewer.isShowingCapture else { return }
             viewer.frameArrived()
             inspector.frameArrived()
+            updateViewedPart()
         }
         viewer.onShowCapture = { [weak self] in
             guard let self else { return }
             // A delayed freeze is for the live view it counted over.
             if viewer.isShowingCapture { cancelFreezeCountdown() }
             trackCursor()
+            updateViewedPart()
+        }
+        // The frame outlines the part the Viewer shows, for a moment after the image pans or zooms.
+        zoomPan.observe { [weak self] in
+            self?.updateViewedPart()
+            self?.captureArea.flashViewedPart()
         }
         // The eyedropper comes first: while it is on, the capture leaves the pointer out, so the
         // Color Meter never reads the pointer itself.
@@ -44,7 +51,10 @@ final class WindowManager {
         capture.onUserStopped = { [weak self] in self?.viewer.close() }
         capture.onProblem = { [weak self] problem in self?.viewer.setCaptureProblem(problem) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
-        viewer.onPermissionChange = { [weak self] in self?.updateCapture() }
+        viewer.onPermissionChange = { [weak self] in
+            self?.updateCapture()
+            self?.updateViewedPart()
+        }
         // Closing the Viewer hides the Capture Area too; the app stays in the menu bar.
         viewer.onClose = { [weak self] in
             guard let self else { return }
@@ -55,6 +65,7 @@ final class WindowManager {
             captureArea.hide()
             updateCapture()
             trackCursor()
+            updateViewedPart()
         }
         captureArea.onChange = { [weak self] in
             self?.updateCapture()
@@ -85,6 +96,23 @@ final class WindowManager {
                 at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale))
     }
 
+    // MARK: The part the Viewer shows
+
+    /// Tells the frame which part of the area the Viewer shows (docs/product.md, Capture Area), placed
+    /// with the geometry of the frame the Viewer shows, so it matches the image even while the area
+    /// is dragged ahead of the next frame. Only of the live view: a frozen frame or a recent capture
+    /// is a picture of another moment, the area may have moved since, and a closed Viewer or one
+    /// asking for permission shows nothing.
+    private func updateViewedPart() {
+        guard isViewerOpen, viewer.showsCapture, !viewer.isShowingCapture, !isFrozen,
+            let geometry = capture.frameStore.latestFrame?.geometry
+        else {
+            captureArea.viewedPart = nil
+            return
+        }
+        captureArea.viewedPart = DisplayCoordinateConverter.viewedPart(of: zoomPan.state, in: geometry)?.rect
+    }
+
     /// Brings the Viewer forward. A Viewer that was closed comes back together with its Capture Area.
     func showViewer() {
         if !isViewerOpen {
@@ -92,6 +120,7 @@ final class WindowManager {
         }
         isViewerOpen = true
         trackCursor()
+        updateViewedPart()
         viewer.showWindow(nil)
         viewer.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
@@ -173,6 +202,7 @@ final class WindowManager {
         cancelFreezeCountdown()
         capture.frameStore.isFrozen = frozen
         viewer.showFreeze(frozen ? .frozen(hint: hint) : .hidden)
+        updateViewedPart()
     }
 
     func resetZoom() {

@@ -134,6 +134,60 @@ struct DisplayCoordinateConverterTests {
         #expect(DisplayCoordinateConverter.areaPixel(at: CGPoint(x: 150, y: 200.5), inArea: area, scale: 2) == nil)
     }
 
+    /// A state that shows `shown` (area pixels) of an area `areaSize` pixels big, at `zoom`.
+    private func state(showing shown: CGRect, of areaSize: PixelSize, zoom: CGFloat) -> ZoomPanState {
+        ZoomPanState(
+            zoom: zoom, offset: CGPoint(x: -shown.minX * zoom, y: -shown.minY * zoom),
+            contentSize: CGSize(width: areaSize.width, height: areaSize.height),
+            viewportSize: CGSize(width: shown.width * zoom, height: shown.height * zoom))
+    }
+
+    @Test(arguments: [
+        // Retina primary: the area is 400×200 px, 100×50 px from pixel (100, 50) are 50×25 pt.
+        (CGRect(x: 100, y: 100, width: 200, height: 100), CGRect(x: 150, y: 150, width: 50, height: 25)),
+        // 1× display left of the primary, at negative x: the area's bottom-right quarter.
+        (CGRect(x: -500, y: 100, width: 200, height: 100), CGRect(x: -400, y: 100, width: 100, height: 50)),
+        // 1× display right of the primary, reaching below it, at negative y.
+        (CGRect(x: 1600, y: -150, width: 200, height: 100), CGRect(x: 1700, y: -150, width: 100, height: 50)),
+    ])
+    func viewedPartOfTheArea(area: CGRect, expected: CGRect) throws {
+        let geometry = try #require(converter.captureGeometry(for: GlobalRect(rect: area)))
+        let shown = state(showing: CGRect(x: 100, y: 50, width: 100, height: 50), of: geometry.areaSize, zoom: 8)
+        let part = try #require(DisplayCoordinateConverter.viewedPart(of: shown, in: geometry))
+        #expect(part.rect == expected)
+    }
+
+    @Test func viewedPartOfAStraddlingAreaCountsFromTheWholeArea() throws {
+        // 40 pt on the primary, 60 pt on the right display, which captures: the left half of the
+        // area starts on the primary, though its image doesn't.
+        let geometry = try #require(
+            converter.captureGeometry(for: GlobalRect(rect: CGRect(x: 1400, y: 100, width: 100, height: 100))))
+        let shown = state(showing: CGRect(x: 0, y: 0, width: 50, height: 100), of: geometry.areaSize, zoom: 4)
+        let part = try #require(DisplayCoordinateConverter.viewedPart(of: shown, in: geometry))
+        #expect(part.rect == CGRect(x: 1400, y: 100, width: 50, height: 100))
+    }
+
+    @Test func viewedPartIsClippedToTheArea() throws {
+        // Panned to the bottom-right corner, with the viewport wider than the image at 2×: the
+        // part runs from mid-height to the bottom edge, across the whole width.
+        let geometry = try #require(
+            converter.captureGeometry(for: GlobalRect(rect: CGRect(x: 100, y: 100, width: 200, height: 100))))
+        let state = ZoomPanState(
+            zoom: 2, offset: CGPoint(x: 100, y: -200), contentSize: CGSize(width: 400, height: 200),
+            viewportSize: CGSize(width: 1000, height: 200))
+        let part = try #require(DisplayCoordinateConverter.viewedPart(of: state, in: geometry))
+        #expect(part.rect == CGRect(x: 100, y: 100, width: 200, height: 50))
+    }
+
+    @Test func noViewedPartWhenTheWholeAreaShows() throws {
+        let geometry = try #require(
+            converter.captureGeometry(for: GlobalRect(rect: CGRect(x: 100, y: 100, width: 200, height: 100))))
+        let state = ZoomPanState(
+            contentSize: CGSize(width: 400, height: 200), viewportSize: CGSize(width: 800, height: 600)
+        ).fitted()
+        #expect(DisplayCoordinateConverter.viewedPart(of: state, in: geometry) == nil)
+    }
+
     @Test func retinaCaptureOutputsBackingPixels() throws {
         let area = GlobalRect(rect: CGRect(x: 100.5, y: 200, width: 300, height: 150))
         let geometry = try #require(converter.captureGeometry(for: area))

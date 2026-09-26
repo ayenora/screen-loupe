@@ -17,12 +17,14 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 ///
 /// The line is always drawn. The band, the handles, the tab and the position box fade in on hover;
 /// the muted size label shows at rest. A frame whose lock stops resizing shows no band or handles.
+/// The dashed outline of the part the Viewer shows fades in and out as its controller asks.
 /// Subviews never take the mouse, so every event lands here.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
 
     private var layout: OverlayLayout?
     private let decorations = FrameDecorationsView()
+    private let viewedPartOutline = ViewedPartView()
     private let tab = GripTabView()
     private let label = SizeLabelView()
     private let positionBox = PositionBoxView()
@@ -36,6 +38,12 @@ final class CaptureOverlayView: NSView {
         symbol: "macwindow", onSymbol: "macwindow", label: "Fit Area to Window", onLabel: "Fit Area to Window")
     private var isDragging = false
     private var isRevealed = false
+    private var isViewedPartShown = false
+
+    /// The part of the area the Viewer shows, in AppKit global coordinates.
+    var viewedPart: CGRect? {
+        didSet { placeViewedPart() }
+    }
 
     /// The lock chosen with the pin's ▾, shown by the pin's symbol.
     var lock = CaptureAreaLock.pinned {
@@ -63,6 +71,7 @@ final class CaptureOverlayView: NSView {
     var style: FrameStyle {
         didSet {
             decorations.style = style
+            viewedPartOutline.style = style
             tab.style = style
             pinButton.style = style
             raiseButton.style = style
@@ -75,6 +84,7 @@ final class CaptureOverlayView: NSView {
     init(style: FrameStyle) {
         self.style = style
         decorations.style = style
+        viewedPartOutline.style = style
         tab.style = style
         pinButton.style = style
         raiseButton.style = style
@@ -82,10 +92,13 @@ final class CaptureOverlayView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        for subview in [decorations, label, positionBox, tab, pinButton, raiseButton, pickButton] as [NSView] {
+        for subview in [viewedPartOutline, decorations, label, positionBox, tab, pinButton, raiseButton, pickButton]
+            as [NSView]
+        {
             addSubview(subview)
         }
         decorations.alphaValue = 0
+        viewedPartOutline.alphaValue = 0
         tab.alphaValue = 0
         positionBox.alphaValue = 0
         pinButton.menuWidth = OverlayMetrics.standard.pinMenuWidth
@@ -109,6 +122,8 @@ final class CaptureOverlayView: NSView {
 
         decorations.frame = bounds
         decorations.captureRect = local(layout.captureRect)
+        viewedPartOutline.frame = bounds
+        placeViewedPart()
         decorations.handleRects = OverlayHandle.allCases.map {
             local(layout.handleRect($0, size: OverlayMetrics.standard.handleSize))
         }
@@ -148,6 +163,24 @@ final class CaptureOverlayView: NSView {
             pickButton.animator().alphaValue = revealed ? 1 : 0
             label.animator().alphaValue = labelAlpha
         }
+    }
+
+    /// Fades the outline of the viewed part in or out.
+    func setViewedPartShown(_ shown: Bool) {
+        guard shown != isViewedPartShown else { return }
+        isViewedPartShown = shown
+        placeViewedPart()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = OverlayStyle.revealDuration
+            viewedPartOutline.animator().alphaValue = shown ? 1 : 0
+        }
+    }
+
+    /// A hidden outline isn't redrawn, and one whose part is gone fades out where it last was.
+    private func placeViewedPart() {
+        guard isViewedPartShown, let layout, let viewedPart else { return }
+        viewedPartOutline.captureRect = local(layout.captureRect)
+        viewedPartOutline.viewedRect = local(viewedPart)
     }
 
     private var labelAlpha: CGFloat { !isRevealed && style.showsLabelAtRest ? 1 : 0 }
@@ -284,6 +317,33 @@ private final class FrameDecorationsView: NSView {
             style.accent.setStroke()
             outline.stroke()
         }
+    }
+}
+
+/// The part of the area the Viewer shows: a 1 pt dashed line in the accent with the line's halo,
+/// inside the captured rect so it never covers the frame's line.
+private final class ViewedPartView: NSView {
+    var captureRect: CGRect = .zero { didSet { needsDisplay = true } }
+    var viewedRect: CGRect? { didSet { needsDisplay = true } }
+    var style: FrameStyle? { didSet { needsDisplay = true } }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let style, let viewedRect else { return }
+        NSBezierPath(rect: captureRect).setClip()
+        let rect = viewedRect.insetBy(dx: 0.5, dy: 0.5)
+        let dashes: [CGFloat] = [4, 3]
+        let halo = NSBezierPath(rect: rect)
+        halo.lineWidth = 3
+        halo.setLineDash(dashes, count: dashes.count, phase: 0)
+        OverlayStyle.halo(for: effectiveAppearance).setStroke()
+        halo.stroke()
+        let line = NSBezierPath(rect: rect)
+        line.lineWidth = 1
+        line.setLineDash(dashes, count: dashes.count, phase: 0)
+        style.accent.setStroke()
+        line.stroke()
     }
 }
 

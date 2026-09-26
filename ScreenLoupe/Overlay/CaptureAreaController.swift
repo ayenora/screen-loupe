@@ -14,6 +14,17 @@ final class CaptureAreaController {
     /// Called by the frame's pick button: pick a window for the area.
     var onPickWindow: (() -> Void)?
 
+    /// The part of the area the Viewer shows, in AppKit global coordinates; `nil` while it shows the
+    /// whole area, or nothing of it live. Outlined while the Viewer's image moves and while the cursor
+    /// is near the frame.
+    var viewedPart: CGRect? {
+        didSet {
+            guard viewedPart != oldValue else { return }
+            view.viewedPart = viewedPart
+            updateViewedPartShown()
+        }
+    }
+
     /// What to capture for the current rect, or `nil` when it is on no display.
     var captureGeometry: CaptureGeometry? {
         converter?.captureGeometry(for: GlobalRect(rect: captureRect))
@@ -36,6 +47,8 @@ final class CaptureAreaController {
     private var isHovering = false
     private var isRevealed = false
     private var hideTimer: Timer?
+    /// Runs while the outline of the viewed part holds after the Viewer's image moved.
+    private var viewedPartTimer: Timer?
     private var eventMonitors: [Any] = []
     private var keyObservers: [NSObjectProtocol] = []
     private var picker: WindowPicker?
@@ -222,7 +235,10 @@ final class CaptureAreaController {
     }
 
     private func mouseMovedAnywhere() {
+        let wasNear = isNear
         isHovering = layout?.isInHoverZone(NSEvent.mouseLocation) ?? false
+        // The outline holds a moment after the cursor leaves, as the handles do.
+        if wasNear, !isNear { flashViewedPart() }
         updateReveal()
         onMouseMoved?()
     }
@@ -230,6 +246,7 @@ final class CaptureAreaController {
     /// The handles and tab show while the cursor is near the frame, while dragging, and while the
     /// frame is key (after a click, so arrow-key nudges are visible).
     private func updateReveal() {
+        updateViewedPartShown()
         let wanted = isHovering || drag != nil || window.isKeyWindow
         if wanted {
             hideTimer?.invalidate()
@@ -253,6 +270,30 @@ final class CaptureAreaController {
         guard revealed != isRevealed else { return }
         isRevealed = revealed
         view.setRevealed(revealed)
+    }
+
+    // MARK: The part the Viewer shows
+
+    /// The cursor is near the frame, or dragging it. Unlike the handles, the outline doesn't stay
+    /// while the frame is key: it would sit over the content until another window is clicked.
+    private var isNear: Bool { isHovering || drag != nil }
+
+    /// Shows the outline for as long as the handles stay after the cursor leaves: the Viewer's image
+    /// panned or zoomed, or the cursor left the frame.
+    func flashViewedPart() {
+        viewedPartTimer?.invalidate()
+        viewedPartTimer = Timer.scheduledTimer(withTimeInterval: OverlayStyle.hideDelay, repeats: false) {
+            [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.viewedPartTimer = nil
+                self?.updateViewedPartShown()
+            }
+        }
+        updateViewedPartShown()
+    }
+
+    private func updateViewedPartShown() {
+        view.setViewedPartShown(viewedPart != nil && (isNear || viewedPartTimer != nil))
     }
 }
 
