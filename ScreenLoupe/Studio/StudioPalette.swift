@@ -16,8 +16,13 @@ final class StudioPalette: NSPanel {
     var onCapture: (() -> Void)?
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
+    /// Called with the Size button, to open the sizes beside it.
+    var onSize: ((NSView) -> Void)?
+    var onToggleAspectLock: (() -> Void)?
     var onToggleOnTop: (() -> Void)?
     var onHide: (() -> Void)?
+    /// Called when a drag of the palette begins.
+    var onDragStarted: (() -> Void)?
     /// Called when the user has dragged the palette to a new place.
     var onMoved: (() -> Void)?
 
@@ -29,7 +34,13 @@ final class StudioPalette: NSPanel {
         }
     }
 
+    /// Filled while Aspect Lock is on.
+    var aspectLocked = false {
+        didSet { aspectLockButton.state = aspectLocked ? .on : .off }
+    }
+
     private let onTopButton = PaletteButton()
+    private let aspectLockButton = PaletteButton()
     private let saveButton = PaletteButton()
     private let hoverLabel = HoverLabelWindow()
     private var hoverTimer: Timer?
@@ -53,18 +64,29 @@ final class StudioPalette: NSPanel {
         Self.configure(onTopButton, "pin", "Keep on Top", #selector(onTopClicked))
         onTopButton.setButtonType(.pushOnPushOff)
         onTopButton.alternateImage = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Keep on Top")
+        Self.configure(aspectLockButton, "aspectratio", "Aspect Lock", #selector(aspectLockClicked))
+        aspectLockButton.setButtonType(.pushOnPushOff)
+        aspectLockButton.alternateImage = NSImage(
+            systemSymbolName: "aspectratio.fill", accessibilityDescription: "Aspect Lock")
 
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        let separators = (0..<2).map { _ in
+            let separator = NSBox()
+            separator.boxType = .separator
+            separator.widthAnchor.constraint(equalToConstant: 24).isActive = true
+            return separator
+        }
         let grabBar = GrabBar()
         grabBar.onMoved = { [weak self] in self?.onMoved?() }
+        grabBar.onDragStarted = { [weak self] in self?.onDragStarted?() }
         let stack = NSStackView(views: [
             grabBar,
             capture,
             Self.button("doc.on.doc", "Copy", #selector(copyClicked)),
             saveButton,
-            separator,
+            separators[0],
+            Self.button("arrow.up.left.and.arrow.down.right", "Size", #selector(sizeClicked)),
+            aspectLockButton,
+            separators[1],
             onTopButton,
             Self.button("eye.slash", "Hide Screenshot Studio", #selector(hideClicked)),
         ])
@@ -75,8 +97,11 @@ final class StudioPalette: NSPanel {
         for case let button as NSButton in stack.arrangedSubviews {
             button.target = self
         }
+        // A group of buttons, then a separator with a little more room on each side.
         stack.setCustomSpacing(6, after: saveButton)
-        stack.setCustomSpacing(6, after: separator)
+        stack.setCustomSpacing(6, after: separators[0])
+        stack.setCustomSpacing(6, after: aspectLockButton)
+        stack.setCustomSpacing(6, after: separators[1])
 
         let background = NSVisualEffectView()
         background.material = .popover
@@ -158,6 +183,13 @@ final class StudioPalette: NSPanel {
     @objc private func copyClicked() { onCopy?() }
     @objc private func saveClicked() { onSave?() }
     @objc private func hideClicked() { onHide?() }
+    @objc private func sizeClicked(_ sender: NSButton) { onSize?(sender) }
+
+    /// Shows the setting, not the click, as Keep on Top does.
+    @objc private func aspectLockClicked(_ sender: NSButton) {
+        sender.state = aspectLocked ? .on : .off
+        onToggleAspectLock?()
+    }
 
     /// Shows the setting, not the click: the setting sets it back.
     @objc private func onTopClicked(_ sender: NSButton) {
@@ -166,7 +198,7 @@ final class StudioPalette: NSPanel {
     }
 
     /// A stretchable mask with rounded corners for the background.
-    private static func roundedMask(radius: CGFloat) -> NSImage {
+    static func roundedMask(radius: CGFloat) -> NSImage {
         let side = radius * 2 + 1
         let image = NSImage(size: CGSize(width: side, height: side), flipped: false) { rect in
             NSColor.black.setFill()
@@ -226,9 +258,12 @@ private final class HoverLabelWindow: NSPanel {
 
 /// The handle at the palette's top: dragging it moves the palette.
 private final class GrabBar: NSView {
+    /// Called on the first move of a drag.
+    var onDragStarted: (() -> Void)?
     /// Called when a drag that moved the palette ends.
     var onMoved: (() -> Void)?
     private var dragStart: (mouse: CGPoint, origin: CGPoint)?
+    private var hasDragged = false
 
     override var intrinsicContentSize: NSSize { NSSize(width: StudioPalette.width, height: 14) }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -240,11 +275,16 @@ private final class GrabBar: NSView {
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
         dragStart = (NSEvent.mouseLocation, window.frame.origin)
+        hasDragged = false
         NSCursor.closedHand.push()
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let dragStart, let window else { return }
+        if !hasDragged {
+            hasDragged = true
+            onDragStarted?()
+        }
         let mouse = NSEvent.mouseLocation
         window.setFrameOrigin(
             CGPoint(

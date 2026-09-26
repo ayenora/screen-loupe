@@ -123,6 +123,20 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.save()
     }
 
+    /// Screenshot › Size: the item carries `[width, height]` in pixels.
+    @objc func applyStudioSize(_ sender: NSMenuItem) {
+        guard let size = sender.representedObject as? [Int], size.count == 2 else { return }
+        windows.studio.applySize(PixelSize(width: size[0], height: size[1]))
+    }
+
+    @objc func showStudioCustomSizes(_ sender: Any?) {
+        windows.studio.showCustomSizes()
+    }
+
+    @objc func toggleStudioAspectLock(_ sender: Any?) {
+        windows.studio.toggleAspectLock()
+    }
+
     @objc func resetZoom(_ sender: Any?) {
         windows.resetZoom()
     }
@@ -270,6 +284,17 @@ extension AppController: NSMenuItemValidation {
             return true
         case #selector(captureStudio(_:)), #selector(copyStudio(_:)), #selector(saveStudio(_:)):
             return builtWindows?.studio.isVisible == true
+        case #selector(applyStudioSize(_:)):
+            let checked = (menuItem.representedObject as? [Int]).map {
+                StudioSizes.isChecked(
+                    PixelSize(width: $0[0], height: $0[1]), isPresetEntry: menuItem.tag == 0,
+                    current: builtWindows?.studio.pixelSize)
+            }
+            menuItem.state = checked == true ? .on : .off
+            return builtWindows?.studio.isVisible == true
+        case #selector(toggleStudioAspectLock(_:)):
+            menuItem.state = settings.settings.studioAspectLocked ? .on : .off
+            return true
         case #selector(toggleMeasuringRuler(_:)):
             menuItem.state = builtWindows?.viewer.isRulerOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true
@@ -302,8 +327,13 @@ extension AppController: NSMenuItemValidation {
 }
 
 extension AppController: NSMenuDelegate {
-    /// Edit › Copy copies the text of a focused text field, and the view otherwise; its title says which.
+    /// Screenshot › Size is filled as it opens. Edit › Copy copies the text of a focused text field,
+    /// and the view otherwise; its title says which.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu.identifier == MainMenu.studioSizeMenu {
+            MainMenu.fillStudioSizeMenu(menu, custom: settings.settings.studioCustomSizes, target: self)
+            return
+        }
         let editsText = NSApp.keyWindow?.firstResponder is NSText
         menu.items.first { $0.action == #selector(NSText.copy(_:)) }?.title = editsText ? "Copy" : "Copy View"
     }

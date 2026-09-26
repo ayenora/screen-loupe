@@ -45,4 +45,22 @@ enum StudioPlacement {
             visibleFrame.maxY - screenMargin - size.height)
         return CGPoint(x: x.rounded(), y: y.rounded())
     }
+
+    /// Between the palette and the Size list.
+    static let popoverGap: CGFloat = 6
+
+    /// The Size list's origin: right of `palette`, or left of it when there is no room on the right,
+    /// its top level with `anchorTop` (the Size button's top); always inside `visibleFrame`, vertically.
+    static func popoverOrigin(
+        size: CGSize, beside palette: CGRect, anchorTop: CGFloat, in visibleFrame: CGRect
+    )
+        -> CGPoint
+    {
+        var x = palette.maxX + popoverGap
+        if x + size.width > visibleFrame.maxX - screenMargin { x = palette.minX - popoverGap - size.width }
+        let y = min(
+            max(anchorTop - size.height, visibleFrame.minY + screenMargin),
+            visibleFrame.maxY - screenMargin - size.height)
+        return CGPoint(x: x.rounded(), y: y.rounded())
+    }
 }

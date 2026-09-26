@@ -85,6 +85,13 @@ struct DisplayCoordinateConverter: Sendable {
         return best?.display
     }
 
+    /// Whether the display owning `global` contains all of it. The Screenshot studio captures only
+    /// such a rect: a picture holds one display's pixels, so a rect reaching onto another display, or
+    /// off every display, would come out smaller than the frame.
+    func isWhollyOnOneDisplay(_ global: GlobalRect) -> Bool {
+        owningDisplay(for: global)?.globalFrame.contains(global.rect) ?? false
+    }
+
     /// `global` in points relative to the top-left corner of `display`. Not clipped to the display.
     func displayLocalRect(_ global: GlobalRect, on display: DisplayInfo) -> DisplayLocalRect {
         let rect = quartzRect(global).rect

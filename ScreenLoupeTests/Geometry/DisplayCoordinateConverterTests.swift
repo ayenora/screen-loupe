@@ -82,6 +82,39 @@ struct DisplayCoordinateConverterTests {
         #expect(converter.owningDisplay(for: GlobalRect(rect: rect))?.id == expected)
     }
 
+    @Test(arguments: [
+        // Fully inside the 2× primary; exactly equal to it.
+        (CGRect(x: 100, y: 100, width: 400, height: 300), true),
+        (CGRect(x: 0, y: 0, width: 1440, height: 900), true),
+        // Touching the 1× display on the right, and the 2× one above, from inside.
+        (CGRect(x: 1340, y: 100, width: 100, height: 100), true),
+        (CGRect(x: 100, y: 800, width: 100, height: 100), true),
+        // One pixel of the 2× primary (half a point) onto the 1× display: another scale.
+        (CGRect(x: 1340, y: 100, width: 100.5, height: 100), false),
+        // One pixel of the 1× display onto the 2× primary.
+        (CGRect(x: 1439, y: 100, width: 100, height: 100), false),
+        // One pixel onto the display above, the same scale.
+        (CGRect(x: 100, y: 800, width: 100, height: 100.5), false),
+        // Filling the 1× display to its outer right edge; one pixel past it, where no display is.
+        (CGRect(x: 3260, y: 100, width: 100, height: 100), true),
+        (CGRect(x: 3261, y: 100, width: 100, height: 100), false),
+        // Half a point (one pixel at 2×) below the primary, where no display is.
+        (CGRect(x: 100, y: -0.5, width: 100, height: 100), false),
+        // Off the right display's bottom.
+        (CGRect(x: 1500, y: -200, width: 100, height: 100), false),
+        // The display left of the primary, at negative coordinates: inside, and across to the primary.
+        (CGRect(x: -2000, y: 100, width: 300, height: 300), true),
+        (CGRect(x: -2560, y: 0, width: 2560, height: 1440), true),
+        (CGRect(x: -50, y: 100, width: 100, height: 100), false),
+        // Over the corner of the primary, the display above and the one to the left.
+        (CGRect(x: -50, y: 850, width: 100, height: 100), false),
+        // On no display at all.
+        (CGRect(x: 5000, y: 5000, width: 10, height: 10), false),
+    ])
+    func whetherARectIsWhollyOnOneDisplay(rect: CGRect, wholly: Bool) {
+        #expect(converter.isWhollyOnOneDisplay(GlobalRect(rect: rect)) == wholly)
+    }
+
     @Test func rectOnNoDisplayHasNoOwner() {
         let offScreen = GlobalRect(rect: CGRect(x: 5000, y: 5000, width: 10, height: 10))
         #expect(converter.owningDisplay(for: offScreen) == nil)

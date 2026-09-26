@@ -30,6 +30,7 @@
 				Geometry/ShortcutRules.swift,
 				Geometry/SizeText.swift,
 				Geometry/StudioPlacement.swift,
+				Geometry/StudioSizes.swift,
 				Geometry/ViewerSelection.swift,
 				Geometry/ViewerWindowFit.swift,
 				Geometry/WindowMagnet.swift,

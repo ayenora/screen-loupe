@@ -140,7 +140,47 @@ enum MainMenu {
         copy.target = target
         let save = menu.addItem(withTitle: "Save…", action: #selector(AppController.saveStudio(_:)), keyEquivalent: "")
         save.target = target
+        menu.addItem(.separator())
+        // Filled each time it opens: the custom sizes change.
+        let sizes = NSMenu(title: "Size")
+        sizes.identifier = studioSizeMenu
+        sizes.delegate = target
+        let sizesItem = submenuItem(sizes)
+        sizesItem.title = sizes.title
+        menu.addItem(sizesItem)
+        let aspectLock = menu.addItem(
+            withTitle: "Lock Aspect Ratio", action: #selector(AppController.toggleStudioAspectLock(_:)),
+            keyEquivalent: "")
+        aspectLock.target = target
         return menu
+    }
+
+    static let studioSizeMenu = NSUserInterfaceItemIdentifier("studioSize")
+
+    /// Screenshot › Size: the presets, the custom sizes in slot order, and Custom Size…. Each size
+    /// item carries `[width, height]` in pixels, and a custom one tag 1; `validateMenuItem` checks
+    /// the frame's size (`StudioSizes.isChecked`).
+    static func fillStudioSizeMenu(_ menu: NSMenu, custom: [CustomSize], target: AppController) {
+        menu.removeAllItems()
+        func add(_ header: String, _ sizes: [(size: PixelSize, title: String)], isCustom: Bool = false) {
+            menu.addItem(.sectionHeader(title: header))
+            for entry in sizes {
+                let item = menu.addItem(
+                    withTitle: entry.title, action: #selector(AppController.applyStudioSize(_:)), keyEquivalent: "")
+                item.representedObject = [entry.size.width, entry.size.height]
+                item.tag = isCustom ? 1 : 0
+                item.target = target
+            }
+        }
+        add("Mac App Store", StudioSizes.appStore.map { ($0, StudioSizes.title($0)) })
+        add("Web", StudioSizes.web.map { ($0, StudioSizes.title($0)) })
+        if !custom.isEmpty {
+            add("Custom", custom.map { ($0.pixels, StudioSizes.title($0)) }, isCustom: true)
+        }
+        menu.addItem(.separator())
+        let edit = menu.addItem(
+            withTitle: "Custom Size…", action: #selector(AppController.showStudioCustomSizes(_:)), keyEquivalent: "")
+        edit.target = target
     }
 
     private static func windowMenu(target: AppController) -> NSMenu {

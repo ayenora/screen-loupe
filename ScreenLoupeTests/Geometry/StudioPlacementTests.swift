@@ -67,4 +67,34 @@ struct StudioPlacementTests {
         let origin = StudioPlacement.paletteOrigin(size: palette, beside: frame, in: visible)
         #expect(origin == CGPoint(x: -684, y: 180))
     }
+
+    // MARK: The Size list
+
+    @Test func sizeListSitsRightOfThePaletteLevelWithTheButton() {
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let palette = CGRect(x: 800, y: 400, width: 40, height: 300)
+        let origin = StudioPlacement.popoverOrigin(
+            size: CGSize(width: 240, height: 320), beside: palette, anchorTop: 600, in: visible)
+        #expect(origin == CGPoint(x: 846, y: 280))
+    }
+
+    @Test func sizeListGoesLeftAtTheDisplaysRightEdge() {
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let palette = CGRect(x: 1390, y: 400, width: 40, height: 300)
+        let origin = StudioPlacement.popoverOrigin(
+            size: CGSize(width: 240, height: 320), beside: palette, anchorTop: 600, in: visible)
+        #expect(origin.x == CGFloat(1390 - 6 - 240))
+    }
+
+    @Test func sizeListStaysOnTheDisplayVertically() {
+        let visible = CGRect(x: -1920, y: -200, width: 1920, height: 1080)
+        let palette = CGRect(x: -1000, y: -190, width: 40, height: 300)
+        let size = CGSize(width: 240, height: 320)
+        // Near the bottom: lifted to the margin.
+        let low = StudioPlacement.popoverOrigin(size: size, beside: palette, anchorTop: -100, in: visible)
+        #expect(low == CGPoint(x: -954, y: -192))
+        // Above the top: lowered to the margin.
+        let high = StudioPlacement.popoverOrigin(size: size, beside: palette, anchorTop: 2000, in: visible)
+        #expect(high.y == CGFloat(880 - 8 - 320))
+    }
 }

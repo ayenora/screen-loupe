@@ -62,6 +62,18 @@ final class CaptureAreaController {
         }
     }
 
+    /// The width-to-height ratio a drag of a handle keeps, unless Shift squares the frame; `nil`
+    /// resizes freely. The arrow keys don't keep it.
+    var aspectRatio: CGFloat?
+
+    /// The rect's size in pixels of the display it is on, or `nil` when it is on no display.
+    var pixelSize: PixelSize? {
+        guard let converter, let display = converter.owningDisplay(for: GlobalRect(rect: captureRect)) else {
+            return nil
+        }
+        return converter.pixelSize(of: captureRect.size, scale: display.scale)
+    }
+
     /// What to capture for the current rect, or `nil` when it is on no display.
     var captureGeometry: CaptureGeometry? {
         converter?.captureGeometry(for: GlobalRect(rect: captureRect))
@@ -213,6 +225,33 @@ final class CaptureAreaController {
         let centerX = screen.minX + screen.width * 0.3
         return CGRect(
             x: centerX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height)
+    }
+
+    // MARK: Sizes
+
+    /// Gives the frame `size` pixels of the display it is on, keeping its top-left corner and
+    /// staying on that display (`StudioSizes.frame`). A size the display can't hold, or one under the
+    /// minimum, leaves the frame as it is and says why beside the tab.
+    /// Returns whether it was applied.
+    @discardableResult
+    func resize(toPixels size: PixelSize) -> Bool {
+        guard let display = converter?.owningDisplay(for: GlobalRect(rect: captureRect)) else { return false }
+        switch StudioSizes.frame(captureRect, resizedTo: size, on: display, minimumSize: CaptureAreaEditing.minimumSize)
+        {
+        case .fits(let rect):
+            applyEdited(rect, snap: .edges, persist: true)
+            return true
+        case .largerThanDisplay:
+            showNotice("Larger than the display")
+        case .smallerThanMinimum:
+            showNotice("Smaller than 64 × 64 pt")
+        }
+        return false
+    }
+
+    /// Whether the rect lies wholly on the display that owns it.
+    var isWhollyOnOneDisplay: Bool {
+        converter?.isWhollyOnOneDisplay(GlobalRect(rect: captureRect)) ?? false
     }
 
     // MARK: Picking a window
@@ -549,14 +588,33 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
             // With Shift a corner keeps the area square, after ⌘-snapping: the longer side wins. Squared
             // after the pixel snap, so both sides come out the same whole number of pixels. Squared twice:
             // the square can end up owned by a display with another scale, whose grid the second pass uses.
-            if NSEvent.modifierFlags.contains(.shift) {
+            // Aspect Lock is fitted twice for the same reason, in whole pixels of the display that owns it.
+            switch ResizeRule.forDrag(
+                of: handle, shift: NSEvent.modifierFlags.contains(.shift), aspectRatio: aspectRatio)
+            {
+            case .free:
+                break
+            case .square:
                 let square = CaptureAreaEditing.squared(snapped(rect, .edges), handle: handle)
                 rect = CaptureAreaEditing.squared(snapped(square, .edges), handle: handle)
+            case .aspect(let ratio):
+                // On a corner, the side ⌘-snapping moved leads, so the snap holds.
+                let lead = AspectLock.lead(resized: resized, snapped: rect)
+                let minimum = CaptureAreaEditing.minimumSize
+                let fitted = AspectLock.resized(
+                    rect, handle: handle, ratio: ratio, scale: scale(of: rect), minimumSize: minimum, lead: lead)
+                rect = AspectLock.resized(
+                    rect, handle: handle, ratio: ratio, scale: scale(of: fitted), minimumSize: minimum, lead: lead)
             }
             applyEdited(rect, snap: .edges, persist: false)
         case .pin, .pinMenu, .raiseViewer, .pickWindow:
             break
         }
+    }
+
+    /// Pixels per point of the display that owns `rect`.
+    private func scale(of rect: CGRect) -> CGFloat {
+        converter?.owningDisplay(for: GlobalRect(rect: rect))?.scale ?? 1
     }
 
     /// Read once per drag: windows don't move while the frame is dragged.
