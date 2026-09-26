@@ -152,6 +152,52 @@ enum MainMenu {
             withTitle: "Lock Aspect Ratio", action: #selector(AppController.toggleStudioAspectLock(_:)),
             keyEquivalent: "")
         aspectLock.target = target
+        menu.addItem(.separator())
+        let background = backgroundMenu(target: target)
+        let backgroundItem = submenuItem(background)
+        backgroundItem.title = background.title
+        menu.addItem(backgroundItem)
+        let leaveOutWindows = menu.addItem(
+            withTitle: "Leave Out Windows…", action: #selector(AppController.toggleStudioLeaveOutWindows(_:)),
+            keyEquivalent: "")
+        leaveOutWindows.target = target
+        let bringBack = menu.addItem(
+            withTitle: "Bring Back All Windows", action: #selector(AppController.bringBackStudioWindows(_:)),
+            keyEquivalent: "")
+        bringBack.target = target
+        let dock = menu.addItem(
+            withTitle: "Leave Out the Dock", action: #selector(AppController.toggleStudioLeaveOutDock(_:)),
+            keyEquivalent: "")
+        dock.target = target
+        let icons = menu.addItem(
+            withTitle: "Leave Out Desktop Icons", action: #selector(AppController.toggleStudioLeaveOutDesktopIcons(_:)),
+            keyEquivalent: "")
+        icons.target = target
+        return menu
+    }
+
+    /// Screenshot › Background: the same choices as the palette's Background list. Each fixed
+    /// choice carries its `StudioBackground`; `validateMenuItem` checks the current one.
+    private static func backgroundMenu(target: AppController) -> NSMenu {
+        let menu = NSMenu(title: "Background")
+        func add(_ title: String, _ background: StudioBackground) {
+            let item = menu.addItem(
+                withTitle: title, action: #selector(AppController.chooseStudioBackground(_:)), keyEquivalent: "")
+            item.representedObject = background
+            item.target = target
+        }
+        add("Screen", .screen)
+        menu.addItem(.sectionHeader(title: "Color"))
+        for entry in StudioBackground.colors { add(entry.name, .color(entry.color)) }
+        let custom = menu.addItem(
+            withTitle: "Custom Color…", action: #selector(AppController.chooseStudioCustomColor(_:)), keyEquivalent: "")
+        custom.target = target
+        menu.addItem(.sectionHeader(title: "Gradient"))
+        for entry in StudioBackground.gradients { add(entry.name, .gradient(entry.gradient)) }
+        menu.addItem(.separator())
+        let image = menu.addItem(
+            withTitle: "Image…", action: #selector(AppController.chooseStudioBackgroundImage(_:)), keyEquivalent: "")
+        image.target = target
         return menu
     }
 

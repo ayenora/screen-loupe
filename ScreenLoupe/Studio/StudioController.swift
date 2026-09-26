@@ -1,9 +1,11 @@
 import AppKit
+import ImageIO
 import OSLog
 import SwiftUI
 
 /// The Screenshot studio (docs/product.md, Screenshot studio): its frame, its palette, Capture,
-/// Copy and Save, and the frame's sizes and Aspect Lock. Shown and hidden on its own, apart from the Viewer and the Capture Area.
+/// Copy and Save, the frame's sizes and Aspect Lock, and what pictures leave out and lay under.
+/// Shown and hidden on its own, apart from the Viewer and the Capture Area.
 ///
 /// The frame is a `CaptureAreaController` of kind `.studio`: the Capture Area's window, drawing,
 /// dragging and snapping, without its locks. The palette is a separate panel, parked anywhere.
@@ -15,6 +17,8 @@ final class StudioController {
     /// The numbers of the app's windows a picture keeps — the Viewer and the Capture Area frame;
     /// every other window of the app is left out.
     var capturedAppWindows: (() -> [Int])?
+    /// The Viewer's window number, while it has a window: a left-out window behind it isn't dimmed.
+    var viewerWindowNumber: (() -> Int?)?
 
     private let frame: CaptureAreaController
     private let palette = StudioPalette()
@@ -26,9 +30,28 @@ final class StudioController {
     private var isCapturing = false
     /// The last save panel; while it is open, the commands bring it forward instead.
     private var savePanel: NSSavePanel?
-    private let sizePanel = StudioSizePanel()
+    /// The Size or the Background list beside the palette, and which of them it shows.
+    private let listPanel = StudioListPanel()
+    private enum ListKind { case sizes, background }
+    private var shownList: ListKind?
     /// Built the first time Custom Size… is chosen, then kept.
     private var customSizesWindow: NSPanel?
+    /// Windows of other apps left out by pointing: for this session only, never saved.
+    private var leftOutWindows: Set<CGWindowID> = [] {
+        didSet { if leftOutWindows != oldValue { updateDimmed() } }
+    }
+    /// Picks windows to leave out while it runs.
+    private var windowPicker: WindowPicker?
+    private let dimOverlay = StudioDimOverlay()
+    /// Follows the left-out windows while any are left out and the studio shows.
+    private var dimTimer: Timer?
+    private var dimTicks = 0
+    private let colorTarget = ColorPanelTarget()
+    /// The decoded background image, by its file name.
+    private var backgroundImage: (fileName: String, maxPixelSize: PixelSize, image: CGImage)?
+    /// Where the chosen background image is copied, in the app's container.
+    private let backgroundFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appending(path: Bundle.main.bundleIdentifier ?? "Screen Loupe").appending(path: "Studio")
 
     init(settings: SettingsStore, permissions: PermissionsManager, export: ExportController) {
         self.settings = settings
@@ -44,9 +67,12 @@ final class StudioController {
         palette.onSave = { [weak self] in self?.save() }
         palette.onSize = { [weak self] in self?.showSizes(beside: $0) }
         palette.onToggleAspectLock = { [weak self] in self?.toggleAspectLock() }
+        palette.onBackground = { [weak self] in self?.showBackgrounds(beside: $0) }
+        palette.onToggleLeaveOutWindows = { [weak self] in self?.toggleLeavingOutWindows() }
+        palette.onToggleLeaveOutDock = { [weak self] in self?.toggleLeaveOutDock() }
         palette.onToggleOnTop = { [weak self] in self?.toggleKeepOnTop() }
         palette.onHide = { [weak self] in self?.hide() }
-        palette.onDragStarted = { [weak self] in self?.sizePanel.dismiss() }
+        palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
         palette.onMoved = { [weak self] in
             guard let self else { return }
             settings.update { $0.studioPaletteOrigin = self.palette.frame.origin }
@@ -54,6 +80,16 @@ final class StudioController {
         settings.observe(\.studioOnTop) { [weak self] in self?.palette.keepsOnTop = $0 }
         settings.observe(\.studioAspectLocked) { [weak self] in self?.palette.aspectLocked = $0 }
         settings.observe(\.activeStudioAspectRatio) { [weak self] in self?.frame.aspectRatio = $0.map { CGFloat($0) } }
+        settings.observe(\.studioLeavesOutDock) { [weak self] in self?.palette.leavesOutDock = $0 }
+        settings.observe(\.studioBackground) { [weak self] in self?.palette.hasBackground = $0 != .screen }
+        // The dimmed windows move with the frame.
+        frame.onChange = { [weak self] in self?.updateDimmed() }
+        colorTarget.onChange = { [weak self] color in
+            let srgb = color.usingColorSpace(.sRGB) ?? .white
+            let chosen = BackgroundColor(
+                clampingRed: srgb.redComponent, green: srgb.greenComponent, blue: srgb.blueComponent)
+            self?.settings.update { $0.studioBackground = .color(chosen) }
+        }
     }
 
     // MARK: Visibility
@@ -66,12 +102,16 @@ final class StudioController {
         frame.show()
         if !palette.isVisible { placePalette() }
         palette.orderFrontRegardless()
+        dropClosedWindows()
+        updateDimmed()
     }
 
     func hide() {
-        sizePanel.dismiss()
+        listPanel.dismiss()
+        windowPicker?.stop()
         frame.hide()
         palette.orderOut(nil)
+        updateDimmed()
     }
 
     func toggle() {
@@ -118,27 +158,36 @@ final class StudioController {
         return Double(frame.captureRect.width / frame.captureRect.height)
     }
 
-    /// The Size list beside the palette's Size button (`StudioSizePanel`), or closes it while it
-    /// shows. Nothing is activated.
+    /// The Size list beside the palette's Size button, or closes it while it shows. Nothing is
+    /// activated.
     private func showSizes(beside button: NSView) {
-        if sizePanel.isVisible {
-            sizePanel.dismiss()
+        toggleList(.sizes, beside: button) {
+            StudioSizeList(
+                current: frame.pixelSize, custom: settings.settings.studioCustomSizes,
+                apply: { [weak self] size in
+                    self?.listPanel.dismiss()
+                    self?.applySize(size)
+                },
+                editCustomSizes: { [weak self] in
+                    self?.listPanel.dismiss()
+                    self?.showCustomSizes()
+                })
+        }
+    }
+
+    /// Shows `list` in the list panel beside `button`, or closes the panel when it already shows
+    /// that list; another list in it is replaced.
+    private func toggleList<List: View>(_ kind: ListKind, beside button: NSView, _ list: () -> List) {
+        if listPanel.isVisible, shownList == kind {
+            listPanel.dismiss()
             return
         }
-        let list = StudioSizeList(
-            current: frame.pixelSize, custom: settings.settings.studioCustomSizes,
-            apply: { [weak self] size in
-                self?.sizePanel.dismiss()
-                self?.applySize(size)
-            },
-            editCustomSizes: { [weak self] in
-                self?.sizePanel.dismiss()
-                self?.showCustomSizes()
-            })
+        listPanel.dismiss()
+        shownList = kind
         let paletteFrame = palette.frame
         let anchorTop = palette.convertToScreen(button.convert(button.bounds, to: nil)).maxY
         let visible = palette.screen?.visibleFrame ?? paletteFrame
-        sizePanel.show(list, beside: palette) {
+        listPanel.show(list(), beside: palette) {
             StudioPlacement.popoverOrigin(size: $0, beside: paletteFrame, anchorTop: anchorTop, in: visible)
         }
     }
@@ -171,6 +220,230 @@ final class StudioController {
         window.level = .normal
         window.hidesOnDeactivate = true
         return window
+    }
+
+    // MARK: Clean background
+
+    var background: StudioBackground { settings.settings.studioBackground }
+
+    /// The Background list beside the palette's Background button, or closes it while it shows.
+    private func showBackgrounds(beside button: NSView) {
+        toggleList(.background, beside: button) {
+            StudioBackgroundList(
+                current: background,
+                choose: { [weak self] background in
+                    self?.listPanel.dismiss()
+                    self?.chooseBackground(background)
+                },
+                chooseCustomColor: { [weak self] in
+                    self?.listPanel.dismiss()
+                    self?.chooseCustomColor()
+                },
+                chooseImage: { [weak self] in
+                    self?.listPanel.dismiss()
+                    self?.chooseBackgroundImage()
+                })
+        }
+    }
+
+    func chooseBackground(_ background: StudioBackground) {
+        settings.update { $0.studioBackground = background }
+    }
+
+    /// The system colour panel: each colour taken in it becomes the background. The app is
+    /// activated first, since the panel hides while the app is inactive.
+    func chooseCustomColor() {
+        let panel = NSColorPanel.shared
+        panel.showsAlpha = false
+        if case .color(let color) = background {
+            panel.color = NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1)
+        }
+        panel.setTarget(colorTarget)
+        panel.setAction(#selector(ColorPanelTarget.colorChanged(_:)))
+        NSApp.activate()
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    /// An image file chosen in the open panel becomes the background. The sandbox lets the app read
+    /// a chosen file only for now, so it is copied into the app's container, as references are,
+    /// replacing the image chosen before.
+    func chooseBackgroundImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = ImageFileLoader.openableTypes
+        panel.message = "Choose an image to lay under the studio's pictures."
+        NSApp.activate()
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            MainActor.assumeIsolated { self?.useBackgroundImage(at: url) }
+        }
+    }
+
+    private func useBackgroundImage(at url: URL) {
+        Task {
+            let largest = largestPicture
+            guard let decoded = await Self.decodeBackground(at: url, largest: largest) else {
+                let alert = NSAlert()
+                alert.messageText = "The image couldn't be opened."
+                alert.informativeText = url.lastPathComponent
+                alert.runModal()
+                return
+            }
+            let ext = url.pathExtension.isEmpty ? "png" : url.pathExtension.lowercased()
+            let fileName = "Background-\(UUID().uuidString).\(ext)"
+            let manager = FileManager.default
+            do {
+                try manager.createDirectory(at: backgroundFolder, withIntermediateDirectories: true)
+                try manager.copyItem(at: url, to: backgroundFolder.appending(path: fileName))
+            } catch {
+                // The image chosen before stays, and stays the background.
+                log.error("Copying the background image failed: \(error.localizedDescription, privacy: .public)")
+                return NSSound.beep()
+            }
+            // Only once the new copy is in place.
+            for old in (try? manager.contentsOfDirectory(atPath: backgroundFolder.path)) ?? [] where old != fileName {
+                try? manager.removeItem(at: backgroundFolder.appending(path: old))
+            }
+            backgroundImage = (fileName, largest, decoded.value)
+            settings.update {
+                $0.studioBackground = .image(BackgroundImage(fileName: fileName, name: url.lastPathComponent))
+            }
+        }
+    }
+
+    /// The largest picture any connected display allows, in pixels.
+    private var largestPicture: PixelSize {
+        StudioComposite.largestPicture(on: DisplayLayout.current()?.displays ?? [])
+    }
+
+    /// A background image, whole and upright, scaled down by ImageIO while it decodes to what still
+    /// covers `largest` (`StudioComposite.backgroundMaxPixelSize`), so a large photo is neither cut
+    /// to `ImageBudget` nor decoded at full size first. `nil` when ImageIO can't read it.
+    @concurrent
+    nonisolated private static func decodeBackground(
+        at url: URL, largest: PixelSize
+    ) async
+        -> UncheckedSendable<CGImage>?
+    {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        let orientation = ImageOrientation(exif: properties[kCGImagePropertyOrientation] as? Int ?? 1)
+        let upright =
+            orientation.swapsSides ? PixelSize(width: height, height: width) : PixelSize(width: width, height: height)
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: StudioComposite.backgroundMaxPixelSize(
+                image: upright, display: largest),
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map {
+            UncheckedSendable(value: $0)
+        }
+    }
+
+    struct BackgroundImageUnreadable: Error {}
+
+    /// `background` ready to draw; `nil` for the screen.
+    private func fill(for background: StudioBackground) async throws -> StudioFill? {
+        switch background {
+        case .screen: return nil
+        case .color(let color): return .color(color)
+        case .gradient(let gradient): return .gradient(gradient)
+        case .image(let image):
+            let largest = largestPicture
+            if let backgroundImage, backgroundImage.fileName == image.fileName, backgroundImage.maxPixelSize == largest
+            {
+                return .image(backgroundImage.image)
+            }
+            guard
+                let decoded = await Self.decodeBackground(
+                    at: backgroundFolder.appending(path: image.fileName), largest: largest)
+            else { throw BackgroundImageUnreadable() }
+            backgroundImage = (image.fileName, largest, decoded.value)
+            return .image(decoded.value)
+        }
+    }
+
+    func toggleLeaveOutDock() {
+        settings.update { $0.studioLeavesOutDock.toggle() }
+    }
+
+    func toggleLeaveOutDesktopIcons() {
+        settings.update { $0.studioLeavesOutDesktopIcons.toggle() }
+    }
+
+    // MARK: Leaving out windows
+
+    var isLeavingOutWindows: Bool { windowPicker != nil }
+    var hasLeftOutWindows: Bool { !leftOutWindows.isEmpty }
+
+    /// Starts pointing at windows to leave out, or ends it. While it runs, the window under the
+    /// pointer is tinted, a click leaves it out or brings it back, and the palette floats above the
+    /// picker so its button can end it; Escape ends it too.
+    func toggleLeavingOutWindows() {
+        if let windowPicker { return windowPicker.stop() }
+        guard isVisible, let converter else { return }
+        listPanel.dismiss()
+        let picker = WindowPicker(
+            windows: { ScreenWindows.windows(converter: converter) }, tint: SettingsColor.studio.nsColor,
+            hint: { [weak self] window in
+                self?.leftOutWindows.contains(window.id) == true
+                    ? "Click to bring back · Esc to finish" : "Click to leave out · Esc to finish"
+            },
+            onClick: { [weak self] window in
+                guard let self else { return }
+                leftOutWindows = LeftOutWindows.toggled(window.id, in: leftOutWindows)
+            },
+            onFinish: { [weak self] in
+                self?.windowPicker = nil
+                self?.palette.isPickingWindows = false
+            })
+        windowPicker = picker
+        palette.isPickingWindows = true
+        picker.start()
+    }
+
+    func bringBackAllWindows() {
+        leftOutWindows = []
+    }
+
+    /// Forgets the left-out windows that closed; a minimised or hidden one stays left out.
+    private func dropClosedWindows() {
+        guard !leftOutWindows.isEmpty else { return }
+        leftOutWindows = LeftOutWindows.keeping(leftOutWindows, existing: ScreenWindows.existingIDs())
+    }
+
+    /// Dims the left-out windows inside the frame while the studio shows, and follows them ten
+    /// times a second, forgetting closed ones once a second. Nothing runs while none is left out.
+    private func updateDimmed() {
+        guard isVisible, !leftOutWindows.isEmpty, let converter else {
+            dimOverlay.orderOut(nil)
+            dimTimer?.invalidate()
+            dimTimer = nil
+            return
+        }
+        let rect = frame.captureRect
+        let scale = converter.owningDisplay(for: GlobalRect(rect: rect))?.scale ?? 1
+        // The Viewer and the palette cover what is behind them; the frames and overlays don't.
+        let own = Set([palette.windowNumber] + (viewerWindowNumber?().map { [$0] } ?? []))
+        let rects = LeftOutWindows.dimmedRects(
+            leftOutWindows, stack: ScreenWindows.stack(converter: converter, own: own), frame: rect, scale: scale)
+        dimOverlay.show(rects, in: rect, below: frame.windowNumber)
+        guard dimTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.dimTicks += 1
+                if self.dimTicks % 10 == 0 { self.dropClosedWindows() }
+                self.updateDimmed()
+            }
+        }
+        // Also while a menu is open or a window is dragged.
+        RunLoop.main.add(timer, forMode: .common)
+        dimTimer = timer
     }
 
     // MARK: Displays
@@ -263,13 +536,22 @@ final class StudioController {
         guard let geometry = frame.captureGeometry else { return NSSound.beep() }
         isCapturing = true
         let included = capturedAppWindows?() ?? []
+        let current = settings.settings
+        let leaveOut = StudioLeaveOut(
+            dock: current.studioLeavesOutDock, desktopIcons: current.studioLeavesOutDesktopIcons,
+            background: current.studioBackground, windows: leftOutWindows)
         Task {
             defer { isCapturing = false }
             do {
-                let image = try await StudioCapture.image(of: geometry, including: included)
+                let fill = try await fill(for: current.studioBackground)
+                let image = try await StudioCapture.image(
+                    of: geometry, including: included, leavingOut: leaveOut, over: fill)
                 if isVisible { then(image) }
             } catch  where ScreenCaptureManager.isPermissionError(error) {
                 onNeedsPermission?(true)
+            } catch is BackgroundImageUnreadable {
+                NSSound.beep()
+                frame.showNotice("Background image can't be read")
             } catch {
                 log.error("Studio capture failed: \(error.localizedDescription, privacy: .public)")
                 NSSound.beep()

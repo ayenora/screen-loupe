@@ -64,8 +64,8 @@ struct StudioSizeList: View {
     }
 }
 
-/// A row of the Size list, highlighted under the pointer as a menu item is.
-private struct SizeRow: View {
+/// A row of the Size list or the Background list, highlighted under the pointer as a menu item is.
+struct SizeRow: View {
     let title: String
     let isChecked: Bool
     let action: () -> Void
@@ -250,15 +250,15 @@ private struct SlotDraft {
     }
 }
 
-// MARK: - The Size list's panel
+// MARK: - The lists' panel
 
-/// The Size list beside the palette: a non-activating panel in the pop-over's look. A click on a
-/// size works without activating the app; a click in W or H makes only this panel key, so typing
-/// reaches it while the app the user works in stays active and none of this app's other windows
-/// come forward. Closed by a size, Escape, the Size button, a drag of the palette, hiding the
-/// studio, or a click outside it and the palette.
+/// The Size list or the Background list beside the palette: a non-activating panel in the
+/// pop-over's look. A click on an entry works without activating the app; a click in a text field
+/// makes only this panel key, so typing reaches it while the app the user works in stays active
+/// and none of this app's other windows come forward. Closed by an entry, Escape, the button that
+/// opened it, a drag of the palette, hiding the studio, or a click outside it and the palette.
 @MainActor
-final class StudioSizePanel: NSPanel {
+final class StudioListPanel: NSPanel {
     private var monitors: [Any] = []
 
     init() {
@@ -280,7 +280,7 @@ final class StudioSizePanel: NSPanel {
 
     /// Shows `list` at `origin(size)`, a child of `palette` so it stays beside it; clicks outside
     /// both close it.
-    func show(_ list: StudioSizeList, beside palette: NSWindow, origin: (CGSize) -> CGPoint) {
+    func show<List: View>(_ list: List, beside palette: NSWindow, origin: (CGSize) -> CGPoint) {
         let host = FirstMouseHostingView(rootView: list)
         let background = NSVisualEffectView()
         background.material = .popover

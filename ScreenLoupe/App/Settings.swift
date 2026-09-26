@@ -22,6 +22,10 @@ struct Settings: Codable, Equatable {
     /// applied while it is on.
     var studioAspectLocked = false
     var studioAspectRatio: Double = 16.0 / 10
+    /// What studio pictures leave out besides the chosen windows, and what is laid under them.
+    var studioLeavesOutDock = false
+    var studioLeavesOutDesktopIcons = false
+    var studioBackground = StudioBackground.screen
     /// Where screenshots are saved; the Desktop when unset.
     var screenshotDirectory: String?
     /// Viewer overlays and the Color Meter panel.
@@ -91,6 +95,9 @@ struct Settings: Codable, Equatable {
         studioAspectLocked = c.value(.studioAspectLocked, or: d.studioAspectLocked)
         let ratio = c.value(.studioAspectRatio, or: d.studioAspectRatio)
         studioAspectRatio = ratio.isFinite && ratio > 0 ? ratio : d.studioAspectRatio
+        studioLeavesOutDock = c.value(.studioLeavesOutDock, or: d.studioLeavesOutDock)
+        studioLeavesOutDesktopIcons = c.value(.studioLeavesOutDesktopIcons, or: d.studioLeavesOutDesktopIcons)
+        studioBackground = c.studioBackground(.studioBackground)
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)

@@ -137,6 +137,36 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.toggleAspectLock()
     }
 
+    /// Screenshot › Background: the item carries its `StudioBackground`.
+    @objc func chooseStudioBackground(_ sender: NSMenuItem) {
+        guard let background = sender.representedObject as? StudioBackground else { return }
+        windows.studio.chooseBackground(background)
+    }
+
+    @objc func chooseStudioCustomColor(_ sender: Any?) {
+        windows.studio.chooseCustomColor()
+    }
+
+    @objc func chooseStudioBackgroundImage(_ sender: Any?) {
+        windows.studio.chooseBackgroundImage()
+    }
+
+    @objc func toggleStudioLeaveOutWindows(_ sender: Any?) {
+        windows.studio.toggleLeavingOutWindows()
+    }
+
+    @objc func bringBackStudioWindows(_ sender: Any?) {
+        windows.studio.bringBackAllWindows()
+    }
+
+    @objc func toggleStudioLeaveOutDock(_ sender: Any?) {
+        windows.studio.toggleLeaveOutDock()
+    }
+
+    @objc func toggleStudioLeaveOutDesktopIcons(_ sender: Any?) {
+        windows.studio.toggleLeaveOutDesktopIcons()
+    }
+
     @objc func resetZoom(_ sender: Any?) {
         windows.resetZoom()
     }
@@ -295,6 +325,38 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleStudioAspectLock(_:)):
             menuItem.state = settings.settings.studioAspectLocked ? .on : .off
             return true
+        case #selector(chooseStudioBackground(_:)):
+            let background = menuItem.representedObject as? StudioBackground
+            menuItem.state = background == settings.settings.studioBackground ? .on : .off
+            return true
+        case #selector(chooseStudioCustomColor(_:)):
+            menuItem.state = settings.settings.studioBackground.isCustomColor ? .on : .off
+            return true
+        case #selector(chooseStudioBackgroundImage(_:)):
+            if case .image(let image) = settings.settings.studioBackground {
+                menuItem.state = .on
+                menuItem.title = "Image… · \(image.name)"
+            } else {
+                menuItem.state = .off
+                menuItem.title = "Image…"
+            }
+            return true
+        case #selector(toggleStudioLeaveOutWindows(_:)):
+            menuItem.state = builtWindows?.studio.isLeavingOutWindows == true ? .on : .off
+            return builtWindows?.studio.isVisible == true
+        case #selector(bringBackStudioWindows(_:)):
+            return builtWindows?.studio.hasLeftOutWindows == true
+        case #selector(toggleStudioLeaveOutDock(_:)):
+            menuItem.state = settings.settings.studioLeavesOutDock ? .on : .off
+            return true
+        case #selector(toggleStudioLeaveOutDesktopIcons(_:)):
+            // A background other than the screen leaves them out anyway.
+            let current = settings.settings
+            let leaveOut = StudioLeaveOut(
+                dock: current.studioLeavesOutDock, desktopIcons: current.studioLeavesOutDesktopIcons,
+                background: current.studioBackground, windows: [])
+            menuItem.state = leaveOut.desktopIcons ? .on : .off
+            return !leaveOut.wallpaper
         case #selector(toggleMeasuringRuler(_:)):
             menuItem.state = builtWindows?.viewer.isRulerOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true

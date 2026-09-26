@@ -2,34 +2,52 @@ import AppKit
 
 /// Picks a window for the Capture Area to take or to attach to, like Space in ⇧⌘4: the window under
 /// the pointer is tinted, a click takes it, Escape or a click on no window cancels (docs/product.md,
-/// Capture Area).
+/// Capture Area). Or keeps picking, for the Screenshot studio's windows to leave out: each click
+/// on a window is handed on, until Escape or `stop()`.
 ///
 /// A transparent panel over each display takes every click, so none reaches the app underneath and
 /// no Accessibility permission is needed.
 @MainActor
 final class WindowPicker {
-    /// The windows that can be picked, front to back.
-    private let windows: [ScreenWindow]
+    /// The windows that can be picked, front to back, as of now.
+    private let windows: () -> [ScreenWindow]
     private let tint: NSColor
-    /// What a click does, shown on the tinted window.
-    private let hint: String
+    /// What a click does on the tinted window, shown on it.
+    private let hint: (ScreenWindow) -> String
+    /// Keeps picking: a click on a window goes here, and picking goes on.
+    private let onClick: ((ScreenWindow) -> Void)?
     private let onFinish: (ScreenWindow?) -> Void
     private var panels: [PickerPanel] = []
     private var observer: NSObjectProtocol?
 
     /// `onFinish` gets the picked window, or `nil` when picking was cancelled.
     init(windows: [ScreenWindow], tint: NSColor, hint: String, onFinish: @escaping (ScreenWindow?) -> Void) {
+        self.windows = { windows }
+        self.tint = tint
+        self.hint = { _ in hint }
+        onClick = nil
+        self.onFinish = onFinish
+    }
+
+    /// Keeps picking: a click on a window calls `onClick`, a click on no window does nothing, and
+    /// Escape, a right click, the app losing focus or `stop()` ends it with `onFinish`. `windows` is
+    /// read again on every move and click, since windows move while picking goes on.
+    init(
+        windows: @escaping () -> [ScreenWindow], tint: NSColor, hint: @escaping (ScreenWindow) -> String,
+        onClick: @escaping (ScreenWindow) -> Void, onFinish: @escaping () -> Void
+    ) {
         self.windows = windows
         self.tint = tint
         self.hint = hint
-        self.onFinish = onFinish
+        self.onClick = onClick
+        self.onFinish = { _ in onFinish() }
     }
 
     func start() {
         NSApp.activate()
         for screen in NSScreen.screens {
             let panel = PickerPanel(frame: screen.frame)
-            let view = PickerView(tint: tint, hint: hint)
+            let view = PickerView(tint: tint)
             view.picker = self
             panel.contentView = view
             panel.orderFrontRegardless()
@@ -47,15 +65,27 @@ final class WindowPicker {
     }
 
     fileprivate func mouseMoved() {
-        let hovered = WindowMagnet.window(at: NSEvent.mouseLocation, in: windows)
+        let hovered = WindowMagnet.window(at: NSEvent.mouseLocation, in: windows())
         for panel in panels {
             (panel.contentView as? PickerView)?.show(
-                hovered.map { $0.frame.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY) })
+                hovered.map { $0.frame.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY) },
+                hint: hovered.map(hint) ?? "")
         }
     }
 
     fileprivate func click() {
-        finish(WindowMagnet.window(at: NSEvent.mouseLocation, in: windows))
+        let picked = WindowMagnet.window(at: NSEvent.mouseLocation, in: windows())
+        guard let onClick else { return finish(picked) }
+        if let picked {
+            onClick(picked)
+            // The hint says what the next click does.
+            mouseMoved()
+        }
+    }
+
+    /// Ends picking, as Escape does.
+    func stop() {
+        finish(nil)
     }
 
     fileprivate func finish(_ picked: ScreenWindow?) {
@@ -92,21 +122,21 @@ private final class PickerPanel: NSPanel {
 private final class PickerView: NSView {
     weak var picker: WindowPicker?
     private let tint: NSColor
-    private let hint: String
+    private var hint = ""
     private var hovered: CGRect?
 
-    init(tint: NSColor, hint: String) {
+    init(tint: NSColor) {
         self.tint = tint
-        self.hint = hint
         super.init(frame: .zero)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    func show(_ rect: CGRect?) {
-        guard rect != hovered else { return }
+    func show(_ rect: CGRect?, hint: String) {
+        guard rect != hovered || hint != self.hint else { return }
         hovered = rect
+        self.hint = hint
         needsDisplay = true
     }
 

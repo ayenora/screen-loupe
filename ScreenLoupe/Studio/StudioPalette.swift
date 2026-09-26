@@ -19,6 +19,10 @@ final class StudioPalette: NSPanel {
     /// Called with the Size button, to open the sizes beside it.
     var onSize: ((NSView) -> Void)?
     var onToggleAspectLock: (() -> Void)?
+    /// Called with the Background button, to open the backgrounds beside it.
+    var onBackground: ((NSView) -> Void)?
+    var onToggleLeaveOutWindows: (() -> Void)?
+    var onToggleLeaveOutDock: (() -> Void)?
     var onToggleOnTop: (() -> Void)?
     var onHide: (() -> Void)?
     /// Called when a drag of the palette begins.
@@ -29,8 +33,35 @@ final class StudioPalette: NSPanel {
     /// Floats above other apps' windows, below the studio's frame (`.statusBar`).
     var keepsOnTop = false {
         didSet {
-            level = keepsOnTop ? .floating : .normal
+            updateLevel()
             onTopButton.state = keepsOnTop ? .on : .off
+        }
+    }
+
+    /// While windows are picked to leave out, the palette floats above the picker's panels, so its
+    /// Leave Out Windows button can end the picking; the button is filled meanwhile.
+    var isPickingWindows = false {
+        didSet {
+            updateLevel()
+            leaveOutWindowsButton.state = isPickingWindows ? .on : .off
+        }
+    }
+
+    /// Filled while a background other than the screen is chosen.
+    var hasBackground = false {
+        didSet { backgroundButton.state = hasBackground ? .on : .off }
+    }
+
+    /// Filled while the Dock is left out.
+    var leavesOutDock = false {
+        didSet { dockButton.state = leavesOutDock ? .on : .off }
+    }
+
+    private func updateLevel() {
+        if isPickingWindows {
+            level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
+        } else {
+            level = keepsOnTop ? .floating : .normal
         }
     }
 
@@ -41,6 +72,9 @@ final class StudioPalette: NSPanel {
 
     private let onTopButton = PaletteButton()
     private let aspectLockButton = PaletteButton()
+    private let backgroundButton = PaletteButton()
+    private let leaveOutWindowsButton = PaletteButton()
+    private let dockButton = PaletteButton()
     private let saveButton = PaletteButton()
     private let hoverLabel = HoverLabelWindow()
     private var hoverTimer: Timer?
@@ -68,8 +102,19 @@ final class StudioPalette: NSPanel {
         aspectLockButton.setButtonType(.pushOnPushOff)
         aspectLockButton.alternateImage = NSImage(
             systemSymbolName: "aspectratio.fill", accessibilityDescription: "Aspect Lock")
+        Self.configure(
+            backgroundButton, "square.3.layers.3d.bottom.filled", "Background", #selector(backgroundClicked))
+        backgroundButton.setButtonType(.pushOnPushOff)
+        Self.configure(
+            leaveOutWindowsButton, "rectangle.on.rectangle.slash", "Leave Out Windows",
+            #selector(leaveOutWindowsClicked))
+        leaveOutWindowsButton.setButtonType(.pushOnPushOff)
+        leaveOutWindowsButton.alternateImage = NSImage(
+            systemSymbolName: "rectangle.on.rectangle.slash.fill", accessibilityDescription: "Leave Out Windows")
+        Self.configure(dockButton, "dock.rectangle", "Leave Out the Dock", #selector(dockClicked))
+        dockButton.setButtonType(.pushOnPushOff)
 
-        let separators = (0..<2).map { _ in
+        let separators = (0..<3).map { _ in
             let separator = NSBox()
             separator.boxType = .separator
             separator.widthAnchor.constraint(equalToConstant: 24).isActive = true
@@ -87,6 +132,10 @@ final class StudioPalette: NSPanel {
             Self.button("arrow.up.left.and.arrow.down.right", "Size", #selector(sizeClicked)),
             aspectLockButton,
             separators[1],
+            backgroundButton,
+            leaveOutWindowsButton,
+            dockButton,
+            separators[2],
             onTopButton,
             Self.button("eye.slash", "Hide Screenshot Studio", #selector(hideClicked)),
         ])
@@ -102,6 +151,8 @@ final class StudioPalette: NSPanel {
         stack.setCustomSpacing(6, after: separators[0])
         stack.setCustomSpacing(6, after: aspectLockButton)
         stack.setCustomSpacing(6, after: separators[1])
+        stack.setCustomSpacing(6, after: dockButton)
+        stack.setCustomSpacing(6, after: separators[2])
 
         let background = NSVisualEffectView()
         background.material = .popover
@@ -155,6 +206,8 @@ final class StudioPalette: NSPanel {
         let gap: CGFloat = 6
         var x = frame.maxX + gap
         if x + size.width > visible.maxX { x = frame.minX - gap - size.width }
+        // At the palette's level, so it also shows above the window picker's panels.
+        hoverLabel.level = level
         hoverLabel.show(
             name, in: CGRect(origin: CGPoint(x: x, y: (buttonFrame.midY - size.height / 2).rounded()), size: size))
         addChildWindow(hoverLabel, ordered: .above)
@@ -189,6 +242,24 @@ final class StudioPalette: NSPanel {
     @objc private func aspectLockClicked(_ sender: NSButton) {
         sender.state = aspectLocked ? .on : .off
         onToggleAspectLock?()
+    }
+
+    /// The button shows whether a background is chosen, not the click.
+    @objc private func backgroundClicked(_ sender: NSButton) {
+        sender.state = hasBackground ? .on : .off
+        onBackground?(sender)
+    }
+
+    /// Shows whether windows are being picked, not the click.
+    @objc private func leaveOutWindowsClicked(_ sender: NSButton) {
+        sender.state = isPickingWindows ? .on : .off
+        onToggleLeaveOutWindows?()
+    }
+
+    /// Shows the setting, not the click.
+    @objc private func dockClicked(_ sender: NSButton) {
+        sender.state = leavesOutDock ? .on : .off
+        onToggleLeaveOutDock?()
     }
 
     /// Shows the setting, not the click: the setting sets it back.

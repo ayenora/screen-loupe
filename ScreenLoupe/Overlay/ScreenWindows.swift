@@ -1,6 +1,7 @@
 import AppKit
 
-/// The windows of other apps on screen, for snapping the Capture Area, picking a window and the magnet.
+/// The windows of other apps on screen, for snapping the Capture Area, picking a window, the magnet
+/// and the studio's left-out windows.
 @MainActor
 enum ScreenWindows {
     /// The ordinary windows of other apps on screen, front to back. Menus, the Dock, the menu bar and
@@ -30,6 +31,32 @@ enum ScreenWindows {
     static func window(_ id: CGWindowID, converter: DisplayCoordinateConverter) -> ScreenWindow? {
         guard let list = CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]] else { return nil }
         return list.first.flatMap { window($0, converter: converter) }
+    }
+
+    /// The windows on screen front to back as `LeftOutWindows.dimmedRects` takes them
+    /// (`LeftOutWindows.isInStack`): other apps' ordinary and floating windows, and of this app's
+    /// only those numbered in `own`.
+    static func stack(converter: DisplayCoordinateConverter, own: Set<Int>) -> [ScreenWindow] {
+        guard let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        return list.compactMap { info in
+            guard let window = window(info, converter: converter) else { return nil }
+            let isOwn = (info[kCGWindowOwnerPID as String] as? pid_t) == ownPID
+            let inStack = LeftOutWindows.isInStack(
+                layer: window.layer, alpha: window.alpha, isEmpty: window.frame.isEmpty, isOwn: isOwn,
+                ownInStack: own.contains(Int(window.id)))
+            return inStack ? window : nil
+        }
+    }
+
+    /// The numbers of every window that exists, on screen or not: a window minimised, hidden with
+    /// its app or on another Space is among them, a closed one isn't. Reads the whole list, about
+    /// 2 ms, so it is read only now and then.
+    static func existingIDs() -> Set<CGWindowID> {
+        guard let list = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else { return [] }
+        return Set(list.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
     }
 
     private static func window(_ info: [String: Any], converter: DisplayCoordinateConverter) -> ScreenWindow? {
