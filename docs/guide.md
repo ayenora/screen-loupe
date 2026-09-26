@@ -59,7 +59,7 @@ To copy just a part of the view:
 - **Color Meter** (eyedropper button): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a pixel to pin its colour.
 - **Ruler** (⌘R): a corner ruler in screen pixels. Drag the line to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan.
 - **Pixel grid:** lines on the pixel boundaries from 800% on.
-- **References:** lay design exports over the live pixels, set opacity, or switch to Difference — matching pixels turn black.
+- **References:** lay design exports over the live pixels, set opacity, or switch to Difference — matching pixels turn black. To try it, open the [example page](examples/reference-check/) and add its [design export](examples/reference-check/design-export.png) as a reference.
 - **Recent Captures:** your last four copies and saves, kept to zoom, measure and pick colours on later. The Live row goes back to the live view.
 
 ## Keyboard shortcuts
