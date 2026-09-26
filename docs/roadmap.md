@@ -2,16 +2,32 @@
 
 What comes after the current version. Every item is measured against the principles in [product.md](product.md): work in place, nothing moves on its own, pixel-true, out of the way. Nothing here is committed until it moves into product.md.
 
-## Next
+## Next: 1.3
 
 - **The Mac App Store,** besides the signed, notarized download on GitHub Releases.
 
-### Capturing
-
 Decided to build; the details settle when each moves into product.md.
 
-- **A frozen frame is an image.** To the Viewer, freezing and looking at a picture are the same thing, technically and as a concept: every tool works on both, as it already does on a recent capture. The item below follows from that.
+### Images in the Viewer
+
+- **A frozen frame is an image.** To the Viewer, freezing and looking at a picture are the same thing, technically and as a concept: every tool works on both, as it already does on a recent capture. The items below follow from that.
 - **Open an image** in the Viewer as a frozen frame, with zoom, ruler, Color Meter and references, to look at a file with the same pixel-true tools.
+- **Drop images onto the Viewer** to add them as references, besides Add… in the panel.
+
+### Capture Area
+
+- **Magnet to a window.** Besides the pin, the area can be attached to a chosen window: while the window is on screen and moves, the area moves with it and keeps its place from the window's corner (the iOS Simulator, a browser window). A resized window leaves the area's size as it is. When the window closes, hides, minimises, goes full screen or anything else unusual happens, the magnet lets go and the area stays where it is.
+- **The part the Viewer shows, on the frame.** At a high zoom the Viewer shows a small part of the area; a thin outline inside the frame marks which, and fades when it isn't needed.
+- **A square area with Shift** while dragging a corner.
+- **A fixed position:** the area can't be moved by a stray drag, and its handles still resize it.
+
+### Viewer
+
+- **The ruler's length labels move it,** as the size tab moves the Capture Area.
+
+### Screenshot studio
+
+A screenshot tool on the same capture, apart from the Capture Area and the Viewer: its own frame and a panel of buttons, shown and hidden on their own, with their own section in the menu. It can capture anything on screen, the Viewer included, and hides itself for the capture. Exact pixel sizes and clean backgrounds for App Store and website screenshots, docs and bug reports.
 
 ## The version after: colour
 
@@ -42,19 +58,15 @@ Ordered by how much each strengthens the core experience.
 
 ### The designer's daily loop
 
-- **Drop images onto the Viewer** to add them as references, besides Add… in the panel.
-- **Attach the area to a window.** The Capture Area follows a window when it moves (the iOS Simulator, a browser window).
 - **Several Capture Areas**, each with its own Viewer, for comparing two places.
 
 ### Each needs its own decision
 
 - **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not in scope". It uses Original Cursor in the Capture (product.md, Crosshair and cursor), so a recorded animation shows the pointer that drives it.
 - **Act through the Viewer.** Clicks and scrolls in the Viewer go to the real spot on screen, making the Viewer a true zoomed monitor. Needs the Accessibility permission to post events and has to feel safe; a bigger design question than the rest.
-- **HDR/EDR content.** The capture is SDR today, so HDR highlights are clipped in the Viewer and the Color Meter.
 
 ### Technical, only if a need shows up
 
-- **Instant dragging.** If the Viewer ever visibly trails a dragged Capture Area, capture the whole display and crop in the shader (design.md §6, risk 1).
 - **Smoother zoom-out.** Below 50% the image aliases, because the texture has no mipmaps. A loupe is about magnification, so this waits for a real complaint.
 
 ## Not planned
