@@ -13,12 +13,12 @@ enum ScreenshotExporter {
     /// The frame's bytes are copied as they are, tagged with the source display's color space. When
     /// the area straddles two displays, the part on the other display stays transparent. Past
     /// `ImageBudget` only the area's top-left part.
-    static func sourceImage(from frame: CapturedFrame, colorSpace: CGColorSpace) -> CGImage? {
+    static func sourceImage(from frame: ViewerFrame, colorSpace: CGColorSpace) -> CGImage? {
         guard let image = frameImage(frame.pixelBuffer, colorSpace: colorSpace) else { return nil }
-        let geometry = frame.geometry
-        let area = geometry.areaSize
+        let layout = frame.layout
+        let area = layout.size
         let kept = ImageBudget.fitted(width: area.width, height: area.height)
-        if geometry.imageOrigin == .zero, geometry.areaSize == frame.pixelSize {
+        if layout.imageOrigin == .zero, layout.size == frame.pixelSize {
             return kept == (area.width, area.height)
                 ? image : image.cropping(to: CGRect(x: 0, y: 0, width: kept.width, height: kept.height))
         }
@@ -26,7 +26,7 @@ enum ScreenshotExporter {
             return nil
         }
         // The context is y up: moving the area image down by the rows cut off below keeps its top.
-        context.draw(image, in: geometry.imageRectInAreaImage.offsetBy(dx: 0, dy: CGFloat(kept.height - area.height)))
+        context.draw(image, in: layout.imageRectInAreaImage.offsetBy(dx: 0, dy: CGFloat(kept.height - area.height)))
         return context.makeImage()
     }
 

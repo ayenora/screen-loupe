@@ -26,63 +26,60 @@ struct ImageBudgetTests {
         #expect(ImageBudget.fitted(width: 20000, height: 100) == (16384, 100))
     }
 
-    private func geometry(area: PixelSize, output: PixelSize, imageOrigin: CGPoint = .zero) -> CaptureGeometry {
-        CaptureGeometry(
-            display: DisplayInfo(id: 1, globalFrame: CGRect(x: 0, y: 0, width: 3008, height: 1692), scale: 2),
-            sourceRect: DisplayLocalRect(displayID: 1, rect: CGRect(x: 0, y: 0, width: 100, height: 100)),
-            outputSize: output, areaSize: area, imageOrigin: imageOrigin)
+    private func layout(area: PixelSize, output: PixelSize, imageOrigin: CGPoint = .zero) -> FrameLayout {
+        FrameLayout(size: area, imageOrigin: imageOrigin, imageSize: output, scale: 2)
     }
 
     @Test func aCaptureWithinTheBudgetIsKeptWhole() {
-        let small = geometry(area: PixelSize(width: 880, height: 540), output: PixelSize(width: 880, height: 540))
+        let small = layout(area: PixelSize(width: 880, height: 540), output: PixelSize(width: 880, height: 540))
         #expect(small.fittedToImageBudget() == small)
     }
 
     @Test func aHugeCaptureKeepsTheTopLeftOfItsArea() {
         // A whole 6K display.
-        let whole = geometry(area: PixelSize(width: 6016, height: 3384), output: PixelSize(width: 6016, height: 3384))
+        let whole = layout(area: PixelSize(width: 6016, height: 3384), output: PixelSize(width: 6016, height: 3384))
         let kept = whole.fittedToImageBudget()
-        #expect(kept?.areaSize == PixelSize(width: 4957, height: 3384))
-        #expect(kept?.outputSize == PixelSize(width: 4957, height: 3384))
+        #expect(kept?.size == PixelSize(width: 4957, height: 3384))
+        #expect(kept?.imageSize == PixelSize(width: 4957, height: 3384))
         #expect(kept?.imageOrigin == .zero)
     }
 
     @Test func aStraddlingCaptureKeepsItsImageWhereItIs() {
         // 1000 px of the area lie on the other display, left of the captured image.
-        let straddling = geometry(
+        let straddling = layout(
             area: PixelSize(width: 6000, height: 3000), output: PixelSize(width: 5000, height: 3000),
             imageOrigin: CGPoint(x: 1000, y: 0))
         let kept = straddling.fittedToImageBudget()
-        #expect(kept?.areaSize == PixelSize(width: 5592, height: 3000))
-        #expect(kept?.outputSize == PixelSize(width: 4592, height: 3000))
+        #expect(kept?.size == PixelSize(width: 5592, height: 3000))
+        #expect(kept?.imageSize == PixelSize(width: 4592, height: 3000))
         #expect(kept?.imageOrigin == CGPoint(x: 1000, y: 0))
     }
 
     @Test func aCaptureWhoseImageLiesPastTheBudgetKeepsNothing() {
-        let straddling = geometry(
+        let straddling = layout(
             area: PixelSize(width: 9000, height: 4096), output: PixelSize(width: 4000, height: 4096),
             imageOrigin: CGPoint(x: 5000, y: 0))
         #expect(straddling.fittedToImageBudget() == nil)
     }
 
     @Test func aCaptureOfASelectionKeepsJustItsPixels() {
-        let whole = geometry(area: PixelSize(width: 880, height: 540), output: PixelSize(width: 880, height: 540))
+        let whole = layout(area: PixelSize(width: 880, height: 540), output: PixelSize(width: 880, height: 540))
         let cut = whole.cropped(toArea: CGRect(x: 100, y: 40, width: 12, height: 5))
-        #expect(cut?.geometry.areaSize == PixelSize(width: 12, height: 5))
-        #expect(cut?.geometry.outputSize == PixelSize(width: 12, height: 5))
-        #expect(cut?.geometry.imageOrigin == .zero)
+        #expect(cut?.layout.size == PixelSize(width: 12, height: 5))
+        #expect(cut?.layout.imageSize == PixelSize(width: 12, height: 5))
+        #expect(cut?.layout.imageOrigin == .zero)
         #expect(cut?.offset == PixelSize(width: 100, height: 40))
     }
 
     @Test func aCutOverTheOtherDisplayKeepsItsImagePartWhereItIs() {
         // The captured image starts 300 px into the area; the cut starts 50 px before it.
-        let straddling = geometry(
+        let straddling = layout(
             area: PixelSize(width: 900, height: 500), output: PixelSize(width: 600, height: 500),
             imageOrigin: CGPoint(x: 300, y: 0))
         let cut = straddling.cropped(toArea: CGRect(x: 250, y: 10, width: 100, height: 20))
-        #expect(cut?.geometry.areaSize == PixelSize(width: 100, height: 20))
-        #expect(cut?.geometry.imageOrigin == CGPoint(x: 50, y: 0))
-        #expect(cut?.geometry.outputSize == PixelSize(width: 50, height: 20))
+        #expect(cut?.layout.size == PixelSize(width: 100, height: 20))
+        #expect(cut?.layout.imageOrigin == CGPoint(x: 50, y: 0))
+        #expect(cut?.layout.imageSize == PixelSize(width: 50, height: 20))
         #expect(cut?.offset == PixelSize(width: 0, height: 10))
         #expect(straddling.cropped(toArea: CGRect(x: 0, y: 0, width: 100, height: 20)) == nil)
     }

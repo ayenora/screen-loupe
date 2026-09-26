@@ -15,8 +15,8 @@ extension NSScreen {
     }
 
     /// The color space frames captured from display `id` come in, sRGB when unknown.
-    static func colorSpace(forDisplay id: CGDirectDisplayID) -> CGColorSpace {
-        screen(forDisplay: id)?.colorSpace?.cgColorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+    static func colorSpace(forDisplay id: CGDirectDisplayID?) -> CGColorSpace {
+        id.flatMap { screen(forDisplay: $0) }?.colorSpace?.cgColorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
     }
 }
 

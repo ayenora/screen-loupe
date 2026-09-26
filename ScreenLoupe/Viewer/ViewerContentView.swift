@@ -47,7 +47,7 @@ final class ViewerContentView: NSStackView {
         overlay.drawableScale = { [weak viewerView] in viewerView?.drawableScale ?? 1 }
         meterPanel = ColorMeterPanel(inspector: inspector)
         ruler = RulerController(zoomPan: zoomPan, project: project)
-        ruler.sourceScale = { frameStore.latestFrame?.geometry.display.scale ?? 1 }
+        ruler.sourceScale = { frameStore.shownFrame?.layout.scale ?? 1 }
         references = ReferencesController(project: project, zoomPan: zoomPan)
         selection = SelectionController(zoomPan: zoomPan)
         viewerView.ruler = ruler
@@ -209,7 +209,7 @@ final class ViewerContentView: NSStackView {
     /// how the Viewer shows it are taken now; a view, a selection or a region keeps just its pixels,
     /// framed as it was, and only a source copy keeps the whole area. `nil` while a recent capture shows: copies made from one add none.
     func captureKeeper(_ kind: CaptureKind, image: CGImage) -> (() -> Void)? {
-        guard !isShowingCapture, let frame = frameStore.latestFrame else { return nil }
+        guard !isShowingCapture, let frame = frameStore.shownFrame else { return nil }
         let state = zoomPan.state
         let name: String
         let area: CGRect?

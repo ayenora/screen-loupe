@@ -23,14 +23,6 @@ extension CaptureGeometry {
             x: (sourceRect.rect.minX * scale).rounded() - imageOrigin.x,
             y: (sourceRect.rect.minY * scale).rounded() - imageOrigin.y)
     }
-
-    /// Where the captured image goes in an image of the whole area, in that image's pixels with
-    /// CoreGraphics' bottom-left origin (Copy Source).
-    var imageRectInAreaImage: CGRect {
-        CGRect(
-            x: imageOrigin.x, y: CGFloat(areaSize.height) - imageOrigin.y - CGFloat(outputSize.height),
-            width: CGFloat(outputSize.width), height: CGFloat(outputSize.height))
-    }
 }
 
 /// Tells a Capture Area resized by its left or top edge from one that moved, frame to frame, so the

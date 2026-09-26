@@ -85,11 +85,11 @@ final class PixelInspector {
         onChange?()
     }
 
-    /// The colour of a Capture Area pixel in the latest frame.
+    /// The colour of a Capture Area pixel in the frame the Viewer shows.
     private func sample(atAreaPixel pixel: (x: Int, y: Int)) -> ColorSample? {
-        guard let frame = frameStore.latestFrame else { return nil }
-        let x = pixel.x - Int(frame.geometry.imageOrigin.x)
-        let y = pixel.y - Int(frame.geometry.imageOrigin.y)
+        guard let frame = frameStore.shownFrame else { return nil }
+        let x = pixel.x - Int(frame.layout.imageOrigin.x)
+        let y = pixel.y - Int(frame.layout.imageOrigin.y)
         let size = frame.pixelSize
         guard x >= 0, y >= 0, x < size.width, y < size.height else { return nil }
 
@@ -100,11 +100,11 @@ final class PixelInspector {
         let bytes = base.advanced(by: y * CVPixelBufferGetBytesPerRow(buffer) + x * 4)
             .assumingMemoryBound(to: UInt8.self)
         // 32BGRA.
-        let displayID = frame.geometry.display.id
+        let displayID = frame.displayID
         return ColorSample(
             red: bytes[2], green: bytes[1], blue: bytes[0],
             colorSpace: NSScreen.colorSpace(forDisplay: displayID),
-            spaceName: NSScreen.screen(forDisplay: displayID)?.colorSpace?.localizedName)
+            spaceName: displayID.flatMap { NSScreen.screen(forDisplay: $0) }?.colorSpace?.localizedName)
     }
 
     // MARK: Pins

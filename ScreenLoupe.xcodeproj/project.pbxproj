@@ -21,6 +21,7 @@
 				Geometry/DisplayCoordinateConverter.swift,
 				Geometry/DisplayLayout.swift,
 				Geometry/EdgeSnapping.swift,
+				Geometry/FrameLayout.swift,
 				Geometry/ImageBudget.swift,
 				Geometry/LenientDecoding.swift,
 				Geometry/OverlayLayout.swift,

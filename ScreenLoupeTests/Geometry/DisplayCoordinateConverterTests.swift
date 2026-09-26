@@ -237,7 +237,7 @@ struct DisplayCoordinateConverterTests {
     ])
     func capturedImageSitsInTheAreaImage(area: CGRect, expected: CGRect) throws {
         let geometry = try #require(converter.captureGeometry(for: GlobalRect(rect: area)))
-        #expect(geometry.imageRectInAreaImage == expected)
+        #expect(geometry.layout.imageRectInAreaImage == expected)
     }
 }
 

@@ -7,7 +7,7 @@ import Observation
 struct RecentCapture: Identifiable {
     let id = UUID()
     /// The frame, in a buffer of its own, cut to `ImageBudget`.
-    let frame: CapturedFrame
+    let frame: ViewerFrame
     /// What was copied or saved: "View · 800%", "Selection", "Region" or "Source".
     let kind: String
     /// The size of the copied or saved image.
@@ -64,7 +64,7 @@ final class RecentCaptures {
     /// depends on the stream. `image` is what was copied or saved, for the thumbnail and the size.
     /// `nil` when nothing of the frame is kept.
     static func capture(
-        of frame: CapturedFrame, area: CGRect?, kind: String, image: CGImage, zoom: CGFloat, offset: CGPoint,
+        of frame: ViewerFrame, area: CGRect?, kind: String, image: CGImage, zoom: CGFloat, offset: CGPoint,
         selection: CGRect?
     ) -> RecentCapture? {
         guard let kept = frame.copiedForKeeping(area: area) else { return nil }

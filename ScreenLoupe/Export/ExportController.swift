@@ -15,7 +15,7 @@ final class ExportController {
     }
 
     /// Whether there is a frame to copy or save.
-    var canExport: Bool { viewer.showsCapture && frameStore.latestFrame != nil }
+    var canExport: Bool { viewer.showsCapture && frameStore.shownFrame != nil }
 
     func copyView() {
         let what = viewer.hasSelection ? "Selection" : "View"
@@ -46,9 +46,9 @@ final class ExportController {
     }
 
     private func sourceImage() -> CGImage? {
-        guard canExport, let frame = frameStore.latestFrame else { return nil }
+        guard canExport, let frame = frameStore.shownFrame else { return nil }
         return ScreenshotExporter.sourceImage(
-            from: frame, colorSpace: NSScreen.colorSpace(forDisplay: frame.geometry.display.id))
+            from: frame, colorSpace: NSScreen.colorSpace(forDisplay: frame.displayID))
     }
 
     /// The image is taken when the command is given, before the save panel opens; so is its recent

@@ -88,19 +88,24 @@ final class ViewerView: MTKView {
         requestDraw()
     }
 
-    /// A new frame is in the store.
+    /// A new frame is in the store, or another picture shows.
     func frameArrived() {
-        if let frame = frameStore.latestFrame {
-            let geometry = frame.geometry
-            let area = CGSize(width: geometry.areaSize.width, height: geometry.areaSize.height)
+        if let frame = frameStore.shownFrame {
+            let size = frame.layout.size
+            let area = CGSize(width: size.width, height: size.height)
             // Everything placed from the area's top-left follows its corner, so it stays on its
-            // screen pixels as the image does.
-            let shift = resizeTracker.originShift(for: geometry)
+            // screen pixels as the image does. Only a frame of the live area has a corner that moves.
+            var shift = CGPoint.zero
+            if let geometry = frame.geometry {
+                shift = resizeTracker.originShift(for: geometry)
+            } else {
+                resizeTracker.forget()
+            }
             zoomPan.setContent(area, originShift: shift)
             selection?.areaOriginMoved(by: shift)
             ruler?.areaOriginMoved(by: shift)
             references?.areaOriginMoved(by: shift)
-            matchColorSpace(ofDisplay: geometry.display.id)
+            matchColorSpace(ofDisplay: frame.displayID)
         }
         requestDraw()
     }
@@ -138,8 +143,9 @@ final class ViewerView: MTKView {
     /// Frames come in the source display's color space (ScreenCaptureKit's default). Tagging the layer
     /// with it lets the system color-match when the Viewer sits on a display with another profile;
     /// on the same display the values pass through unchanged.
-    private func matchColorSpace(ofDisplay displayID: CGDirectDisplayID) {
-        guard displayID != colorSpaceDisplayID else { return }
+    private func matchColorSpace(ofDisplay displayID: CGDirectDisplayID?) {
+        // The layer has no colour space until the first frame.
+        guard colorspace == nil || displayID != colorSpaceDisplayID else { return }
         colorSpaceDisplayID = displayID
         colorspace = NSScreen.colorSpace(forDisplay: displayID)
     }

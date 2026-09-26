@@ -26,8 +26,9 @@ final class WindowManager {
         export = ExportController(frameStore: capture.frameStore, settings: settings, viewer: viewer)
 
         capture.onFrame = { [weak self] in
-            // A recent capture in the Viewer stays put; the live frame waits in the store.
-            guard let self, !viewer.isShowingCapture else { return }
+            // A still picture in the Viewer (frozen, a recent capture) stays put; the live frame
+            // waits in the store.
+            guard let self, capture.frameStore.still == nil else { return }
             viewer.frameArrived()
             inspector.frameArrived()
             updateViewedPart()
@@ -84,8 +85,10 @@ final class WindowManager {
     /// the pixel it points at inside the Capture Area (docs/product.md, Crosshair and cursor). The Capture Area
     /// reports mouse moves while it is shown; without it there is nothing to point at.
     private func trackCursor() {
-        // On a recent capture the real cursor points at nothing in the picture.
-        guard isViewerOpen, viewer.isInspecting, captureArea.isVisible, !viewer.isShowingCapture,
+        // The real cursor points at a pixel of the live view or a frozen frame; at nothing in a
+        // picture of its own, such as a recent capture.
+        let still = capture.frameStore.still
+        guard isViewerOpen, viewer.isInspecting, captureArea.isVisible, still == nil || still?.geometry != nil,
             let scale = captureArea.captureGeometry?.display.scale
         else {
             inspector.setAreaPixel(nil)
@@ -100,12 +103,12 @@ final class WindowManager {
 
     /// Tells the frame which part of the area the Viewer shows (docs/product.md, Capture Area), placed
     /// with the geometry of the frame the Viewer shows, so it matches the image even while the area
-    /// is dragged ahead of the next frame. Only of the live view: a frozen frame or a recent capture
-    /// is a picture of another moment, the area may have moved since, and a closed Viewer or one
+    /// is dragged ahead of the next frame. Only of the live view: a still picture (frozen, a recent
+    /// capture) is of another moment, the area may have moved since, and a closed Viewer or one
     /// asking for permission shows nothing.
     private func updateViewedPart() {
-        guard isViewerOpen, viewer.showsCapture, !viewer.isShowingCapture, !isFrozen,
-            let geometry = capture.frameStore.latestFrame?.geometry
+        guard isViewerOpen, viewer.showsCapture, capture.frameStore.still == nil,
+            let geometry = capture.frameStore.shownFrame?.geometry
         else {
             captureArea.viewedPart = nil
             return
@@ -200,8 +203,15 @@ final class WindowManager {
 
     private func setFrozen(_ frozen: Bool, hint: String? = nil) {
         cancelFreezeCountdown()
+        let changed = frozen != isFrozen
         capture.frameStore.isFrozen = frozen
         viewer.showFreeze(frozen ? .frozen(hint: hint) : .hidden)
+        // Live frames kept arriving while frozen: resuming shows the latest at once, not the frozen
+        // one until the screen next changes.
+        if changed {
+            viewer.frameArrived()
+            inspector.frameArrived()
+        }
         updateViewedPart()
     }
 

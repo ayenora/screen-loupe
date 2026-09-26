@@ -1,31 +1,54 @@
 import CoreVideo
 import Foundation
 
-/// A captured frame and the geometry it was captured with.
-struct CapturedFrame: @unchecked Sendable {
+/// A picture the Viewer shows: a frame of the stream, frozen or not, or a recent capture. Every tool
+/// reads it through `layout`; only what follows the live Capture Area needs `geometry`.
+struct ViewerFrame: @unchecked Sendable {
     /// IOSurface-backed BGRA buffer. Never written to after capture, so sharing it across threads is
     /// safe; that is why the struct is `@unchecked Sendable`.
     let pixelBuffer: CVPixelBuffer
-    let geometry: CaptureGeometry
+    let layout: FrameLayout
+    /// The display the pixels come from, for their colour space; sRGB without one.
+    let displayID: CGDirectDisplayID?
+    /// The geometry the stream captured it with: a live frame, or one frozen from it. A recent
+    /// capture is a picture of its own, whose pixels no longer map onto the Capture
+    /// Area, so it has none: the crosshair, the cursor, the part the Viewer shows and following the
+    /// area's edges don't apply to it.
+    let geometry: CaptureGeometry?
+
+    init(pixelBuffer: CVPixelBuffer, layout: FrameLayout, displayID: CGDirectDisplayID?) {
+        self.pixelBuffer = pixelBuffer
+        self.layout = layout
+        self.displayID = displayID
+        geometry = nil
+    }
+
+    /// A frame of the stream.
+    init(pixelBuffer: CVPixelBuffer, geometry: CaptureGeometry) {
+        self.pixelBuffer = pixelBuffer
+        layout = geometry.layout
+        displayID = geometry.display.id
+        self.geometry = geometry
+    }
 
     var pixelSize: PixelSize {
         PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
     }
 
-    /// The frame copied into a buffer of its own, cut to `area` (whole pixels of the Capture Area,
-    /// for a selection or a region) and to `ImageBudget`, to keep as a recent capture. The stream's
+    /// The frame copied into a buffer of its own, cut to `area` (whole pixels of the picture, for a
+    /// selection or a region) and to `ImageBudget`, to keep as a recent capture. The stream's
     /// buffers come from a small pool it reuses; holding on to them would starve it.
     /// IOSurface-backed and Metal-compatible, so it is drawn like a live frame.
-    func copiedForKeeping(area: CGRect? = nil) -> CapturedFrame? {
-        var cut = geometry
+    func copiedForKeeping(area: CGRect? = nil) -> ViewerFrame? {
+        var cut = layout
         var offset = PixelSize(width: 0, height: 0)
         if let area {
-            guard let cropped = geometry.cropped(toArea: area) else { return nil }
+            guard let cropped = layout.cropped(toArea: area) else { return nil }
             (cut, offset) = cropped
         }
         guard let kept = cut.fittedToImageBudget() else { return nil }
-        let width = kept.outputSize.width
-        let height = kept.outputSize.height
+        let width = kept.imageSize.width
+        let height = kept.imageSize.height
         let attributes: [CFString: Any] = [
             kCVPixelBufferIOSurfacePropertiesKey: [CFString: Any](),
             kCVPixelBufferMetalCompatibilityKey: true,
@@ -52,62 +75,69 @@ struct CapturedFrame: @unchecked Sendable {
         for row in 0..<height {
             memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
         }
-        return CapturedFrame(pixelBuffer: copy, geometry: kept)
+        return ViewerFrame(pixelBuffer: copy, layout: kept, displayID: displayID)
     }
 }
 
-/// The latest complete frame, handed from the ScreenCaptureKit queue to the main thread.
+/// The latest complete frame, handed from the ScreenCaptureKit queue to the main thread, and the
+/// still frames the Viewer shows in place of it.
 ///
-/// The capture queue writes, the renderer and the exporters read. The lock guards both properties;
+/// The capture queue writes, the renderer and the exporters read. The lock guards every property;
 /// nothing else is shared (docs/design.md §2.2).
 final class FrameStore: @unchecked Sendable {
     private let lock = NSLock()
-    private var frame: CapturedFrame?
+    private var frame: ViewerFrame?
     private var geometry: CaptureGeometry?
-    private var frozen = false
-    private var capture: CapturedFrame?
+    private var frozen: ViewerFrame?
+    private var capture: ViewerFrame?
 
-    /// While frozen, new frames are dropped, so the Viewer, the Color Meter and Copy/Save all keep
-    /// the frame that was showing (docs/product.md, Freeze frame).
+    /// Freezing keeps the live frame as a still, so the Viewer, the Color Meter and Copy/Save all
+    /// keep the frame that was showing (docs/product.md, Freeze frame). Setting it while frozen
+    /// keeps the frame frozen first; without a live frame there is nothing to freeze.
     var isFrozen: Bool {
-        get { lock.withLock { frozen } }
-        set { lock.withLock { frozen = newValue } }
+        get { lock.withLock { frozen != nil } }
+        set { lock.withLock { frozen = newValue ? frozen ?? frame : nil } }
     }
 
-    /// A recent capture shown in place of the live frame (docs/product.md, Recent Captures): the
-    /// Viewer, the Color Meter and Copy/Save all take it, as they take a frozen frame. Live frames
-    /// are still stored meanwhile, so the view is current when it goes back to live.
-    var shownCapture: CapturedFrame? {
+    /// A recent capture shown in place of the live frame (docs/product.md, Recent Captures). Above a
+    /// frozen frame, which comes back when it goes.
+    var shownCapture: ViewerFrame? {
         get { lock.withLock { capture } }
         set { lock.withLock { capture = newValue } }
     }
 
-    var latestFrame: CapturedFrame? {
-        lock.withLock { capture ?? frame }
+    /// What the Viewer shows in place of the live frame: a recent capture, or else the frozen frame.
+    /// `nil` while it is live. Live frames are still stored meanwhile, so the view is current when
+    /// it goes back to live.
+    var still: ViewerFrame? {
+        lock.withLock { capture ?? frozen }
+    }
+
+    /// The frame the Viewer shows: the still one, or else the latest live frame.
+    var shownFrame: ViewerFrame? {
+        lock.withLock { capture ?? frozen ?? frame }
     }
 
     /// The geometry the stream is currently configured with. Frames arriving from now on carry it.
     func setGeometry(_ geometry: CaptureGeometry?) {
         lock.withLock {
             self.geometry = geometry
-            // A frozen frame outlives a stream that stops or restarts under it.
-            if geometry == nil, !frozen { frame = nil }
+            if geometry == nil { frame = nil }
         }
     }
 
-    /// Stores a buffer from the stream. Returns `false` while frozen, when no geometry is set (the
-    /// stream is stopping) or the buffer doesn't match it (a frame from before the last
-    /// reconfiguration).
+    /// Stores a buffer from the stream. Returns `false` when no geometry is set (the stream is
+    /// stopping) or the buffer doesn't match it (a frame from before the last reconfiguration).
     func store(_ pixelBuffer: CVPixelBuffer) -> Bool {
         lock.withLock {
             let size = PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
-            guard !frozen, let geometry, size == geometry.outputSize else {
+            guard let geometry, size == geometry.outputSize else {
                 #if DEBUG
                     stats.rejected += 1
                 #endif
                 return false
             }
-            frame = CapturedFrame(pixelBuffer: pixelBuffer, geometry: geometry)
+            frame = ViewerFrame(pixelBuffer: pixelBuffer, geometry: geometry)
             #if DEBUG
                 stats.stored += 1
             #endif

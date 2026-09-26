@@ -22,7 +22,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         /// Drawable pixels per point, for the checkerboard's squares.
         var drawableScale: CGFloat
         var state: ZoomPanState
-        var frame: CapturedFrame?
+        var frame: ViewerFrame?
         var style: ViewerStyle
         /// The visible reference layers, bottom first.
         var references: [(layer: ReferenceLayer, image: CGImage)]
@@ -129,7 +129,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     func scene(for view: MTKView, style: ViewerStyle) -> Scene {
         Scene(
             size: view.drawableSize, drawableScale: view.drawableScale, state: zoomPan.state,
-            frame: frameStore.latestFrame, style: style, references: references(),
+            frame: frameStore.shownFrame, style: style, references: references(),
             colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!)
     }
 
@@ -201,7 +201,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
                 frameTexture = metalTexture
                 let size = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
                 var quad = Self.ndc(
-                    scene.state.imageRect(origin: frame.geometry.imageOrigin, size: size), in: scene.size)
+                    scene.state.imageRect(origin: frame.layout.imageOrigin, size: size), in: scene.size)
                 let zoom = scene.state.zoom
                 var fragment = SIMD4<Float>(
                     Float(size.width), Float(size.height), Float(zoom), Self.gridMode(scene.style, zoom: zoom))
@@ -227,7 +227,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             let difference = layer.blend == .difference && frameTexture != nil
             if difference, let frame = scene.frame {
                 let pixels = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
-                let origin = frame.geometry.imageOrigin
+                let origin = frame.layout.imageOrigin
                 frameUV = SIMD4(
                     Float((layer.origin.x - origin.x) / pixels.width),
                     Float((layer.origin.y - origin.y) / pixels.height),
