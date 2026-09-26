@@ -3,8 +3,9 @@ import SwiftUI
 
 /// The Viewer's content while it shows the capture: the magnified image with the overlay, the
 /// frozen indicator, the status panel and the toast over it, and the side column (Color Meter,
-/// References or Recent Captures) at its right. What happens inside it is wired here; the window
-/// controller only places it.
+/// References or Recent Captures) at its right. Image files dropped on it become reference layers
+/// or recent captures (`dropTarget`). What happens inside it is wired here; the window controller
+/// only places it.
 @MainActor
 final class ViewerContentView: NSStackView {
     let viewerView: ViewerView
@@ -99,6 +100,8 @@ final class ViewerContentView: NSStackView {
         distribution = .fill
         addArrangedSubview(imageArea)
         addArrangedSubview(sidePanels)
+        wantsLayer = true
+        registerForDraggedTypes([.fileURL])
     }
 
     private func wire(zoomPan: ZoomPanController) {
@@ -147,8 +150,6 @@ final class ViewerContentView: NSStackView {
             guard let self else { return }
             sidePanels.show(layout)
             references.isActive = layout.showsReferences
-            // Closing Recent Captures goes back to live; an opened image doesn't depend on the panel.
-            if !layout.showsCaptures, captures.openedImage == nil { captures.show(nil) }
             sidePanelLayout = layout
             applyMouseModes()
         }
@@ -192,19 +193,177 @@ final class ViewerContentView: NSStackView {
         showToast("Region copied")
     }
 
+    // MARK: Dropped image files
+
+    /// Where dropped image files go (docs/product.md, Dropping images).
+    private enum DropTarget {
+        /// Reference layers: the References panel is open.
+        case references
+        /// Recent captures, to inspect: Recent Captures is open.
+        case captures
+        /// Asked in a menu at the drop point: neither panel is open.
+        case ask
+    }
+
+    private var dropTarget: DropTarget {
+        if sidePanelLayout?.showsReferences == true { return .references }
+        if sidePanelLayout?.showsCaptures == true { return .captures }
+        return .ask
+    }
+
+    /// Whether a drag is over the content and would be taken; its border shows then.
+    private var isDropTargeted = false {
+        didSet { needsDisplay = true }
+    }
+    /// Counts image files asked for, by Open Image or a drop, so only the latest request shows;
+    /// closing the Viewer counts too.
+    private(set) var imageRequest = 0
+
+    /// The border is the layer's, which Core Animation draws over the Metal image and every view
+    /// in the content, not filled in `draw(_:)` (see the Color Meter's note on the Metal layer).
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        layer?.borderWidth = isDropTargeted ? 3 : 0
+    }
+
+    /// The dragged files of the types Open Image and Add… take; the rest are ignored.
+    private func imageURLs(_ info: NSDraggingInfo) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true,
+            .urlReadingContentsConformToTypes: ImageFileLoader.openableTypes.map(\.identifier),
+        ]
+        return info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? []
+    }
+
+    /// Text, web links and other files are refused, and so are references with the stack full.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        isDropTargeted =
+            !imageURLs(sender).isEmpty && (dropTarget != .references || references.stack.canAdd)
+        return isDropTargeted ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        isDropTargeted = false
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        isDropTargeted = false
+    }
+
+    /// Takes the files; where they go is decided on the next turn of the run loop, so the menu
+    /// that may ask comes up after the drag has ended.
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        isDropTargeted = false
+        let urls = imageURLs(sender)
+        guard !urls.isEmpty else { return false }
+        let point = convert(sender.draggingLocation, from: nil)
+        DispatchQueue.main.async { [weak self] in self?.place(urls, askingAt: point) }
+        return true
+    }
+
+    private func place(_ urls: [URL], askingAt point: CGPoint) {
+        switch dropTarget {
+        case .references:
+            addReferences(urls)
+        case .captures:
+            inspect(urls)
+        case .ask:
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            let add = menu.addItem(
+                withTitle: "Add as Reference", action: #selector(placeDroppedFiles(_:)), keyEquivalent: "")
+            add.isEnabled = references.stack.canAdd
+            menu.addItem(withTitle: "Open for Inspection", action: #selector(placeDroppedFiles(_:)), keyEquivalent: "")
+                .tag = 1
+            for item in menu.items {
+                item.target = self
+                item.representedObject = urls
+            }
+            menu.popUp(positioning: nil, at: point, in: self)
+        }
+    }
+
+    @objc private func placeDroppedFiles(_ item: NSMenuItem) {
+        guard let urls = item.representedObject as? [URL] else { return }
+        if item.tag == 0 {
+            addReferences(urls)
+        } else {
+            inspect(urls)
+        }
+    }
+
+    /// Adds image files as reference layers, as Add… does, and opens the References panel on them
+    /// as its toolbar button does. When none could be added, says so.
+    private func addReferences(_ urls: [URL]) {
+        let count = references.stack.layers.count
+        let failed = references.add(urls)
+        guard references.stack.layers.count > count else {
+            // Nothing failed: the stack filled up after the drag came in.
+            if !failed.isEmpty { showFailure(failed, verb: "added") }
+            return
+        }
+        settings.update {
+            $0.referencesVisible = true
+            $0.capturesVisible = false
+            $0.expandedSidePanel = .references
+        }
+    }
+
+    /// Decodes image files off the main thread and keeps each as a recent capture, in order, the last
+    /// one shown, as Open Image does; only as many as the list keeps. When none could be read, says so.
+    private func inspect(_ urls: [URL]) {
+        let urls = Array(urls.suffix(RecentCaptures.limit))
+        let request = newImageRequest()
+        Task {
+            var failed: [URL] = []
+            for url in urls {
+                let decoded = await ImageFileLoader.frame(at: url)
+                // A later file was asked for, or the Viewer has closed.
+                guard request == imageRequest else { return }
+                guard let decoded else {
+                    failed.append(url)
+                    continue
+                }
+                showImage(decoded.frame, thumbnail: decoded.thumbnail, name: url.lastPathComponent)
+            }
+            if failed.count == urls.count { showFailure(failed, verb: "opened") }
+        }
+    }
+
+    /// "The image couldn't be added." or "…opened.", naming the files.
+    private func showFailure(_ files: [URL], verb: String) {
+        let alert = NSAlert()
+        alert.messageText = files.count == 1 ? "The image couldn't be \(verb)." : "The images couldn't be \(verb)."
+        alert.informativeText = files.map(\.lastPathComponent).joined(separator: ", ")
+        if let window { alert.beginSheetModal(for: window) }
+    }
+
+    /// A new request for an image file to show, which overtakes the ones before.
+    @discardableResult
+    func newImageRequest() -> Int {
+        imageRequest += 1
+        return imageRequest
+    }
+
     // MARK: Recent Captures
 
-    /// Whether a recent capture, or an opened image, shows in place of the live view.
+    /// Whether a recent capture shows in place of the live view.
     var isShowingCapture: Bool { captures.shownID != nil }
 
-    /// Shows an opened image in place of the live view (docs/product.md, Open Image), as a recent
-    /// capture shows, fitted to the Viewer when it shows (`show`). `name` is its file's.
-    func showImage(_ frame: ViewerFrame, name: String) {
-        // Its zoom and pan are never read: it opens fitted, and is gone once something else shows.
-        captures.showOpened(
-            RecentCapture(
-                frame: frame, kind: name, imageSize: frame.layout.size, date: Date(), thumbnail: nil,
-                zoom: zoomPan.state.zoom, offset: .zero, selection: nil))
+    /// Keeps an image file as the newest recent capture and shows it in place of the live view
+    /// (docs/product.md, Open Image), fitted to the Viewer (`show`), with Recent Captures open.
+    /// `name` is its file's.
+    func showImage(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) {
+        settings.update {
+            $0.capturesVisible = true
+            $0.referencesVisible = false
+            $0.expandedSidePanel = .captures
+        }
+        let capture = RecentCaptures.file(frame, thumbnail: thumbnail, name: name)
+        captures.add(capture)
+        captures.show(capture.id)
     }
 
     /// What a copy or save was made of, for its recent capture.
@@ -218,7 +377,6 @@ final class ViewerContentView: NSStackView {
     /// Captures): the returned call adds it, now for a copy, once written for a save. The frame and
     /// how the Viewer shows it are taken now; a view, a selection or a region keeps just its pixels,
     /// framed as it was, and only a source copy keeps the whole area. `nil` while a recent capture shows: copies made from one add none.
-    /// Nor do copies made from an opened image.
     func captureKeeper(_ kind: CaptureKind, image: CGImage) -> (() -> Void)? {
         guard !isShowingCapture, let frame = frameStore.shownFrame else { return nil }
         let state = zoomPan.state
@@ -264,11 +422,9 @@ final class ViewerContentView: NSStackView {
         // The next picture is not an edge drag of the last one.
         viewerView.forgetAreaOrigin()
         viewerView.frameArrived()
-        if let new, new.id == captures.openedImage?.id {
-            zoomPan.fitWhenShown()
-            selection.keptSelection = nil
-        } else if let new {
-            zoomPan.restore(zoom: new.zoom, offset: new.offset)
+        if let new {
+            // An image file first shows fitted.
+            if let zoom = new.zoom { zoomPan.restore(zoom: zoom, offset: new.offset) } else { zoomPan.fitWhenShown() }
             selection.keptSelection = new.selection
         } else if let live = liveView {
             zoomPan.restore(zoom: live.zoom, offset: live.offset)
@@ -281,7 +437,7 @@ final class ViewerContentView: NSStackView {
     }
 
     /// The purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" while a capture shows, or
-    /// "photo.png · Esc for live" for an opened image; the frozen indicator of the live view waits
+    /// "photo.png · Esc for live" for an image file; the frozen indicator of the live view waits
     /// under it.
     private func showCaptureIndicator() {
         let shown = captures.shown

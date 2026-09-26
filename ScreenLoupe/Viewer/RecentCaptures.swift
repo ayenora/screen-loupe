@@ -1,23 +1,26 @@
 import AppKit
 import Observation
 
-/// A picture kept by a copy or save on the Viewer (docs/product.md, Recent Captures). It keeps the
-/// Capture Area's frame at native resolution, not the copied image, so every tool works on real
-/// screen pixels when it is opened again.
+/// A picture kept by a copy or save on the Viewer, or an image file opened to inspect
+/// (docs/product.md, Recent Captures). A copy keeps the Capture Area's frame at native resolution,
+/// not the copied image, so every tool works on real screen pixels when it is opened again.
 struct RecentCapture: Identifiable {
     let id = UUID()
     /// The frame, in a buffer of its own, cut to `ImageBudget`.
     let frame: ViewerFrame
-    /// What was copied or saved: "View · 800%", "Selection", "Region" or "Source"; an opened image's
-    /// file name.
+    /// What was copied or saved: "View · 800%", "Selection", "Region" or "Source"; an image file's
+    /// name.
     let kind: String
     /// The size of the copied or saved image.
     let imageSize: PixelSize
     let date: Date
     /// The copied or saved image, small, for the panel.
     let thumbnail: CGImage?
-    /// How the Viewer shows it: as when it was taken, then as it was last left.
-    var zoom: CGFloat
+    /// An image file (docs/product.md, Open Image), not a copy of the screen.
+    let isFile: Bool
+    /// How the Viewer shows it: as when it was taken, then as it was last left. `nil`: fitted to the
+    /// Viewer, as an image file first shows.
+    var zoom: CGFloat?
     var offset: CGPoint
     var selection: CGRect?
 
@@ -31,34 +34,32 @@ struct RecentCapture: Identifiable {
     var time: String { Self.timeFormatter.string(from: date) }
 }
 
-/// The last four pictures copied or saved on the Viewer, kept in memory until the app quits, and
-/// which of them the Viewer shows in place of the live view (docs/product.md, Recent Captures).
+/// The last four pictures copied or saved on the Viewer or opened from files, kept in memory until
+/// the app quits, and which of them the Viewer shows in place of the live view (docs/product.md,
+/// Recent Captures).
 @MainActor
 @Observable
 final class RecentCaptures {
     static let limit = 4
     /// The side of a thumbnail's box in pixels: 2× the panel's widest row thumbnail.
-    private static let thumbnailBox = CGSize(width: 200, height: 132)
+    nonisolated private static let thumbnailBox = CGSize(width: 200, height: 132)
 
     /// Newest first.
     private(set) var captures: [RecentCapture] = []
     /// The capture the Viewer shows, or `nil` for the live view.
     private(set) var shownID: UUID?
-    /// An image file shown in place of the live view (docs/product.md, Open Image): shown as a capture
-    /// is, but not one of the list. Kept only while it shows.
-    private(set) var openedImage: RecentCapture?
     /// The panel's content scale, 1 at the side column's narrowest.
     var scale: CGFloat = 1
 
     /// Called with the capture shown before and the one shown now (`nil`: the live view).
     @ObservationIgnored var onShow: ((_ old: RecentCapture?, _ new: RecentCapture?) -> Void)?
 
-    var shown: RecentCapture? { openedImage ?? captures.first { $0.id == shownID } }
+    var shown: RecentCapture? { captures.first { $0.id == shownID } }
 
-    /// "Capture 2 of 4 · 14:20:05 · Esc for live", or "photo.png · Esc for live" for an opened image,
+    /// "Capture 2 of 4 · 14:20:05 · Esc for live", or "photo.png · Esc for live" for an image file,
     /// over the Viewer while `capture` shows.
     func label(for capture: RecentCapture) -> String {
-        if capture.id == openedImage?.id { return "\(capture.kind) · Esc for live" }
+        if capture.isFile { return "\(capture.kind) · Esc for live" }
         let number = (captures.firstIndex { $0.id == capture.id } ?? 0) + 1
         return "Capture \(number) of \(captures.count) · \(capture.time) · Esc for live"
     }
@@ -76,7 +77,15 @@ final class RecentCaptures {
         guard let kept = frame.copiedForKeeping(area: area) else { return nil }
         return RecentCapture(
             frame: kept, kind: kind, imageSize: PixelSize(width: image.width, height: image.height), date: Date(),
-            thumbnail: thumbnail(of: image), zoom: zoom, offset: offset, selection: selection)
+            thumbnail: thumbnail(of: image), isFile: false, zoom: zoom, offset: offset, selection: selection)
+    }
+
+    /// A row for the image file `name`, decoded into `frame` with its `thumbnail`
+    /// (`ImageFileLoader.frame(at:)`): its buffer is already its own.
+    static func file(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) -> RecentCapture {
+        RecentCapture(
+            frame: frame, kind: name, imageSize: frame.layout.size, date: Date(), thumbnail: thumbnail, isFile: true,
+            zoom: nil, offset: .zero, selection: nil)
     }
 
     /// Keeps `capture` as the newest; the oldest goes past the limit.
@@ -90,21 +99,12 @@ final class RecentCaptures {
         onChange?()
     }
 
-    /// Shows a capture in the Viewer, or the live view for `nil`. An opened image that showed is gone.
+    /// Shows a capture in the Viewer, or the live view for `nil`.
     func show(_ id: UUID?) {
         guard id != shownID else { return }
         let old = shown
         shownID = id
-        openedImage = nil
         onShow?(old, shown)
-    }
-
-    /// Shows an opened image in the Viewer, in place of what showed.
-    func showOpened(_ image: RecentCapture) {
-        let old = shown
-        openedImage = image
-        shownID = image.id
-        onShow?(old, image)
     }
 
     func remove(_ id: UUID) {
@@ -121,8 +121,10 @@ final class RecentCaptures {
         captures[index].selection = selection
     }
 
-    /// `image` scaled down to fit the thumbnail box; a small image stays as it is.
-    private static func thumbnail(of image: CGImage) -> CGImage? {
+    /// `image` scaled down to fit the thumbnail box; a small image stays as it is. Drawn in its RGB
+    /// space (`CGColorSpace.rgbSpace(forImageIn:)`), keeping its transparency; also off the main
+    /// actor, for an image file.
+    nonisolated static func thumbnail(of image: CGImage) -> CGImage? {
         let fit = min(1, thumbnailBox.width / CGFloat(image.width), thumbnailBox.height / CGFloat(image.height))
         guard fit < 1 else { return image }
         let width = max(1, Int((CGFloat(image.width) * fit).rounded()))
@@ -130,7 +132,7 @@ final class RecentCaptures {
         guard
             let context = CGContext(
                 data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                space: image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!,
+                space: CGColorSpace.rgbSpace(forImageIn: image.colorSpace),
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return nil }
         // A thumbnail, not a magnification: smoothing is right here.

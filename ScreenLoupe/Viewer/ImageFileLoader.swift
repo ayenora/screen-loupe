@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// Reads image files for the Viewer: an opened image (docs/product.md, Open Image) and reference
 /// layers (References). Called off the main actor: a large file takes a while to decode.
 enum ImageFileLoader {
-    /// The image files Open Image takes: every type ImageIO reads, but not PDF.
+    /// The image files Open Image and references take: every type ImageIO reads, but not PDF.
     static var openableTypes: [UTType] {
         let identifiers = CGImageSourceCopyTypeIdentifiers() as? [String] ?? []
         return identifiers.compactMap { UTType($0) }.filter { !$0.conforms(to: .pdf) }
@@ -67,9 +67,9 @@ enum ImageFileLoader {
     /// into a buffer like a recent capture's, one pixel per point, as straight (not premultiplied)
     /// BGRA in the image's own colour space (`CGColorSpace.rgbSpace(forImageIn:)`), so its values and
     /// its transparency stay as they are. More than 8 bits per component are rounded to 8. `nil`
-    /// when ImageIO can't read it.
+    /// when ImageIO can't read it. With it, the thumbnail for its Recent Captures row.
     @concurrent
-    static func frame(at url: URL) async -> ViewerFrame? {
+    static func frame(at url: URL) async -> (frame: ViewerFrame, thumbnail: CGImage?)? {
         guard let image = image(at: url),
             let buffer = ViewerFrame.makeBuffer(width: image.width, height: image.height)
         else { return nil }
@@ -87,6 +87,7 @@ enum ImageFileLoader {
                 == kvImageNoError
         else { return nil }
         let layout = FrameLayout(image: PixelSize(width: image.width, height: image.height))
-        return ViewerFrame(pixelBuffer: buffer, layout: layout, displayID: nil, imageColorSpace: space)
+        let frame = ViewerFrame(pixelBuffer: buffer, layout: layout, displayID: nil, imageColorSpace: space)
+        return (frame, RecentCaptures.thumbnail(of: image))
     }
 }

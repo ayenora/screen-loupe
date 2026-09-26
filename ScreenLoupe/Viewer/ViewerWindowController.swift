@@ -60,7 +60,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.onShowCapture = { [weak self] in
             guard let self else { return }
             toolbar.setShowingCapture(isShowingCapture)
-            // An opened image shows without access; the explanation comes back when it goes.
+            // A recent capture, such as an opened image, shows without access; the explanation
+            // comes back when it goes.
             refreshContent()
             onShowCapture?()
         }
@@ -170,12 +171,20 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Open Image
 
-    /// Shows an opened image in place of the live view (docs/product.md, Open Image). Without Screen
-    /// Recording access the content comes in for it first; it fits once the content has its size.
-    func showImage(_ frame: ViewerFrame, name: String) {
+    /// Shows an opened image in place of the live view, as a new recent capture (docs/product.md,
+    /// Open Image). Without Screen Recording access the content comes in for it first; it fits
+    /// once the content has its size.
+    func showImage(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) {
         if showsPermissionView == true { showContent(true) }
-        content.showImage(frame, name: name)
+        content.showImage(frame, thumbnail: thumbnail, name: name)
     }
+
+    /// A new request for an image file to show (`ViewerContentView.newImageRequest`).
+    func newImageRequest() -> Int { content.newImageRequest() }
+
+    /// Whether `request` is still the latest: no later file was asked for, and the Viewer hasn't
+    /// closed since.
+    func isLatestImageRequest(_ request: Int) -> Bool { content.imageRequest == request }
 
     // MARK: Freeze frame
 
@@ -255,6 +264,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        content.newImageRequest()
         onClose?()
     }
 

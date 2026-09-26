@@ -1,6 +1,5 @@
 import AppKit
 import Observation
-import UniformTypeIdentifiers
 
 /// The reference layers (docs/product.md, References): the stack kept in the project, the images,
 /// and the mouse in the Viewer. Points here are drawable pixels, y down, as in `ZoomPanState`.
@@ -113,21 +112,33 @@ final class ReferencesController {
     /// Asks for images and adds each as a layer on top, as many as the limit allows.
     func addFromFiles() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.png, .jpeg, .tiff, .heic, .bmp, .gif]
+        panel.allowedContentTypes = ImageFileLoader.openableTypes
         panel.allowsMultipleSelection = true
         panel.message = "Choose design images to lay over the capture."
         let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .OK, let self else { return }
-            for url in panel.urls.prefix(ReferenceStack.limit - stack.layers.count) {
-                guard let layer = project.importImage(at: url) else { continue }
-                update { $0.add(layer) }
-            }
+            add(panel.urls)
         }
         if let window {
             panel.beginSheetModal(for: window, completionHandler: handle)
         } else {
             handle(panel.runModal())
         }
+    }
+
+    /// Copies each image into the project and adds it as a layer on top, in order, until the stack
+    /// is full; the last one added is selected. Returns the files that couldn't be read.
+    @discardableResult
+    func add(_ urls: [URL]) -> [URL] {
+        var failed: [URL] = []
+        for url in urls where stack.canAdd {
+            guard let layer = project.importImage(at: url) else {
+                failed.append(url)
+                continue
+            }
+            update { $0.add(layer) }
+        }
+        return failed
     }
 
     // MARK: The mouse in the Viewer

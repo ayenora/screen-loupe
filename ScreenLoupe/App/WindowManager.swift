@@ -60,7 +60,6 @@ final class WindowManager {
         viewer.onClose = { [weak self] in
             guard let self else { return }
             isViewerOpen = false
-            imageRequest += 1
             viewer.showLive()
             setFrozen(false)
             saveViewerState()
@@ -139,8 +138,6 @@ final class WindowManager {
         }
     }
 
-    /// Counts image files asked for, so only the latest one shows; closing the Viewer counts too.
-    private var imageRequest = 0
     /// The open panel is up, as a sheet on the Viewer or on its own; Open Image waits for it.
     private(set) var isChoosingImage = false
 
@@ -155,16 +152,14 @@ final class WindowManager {
         let open: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             self?.isChoosingImage = false
             guard response == .OK, let url = panel.url, let self else { return }
-            imageRequest += 1
-            let request = imageRequest
-            let wasOpen = isViewerOpen
+            let request = viewer.newImageRequest()
             Task {
-                let frame = await ImageFileLoader.frame(at: url)
+                let decoded = await ImageFileLoader.frame(at: url)
                 // A later file was asked for, or the Viewer it was for has closed.
-                guard request == self.imageRequest, !wasOpen || self.isViewerOpen else { return }
-                guard let frame else { return self.imageFailed(url) }
+                guard self.viewer.isLatestImageRequest(request) else { return }
+                guard let decoded else { return self.imageFailed(url) }
                 self.showViewer()
-                self.viewer.showImage(frame, name: url.lastPathComponent)
+                self.viewer.showImage(decoded.frame, thumbnail: decoded.thumbnail, name: url.lastPathComponent)
             }
         }
         if isViewerOpen, let window = viewer.window {

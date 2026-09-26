@@ -3,8 +3,9 @@ import SwiftUI
 
 /// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
 /// live view on top, which can't be deleted, then one row per capture, newest first — thumbnail,
-/// what was copied, its size and time, and Delete. Clicking a row shows it in the Viewer. Every
-/// size is multiplied by `captures.scale`, so the panel grows with the column.
+/// what was copied or the image file's name, its size and time, and Delete. Clicking a row shows
+/// it in the Viewer. Every size is multiplied by `captures.scale`, so the panel grows with the
+/// column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
 
@@ -30,7 +31,7 @@ struct RecentCapturesPanel: View {
 
             if captures.captures.isEmpty {
                 Text(
-                    "Copy or save in the Viewer — ⌘C, ⇧⌘C, ⌘S, an Option-drag or a selection — and the picture waits here to be studied later."
+                    "Copy or save in the Viewer — ⌘C, ⇧⌘C, ⌘S, an Option-drag or a selection — or open an image file, and the picture waits here to be studied later."
                 )
                 .font(.system(size: 12 * s))
                 .foregroundStyle(.secondary)
@@ -48,7 +49,7 @@ struct RecentCapturesPanel: View {
             }
 
             Divider()
-            Text("Last \(RecentCaptures.limit) copies and saves · kept until quit")
+            Text("Last \(RecentCaptures.limit) copies, saves and images · kept until quit")
                 .font(.system(size: 10.5 * s))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14 * s)
