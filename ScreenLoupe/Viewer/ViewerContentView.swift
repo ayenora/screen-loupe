@@ -45,9 +45,9 @@ final class ViewerContentView: NSStackView {
         self.viewerView = viewerView
         overlay = ViewerOverlayView(zoomPan: zoomPan, inspector: inspector)
         overlay.drawableScale = { [weak viewerView] in viewerView?.drawableScale ?? 1 }
-        overlay.sourceScale = { frameStore.latestFrame?.geometry.display.scale ?? 1 }
         meterPanel = ColorMeterPanel(inspector: inspector)
         ruler = RulerController(zoomPan: zoomPan, project: project)
+        ruler.sourceScale = { frameStore.latestFrame?.geometry.display.scale ?? 1 }
         references = ReferencesController(project: project, zoomPan: zoomPan)
         selection = SelectionController(zoomPan: zoomPan)
         viewerView.ruler = ruler

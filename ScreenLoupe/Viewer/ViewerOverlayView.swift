@@ -20,8 +20,6 @@ final class ViewerOverlayView: NSView {
     var references: ReferencesController?
     /// The Select tool's selection and an Option-drag's region.
     var selection: SelectionController?
-    /// Source pixels per point of the captured display, for the ruler's lengths in points.
-    var sourceScale: () -> CGFloat = { 1 }
     /// The Viewer's drawable pixels per point (`MTKView.drawableScale`): zoom and pan are in drawable
     /// pixels, this view draws in points.
     var drawableScale: () -> CGFloat = { 1 }
@@ -248,24 +246,11 @@ final class ViewerOverlayView: NSView {
             circle.stroke()
         }
 
-        let sourceScale = sourceScale()
-        let horizontalText = Self.length(abs(arms.width), sourceScale: sourceScale)
-        let verticalText = Self.length(abs(arms.height), sourceScale: sourceScale)
-        let horizontalSize = Self.pillSize(horizontalText)
-        let verticalSize = Self.pillSize(verticalText)
         // Off the pixels the lengths are approximate: dimmed until the ruler is on them.
         context.saveGState()
         if !drawn.isOnPixels { context.setAlpha(0.5) }
-        Self.drawPill(
-            horizontalText,
-            center: CGPoint(
-                x: (corner.x + horizontalEnd.x) / 2,
-                y: corner.y + (arms.height > 0 ? -1 : 1) * (horizontalSize.height / 2 + 9)))
-        Self.drawPill(
-            verticalText,
-            center: CGPoint(
-                x: corner.x + (arms.width > 0 ? -1 : 1) * (verticalSize.width / 2 + 9),
-                y: (corner.y + verticalEnd.y) / 2))
+        Self.drawPill(drawn.horizontalLabel, scale: scale)
+        Self.drawPill(drawn.verticalLabel, scale: scale)
         context.restoreGState()
 
         if ruler.isHovered {
@@ -293,35 +278,17 @@ final class ViewerOverlayView: NSView {
         }
     }
 
-    /// `32 px · 16 pt`, or `32 px` when a pixel is a point.
-    private static func length(_ pixels: CGFloat, sourceScale: CGFloat) -> String {
-        let px = "\(Int(pixels)) px"
-        guard sourceScale != 1 else { return px }
-        let points = pixels / sourceScale
-        let text = points == points.rounded() ? "\(Int(points))" : String(format: "%.1f", Double(points))
-        return "\(px) · \(text) pt"
-    }
-
-    private static let pillAttributes: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: NSColor.white,
-    ]
-
-    private static func pillSize(_ text: String) -> CGSize {
-        let size = (text as NSString).size(withAttributes: pillAttributes)
-        return CGSize(width: size.width.rounded(.up) + 12, height: 18)
-    }
-
-    private static func drawPill(_ text: String, center: CGPoint) {
-        let size = pillSize(text)
+    private static func drawPill(_ label: RulerController.Label, scale: CGFloat) {
         let rect = CGRect(
-            x: (center.x - size.width / 2).rounded(), y: (center.y - size.height / 2).rounded(), width: size.width,
-            height: size.height)
+            x: label.rect.minX / scale, y: label.rect.minY / scale, width: label.rect.width / scale,
+            height: label.rect.height / scale)
         rulerColor.setFill()
         NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
-        let textSize = (text as NSString).size(withAttributes: pillAttributes)
-        (text as NSString).draw(
-            at: CGPoint(x: rect.minX + 6, y: rect.minY + ((size.height - textSize.height) / 2).rounded()),
-            withAttributes: pillAttributes)
+        let text = label.text as NSString
+        let textSize = text.size(withAttributes: RulerController.labelAttributes)
+        text.draw(
+            at: CGPoint(x: rect.minX + 6, y: rect.minY + ((rect.height - textSize.height) / 2).rounded()),
+            withAttributes: RulerController.labelAttributes)
     }
 }
 

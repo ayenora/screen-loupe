@@ -18,6 +18,15 @@ final class RulerController {
         var pin: CGPoint
         /// On whole source pixels, so the lengths are exact; off them while the image moves.
         var isOnPixels: Bool
+        /// The length labels beside each arm's middle.
+        var horizontalLabel: Label
+        var verticalLabel: Label
+    }
+
+    /// A length label: its text and the pill around it, in drawable pixels.
+    struct Label {
+        var text: String
+        var rect: CGRect
     }
 
     /// The shortest an arm looks, so the handles at its ends never touch.
@@ -29,6 +38,14 @@ final class RulerController {
     static let pinDistance: CGFloat = 18
     /// How close to the line a press still takes it.
     static let lineReach: CGFloat = 5
+    /// How far a label's pill stands off its arm.
+    static let labelGap: CGFloat = 9
+    static let labelAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: NSColor.white,
+    ]
+
+    /// Source pixels per point of the captured display, for the lengths in points.
+    var sourceScale: () -> CGFloat = { 1 }
 
     /// Kept in the project, so it comes back at launch.
     private(set) var ruler: CornerRuler? {
@@ -121,6 +138,20 @@ final class RulerController {
                 height: Self.signed((arms.height / state.zoom).rounded()))
         }
         let pinShift = Self.pinDistance * scale / 2.squareRoot()
+        let sourceScale = sourceScale()
+        let horizontalText = Self.length(abs(placed.arms.width), sourceScale: sourceScale)
+        let verticalText = Self.length(abs(placed.arms.height), sourceScale: sourceScale)
+        let horizontalSize = Self.pillSize(horizontalText)
+        let verticalSize = Self.pillSize(verticalText)
+        // Laid out in points, as drawn: above or below the horizontal arm's middle, left or right of
+        // the vertical one's, on the side away from the other arm.
+        let cornerPoints = CGPoint(x: corner.x / scale, y: corner.y / scale)
+        let horizontalCenter = CGPoint(
+            x: cornerPoints.x + arms.width / scale / 2,
+            y: cornerPoints.y + (arms.height > 0 ? -1 : 1) * (horizontalSize.height / 2 + Self.labelGap))
+        let verticalCenter = CGPoint(
+            x: cornerPoints.x + (arms.width > 0 ? -1 : 1) * (verticalSize.width / 2 + Self.labelGap),
+            y: cornerPoints.y + arms.height / scale / 2)
         return Drawn(
             placement: placed, corner: corner,
             horizontalEnd: CGPoint(x: corner.x + arms.width, y: corner.y),
@@ -128,7 +159,33 @@ final class RulerController {
             pin: CGPoint(
                 x: corner.x + (arms.width < 0 ? pinShift : -pinShift),
                 y: corner.y + (arms.height < 0 ? pinShift : -pinShift)),
-            isOnPixels: snap >= 1 || ruler.isPinned)
+            isOnPixels: snap >= 1 || ruler.isPinned,
+            horizontalLabel: Label(
+                text: horizontalText, rect: Self.pillRect(size: horizontalSize, center: horizontalCenter, scale: scale)),
+            verticalLabel: Label(
+                text: verticalText, rect: Self.pillRect(size: verticalSize, center: verticalCenter, scale: scale)))
+    }
+
+    /// `32 px · 16 pt`, or `32 px` when a pixel is a point.
+    private static func length(_ pixels: CGFloat, sourceScale: CGFloat) -> String {
+        let px = "\(Int(pixels)) px"
+        guard sourceScale != 1 else { return px }
+        let points = pixels / sourceScale
+        let text = points == points.rounded() ? "\(Int(points))" : String(format: "%.1f", Double(points))
+        return "\(px) · \(text) pt"
+    }
+
+    /// In points.
+    private static func pillSize(_ text: String) -> CGSize {
+        let size = (text as NSString).size(withAttributes: labelAttributes)
+        return CGSize(width: size.width.rounded(.up) + 12, height: 18)
+    }
+
+    /// On whole points around `center` (points), returned in drawable pixels.
+    private static func pillRect(size: CGSize, center: CGPoint, scale: CGFloat) -> CGRect {
+        CGRect(
+            x: (center.x - size.width / 2).rounded() * scale, y: (center.y - size.height / 2).rounded() * scale,
+            width: size.width * scale, height: size.height * scale)
     }
 
     /// A zero length keeps pointing right or down, as `CornerRuler` arms do.
@@ -143,6 +200,10 @@ final class RulerController {
         if distance(point, drawn.horizontalEnd) <= grab { return .end(.horizontal) }
         if distance(point, drawn.verticalEnd) <= grab { return .end(.vertical) }
         if !ruler.isPinned, distance(point, drawn.corner) <= grab { return .corner }
+        // The labels move an unpinned ruler, as the size tab moves the Capture Area.
+        if !ruler.isPinned, drawn.horizontalLabel.rect.contains(point) || drawn.verticalLabel.rect.contains(point) {
+            return .line
+        }
         let reach = Self.lineReach * scale
         if distance(point, toSegment: drawn.corner, drawn.horizontalEnd) <= reach
             || distance(point, toSegment: drawn.corner, drawn.verticalEnd) <= reach
