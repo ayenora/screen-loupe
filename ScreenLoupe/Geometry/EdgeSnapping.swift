@@ -1,8 +1,7 @@
 import CoreGraphics
 
-/// Snapping the Capture Area to window and display edges while ⌘ is held, and picking a window
-/// under the cursor (docs/product.md, Capture Area). Global coordinates, y up; results are not
-/// snapped to pixels.
+/// Snapping the Capture Area to window and display edges while ⌘ is held (docs/product.md, Capture
+/// Area). Global coordinates, y up; results are not snapped to pixels.
 enum EdgeSnapping {
     /// How close an edge has to come to a target's edge to snap to it, in points.
     static let reach: CGFloat = 8
@@ -28,11 +27,6 @@ enum EdgeSnapping {
         let dx = offset(for: [rect.minX, rect.maxX], in: verticalEdges(beside: rect, in: targets), reach: reach)
         let dy = offset(for: [rect.minY, rect.maxY], in: horizontalEdges(beside: rect, in: targets), reach: reach)
         return rect.offsetBy(dx: dx, dy: dy)
-    }
-
-    /// The frontmost of `windows`, listed front to back, that contains `point`.
-    static func window(at point: CGPoint, in windows: [CGRect]) -> CGRect? {
-        windows.first { $0.contains(point) }
     }
 
     private static func verticalEdges(beside rect: CGRect, in targets: [CGRect]) -> [CGFloat] {

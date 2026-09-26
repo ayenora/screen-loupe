@@ -63,6 +63,9 @@ enum OverlayStyle {
     static let placementDuration: TimeInterval = 0.15
     /// How long the handles stay after the cursor leaves, so they don't flicker at the zone's edge.
     static let hideDelay: TimeInterval = 0.4
+    /// How long a notice beside the tab stays, and how slowly it then fades.
+    static let noticeDelay: TimeInterval = 2
+    static let noticeFadeDuration: TimeInterval = 0.4
 
     /// A thin contrasting outline around the line, so it reads on any background.
     static func halo(for appearance: NSAppearance) -> NSColor {

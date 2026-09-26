@@ -29,6 +29,7 @@
 				Geometry/SizeText.swift,
 				Geometry/ViewerSelection.swift,
 				Geometry/ViewerWindowFit.swift,
+				Geometry/WindowMagnet.swift,
 				Geometry/ZoomPanMath.swift,
 			);
 			target = 5C3000000000000000000002 /* ScreenLoupeTests */;

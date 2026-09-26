@@ -1,6 +1,7 @@
 import AppKit
 
-/// Owns the Capture Area: its rect, the overlay window, dragging, arrow keys, hover and persistence.
+/// Owns the Capture Area: its rect, the overlay window, dragging, arrow keys, hover, the magnet and
+/// persistence.
 @MainActor
 final class CaptureAreaController {
     /// The captured rect, in AppKit global coordinates, snapped to its display's pixel grid.
@@ -53,6 +54,25 @@ final class CaptureAreaController {
     private var keyObservers: [NSObjectProtocol] = []
     private var picker: WindowPicker?
 
+    /// The window the magnet holds and where the area sits on it; `nil` while it holds none.
+    private struct Magnet {
+        /// As last read.
+        var window: ScreenWindow
+        /// `WindowMagnet.placement`: taken on attaching and after a resize.
+        var placement: CGRect
+        /// Reads in a row that didn't hold the window.
+        var badReads = 0
+    }
+    private var magnet: Magnet?
+    /// Reads the held window's frame while the magnet holds one, and only then.
+    private var magnetTimer: Timer?
+    private var spaceObserver: NSObjectProtocol?
+    /// The area followed its window since the placement was last saved.
+    private var magnetMoved = false
+    /// The notice beside the tab, while it shows.
+    private var noticeText: String?
+    private var noticeTimer: Timer?
+
     private static let defaultSize = CGSize(width: 320, height: 200)
 
     init(settings: SettingsStore) {
@@ -76,8 +96,14 @@ final class CaptureAreaController {
             guard let self else { return }
             apply(captureRect, persist: false)
         }
+        // The magnet's window doesn't survive a relaunch: a Magnet mode comes up off.
+        settings.update { if $0.captureAreaLock == .magnet { $0.captureAreaLocked = false } }
         settings.observe(\.captureAreaLock) { [weak self] in self?.view.lock = $0 }
         settings.observe(\.captureAreaLocked) { [weak self] in self?.view.isLocked = $0 }
+        // The magnet turned off, or another lock chosen.
+        settings.observe(\.activeCaptureAreaLock) { [weak self] in
+            if $0 != .magnet { self?.stopMagnet() }
+        }
     }
 
     // MARK: Visibility
@@ -89,9 +115,11 @@ final class CaptureAreaController {
         startMonitoringMouse()
     }
 
+    /// A hidden area doesn't follow a window: the magnet turns off quietly, as at launch.
     func hide() {
         window.orderOut(nil)
         stopMonitoringMouse()
+        if magnet != nil { settings.update { $0.captureAreaLocked = false } }
     }
 
     func toggle() {
@@ -102,6 +130,9 @@ final class CaptureAreaController {
 
     /// Rebuilds the display layout and keeps the area on a connected display.
     func screenParametersChanged() {
+        // A read between the change and this call used the old layout: let go rather than follow
+        // with frames that may be off.
+        if magnet != nil { letGoOfMagnetWindow() }
         // During a reconfiguration the screen list can be briefly empty; keep the old layout rather
         // than judging the area off-screen and overwriting the saved placement.
         guard DisplayLayout.current() != nil else { return }
@@ -136,23 +167,135 @@ final class CaptureAreaController {
     // MARK: Picking a window
 
     /// Lets the user pick a window, then makes the area that window, shown, and calls `onPicked`.
-    /// Locked or not: the pin guards against a stray drag, and picking is a deliberate command.
+    /// Locked or not: the pin guards against a stray drag, and picking is a deliberate command. An
+    /// attached magnet moves to the picked window.
     func pickWindow(onPicked: @escaping () -> Void) {
-        guard picker == nil, let converter else { return }
-        let picker = WindowPicker(windows: ScreenWindows.frames(converter: converter), tint: view.style.accent) {
-            [weak self] picked in
+        pick(hint: "Click to fit the Capture Area · Esc to cancel") { [weak self] picked in
             guard let self else { return }
-            self.picker = nil
-            guard let picked else { return }
             let minimum = CaptureAreaEditing.minimumSize
-            var rect = picked
+            var rect = picked.frame
             rect.size = CGSize(width: max(rect.width, minimum.width), height: max(rect.height, minimum.height))
             applyEdited(rect, snap: .edges, persist: true)
+            if magnet != nil { attach(to: picked) }
             show()
             onPicked()
         }
+    }
+
+    /// Opens the window picker; `onPicked` runs only when a window is picked.
+    private func pick(hint: String, onPicked: @escaping (ScreenWindow) -> Void) {
+        guard picker == nil, let converter else { return }
+        let picker = WindowPicker(
+            windows: ScreenWindows.windows(converter: converter), tint: view.style.accent, hint: hint
+        ) { [weak self] picked in
+            self?.picker = nil
+            if let picked { onPicked(picked) }
+        }
         self.picker = picker
         picker.start()
+    }
+
+    // MARK: Magnet
+
+    /// Magnet to Window: the picked window holds the area where it is. Cancelling leaves the lock as
+    /// it was.
+    private func pickMagnetWindow() {
+        pick(hint: "Click to attach the Capture Area · Esc to cancel") { [weak self] in self?.attach(to: $0) }
+    }
+
+    /// A click on the magnet while it is off: the window under the area holds it, if there is one.
+    private func attachToWindowUnderArea() {
+        guard let converter,
+            let window = WindowMagnet.window(under: captureRect, in: ScreenWindows.windows(converter: converter))
+        else { return }
+        attach(to: window)
+    }
+
+    /// Holds the area on `window` without moving it, and starts reading the window's frame: about
+    /// 60 times a second, one window at a time (docs/design.md, Capture Area).
+    private func attach(to window: ScreenWindow) {
+        magnet = Magnet(window: window, placement: WindowMagnet.placement(of: captureRect, on: window.frame))
+        settings.update {
+            $0.captureAreaLock = .magnet
+            $0.captureAreaLocked = true
+        }
+        guard magnetTimer == nil else { return }
+        magnetTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.followMagnetWindow() }
+        }
+        // A window going full screen, or the user leaving for another Space.
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.letGoOfMagnetWindow() }
+        }
+    }
+
+    /// Moves the area with its window, or lets go when the window is gone. Waits out a drag of a
+    /// handle: the window's move since then applies after it.
+    private func followMagnetWindow() {
+        guard let held = magnet, drag == nil, let converter else { return }
+        let now = ScreenWindows.window(held.window.id, converter: converter)
+        guard let now, WindowMagnet.holds(now) else {
+            magnet?.badReads += 1
+            if WindowMagnet.letsGo(afterBadReads: held.badReads + 1) { letGoOfMagnetWindow() }
+            return
+        }
+        magnet?.badReads = 0
+        if now.frame != held.window.frame {
+            magnet?.window = now
+            apply(WindowMagnet.area(at: held.placement, on: now.frame), persist: false)
+            magnetMoved = true
+        } else if magnetMoved {
+            // Saved once the window stops, not on every step of its move.
+            magnetMoved = false
+            settings.update { $0.captureArea = captureRect }
+        }
+    }
+
+    /// The window is gone: the area stays where it is, the magnet turns off and a notice says why.
+    private func letGoOfMagnetWindow() {
+        stopMagnet()
+        settings.update { $0.captureAreaLocked = false }
+        showNotice("Window gone · magnet off")
+    }
+
+    /// After a resize, the area keeps its new size and place on the window.
+    private func rememberMagnetPlacement() {
+        guard let held = magnet else { return }
+        magnet?.placement = WindowMagnet.placement(of: captureRect, on: held.window.frame)
+    }
+
+    private func stopMagnet() {
+        magnetTimer?.invalidate()
+        magnetTimer = nil
+        spaceObserver.map(NSWorkspace.shared.notificationCenter.removeObserver)
+        spaceObserver = nil
+        magnet = nil
+        if magnetMoved {
+            magnetMoved = false
+            settings.update { $0.captureArea = captureRect }
+        }
+    }
+
+    // MARK: Notice
+
+    /// Shows `text` beside the tab for a moment, then fades it.
+    private func showNotice(_ text: String) {
+        noticeText = text
+        apply(captureRect, persist: false)
+        view.setNotice(text)
+        noticeTimer?.invalidate()
+        noticeTimer = Timer.scheduledTimer(withTimeInterval: OverlayStyle.noticeDelay, repeats: false) {
+            [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.noticeTimer = nil
+                // The room it took goes with the next layout.
+                self.noticeText = nil
+                self.view.setNotice(nil)
+            }
+        }
     }
 
     // MARK: Applying a rect
@@ -187,7 +330,8 @@ final class CaptureAreaController {
             screenFrame: screenFrame,
             tabWidth: OverlayStyle.tabWidth(for: tabText),
             labelWidth: OverlayStyle.labelWidth(for: labelText),
-            positionSize: positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines)
+            positionSize: positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines),
+            noticeWidth: noticeText.map(OverlayStyle.labelWidth(for:)) ?? 0
         )
         self.layout = layout
         window.setFrame(layout.windowFrame, display: false)
@@ -309,7 +453,12 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint) {
         let target = layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock)
         if target == .pin {
-            settings.update { $0.captureAreaLocked.toggle() }
+            let current = settings.settings
+            if current.captureAreaLock == .magnet, !current.captureAreaLocked {
+                attachToWindowUnderArea()
+            } else {
+                settings.update { $0.captureAreaLocked.toggle() }
+            }
             return
         }
         if target == .pinMenu {
@@ -369,12 +518,17 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
     func overlayViewMouseUp(_ view: CaptureOverlayView) {
         guard drag != nil else { return }
         drag = nil
+        rememberMagnetPlacement()
         settings.update { $0.captureArea = captureRect }
         mouseMovedAnywhere()
     }
 
-    /// A lock chosen from the pin's ▾ is also turned on.
+    /// A lock chosen from the pin's ▾ is also turned on; the magnet first asks for its window.
     func overlayView(_ view: CaptureOverlayView, didChoose lock: CaptureAreaLock) {
+        if lock == .magnet {
+            pickMagnetWindow()
+            return
+        }
         settings.update {
             $0.captureAreaLock = lock
             $0.captureAreaLocked = true
@@ -398,6 +552,7 @@ extension CaptureAreaController: CaptureOverlayViewDelegate {
         if let lock, !lock.allowsNudge(resizing: resize) { return false }
         let next = CaptureAreaEditing.nudged(captureRect, key: key, step: step, resize: resize)
         applyEdited(next, snap: resize ? .edges : .move, persist: true)
+        rememberMagnetPlacement()
         return true
     }
 }

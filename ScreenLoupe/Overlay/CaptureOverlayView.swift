@@ -17,7 +17,8 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 ///
 /// The line is always drawn. The band, the handles, the tab and the position box fade in on hover;
 /// the muted size label shows at rest. A frame whose lock stops resizing shows no band or handles.
-/// The dashed outline of the part the Viewer shows fades in and out as its controller asks.
+/// The dashed outline of the part the Viewer shows, and a notice beside the tab, fade in and out as
+/// the controller asks.
 /// Subviews never take the mouse, so every event lands here.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
@@ -28,6 +29,8 @@ final class CaptureOverlayView: NSView {
     private let tab = GripTabView()
     private let label = SizeLabelView()
     private let positionBox = PositionBoxView()
+    /// Says why the magnet let go.
+    private let notice = SizeLabelView()
     /// The pin with its ▾: shows the chosen lock, filled while it is on.
     private let pinButton = TabButtonView(symbol: "pin", onSymbol: "pin.fill", label: "Pin", onLabel: "Unpin")
     /// Brings the Viewer forward, for when a click in the area sent another app's window over it.
@@ -92,15 +95,16 @@ final class CaptureOverlayView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        for subview in [viewedPartOutline, decorations, label, positionBox, tab, pinButton, raiseButton, pickButton]
-            as [NSView]
-        {
+        for subview in [
+            viewedPartOutline, decorations, label, positionBox, tab, pinButton, raiseButton, pickButton, notice,
+        ] as [NSView] {
             addSubview(subview)
         }
         decorations.alphaValue = 0
         viewedPartOutline.alphaValue = 0
         tab.alphaValue = 0
         positionBox.alphaValue = 0
+        notice.alphaValue = 0
         pinButton.menuWidth = OverlayMetrics.standard.pinMenuWidth
         pinButton.menuLabel = "Pin Mode"
         pinButton.alphaValue = 0
@@ -131,6 +135,7 @@ final class CaptureOverlayView: NSView {
         label.frame = local(layout.labelRect)
         positionBox.lines = positionLines
         positionBox.frame = local(layout.positionRect)
+        notice.frame = local(layout.noticeRect)
         pinButton.frame = local(layout.pinRect.union(layout.pinMenuRect))
         raiseButton.frame = local(layout.raiseRect)
         pickButton.frame = local(layout.pickRect)
@@ -173,6 +178,22 @@ final class CaptureOverlayView: NSView {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = OverlayStyle.revealDuration
             viewedPartOutline.animator().alphaValue = shown ? 1 : 0
+        }
+    }
+
+    /// Shows `text` beside the tab at once, or fades the notice out when `nil`. The layout must
+    /// already make room for it.
+    func setNotice(_ text: String?) {
+        if let text {
+            notice.text = text
+            // A notice shown again while it fades comes back at once.
+            notice.layer?.removeAllAnimations()
+            notice.alphaValue = 1
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = OverlayStyle.noticeFadeDuration
+                notice.animator().alphaValue = 0
+            }
         }
     }
 
@@ -265,7 +286,7 @@ final class CaptureOverlayView: NSView {
         guard let layout else { return }
         let menu = NSMenu()
         for (index, lock) in CaptureAreaLock.allCases.enumerated() {
-            let item = menu.addItem(withTitle: lock.title, action: #selector(lockChosen(_:)), keyEquivalent: "")
+            let item = menu.addItem(withTitle: lock.menuTitle, action: #selector(lockChosen(_:)), keyEquivalent: "")
             item.target = self
             item.tag = index
             item.image = NSImage(systemSymbolName: lock.symbol, accessibilityDescription: nil)
@@ -480,7 +501,7 @@ private final class PositionBoxView: NSView {
     }
 }
 
-/// The muted size shown at rest.
+/// The muted size shown at rest, and the notice beside the tab.
 private final class SizeLabelView: NSView {
     var text = "" { didSet { if text != oldValue { needsDisplay = true } } }
 
@@ -502,19 +523,24 @@ private final class SizeLabelView: NSView {
 }
 
 /// The pin's ▾ menu and symbols. SF Symbols has no anchor, so Fixed Position shows a map pin standing
-/// on its spot.
+/// on its spot, and no magnet, so the magnet shows a paper clip: the area clipped to a window.
 extension CaptureAreaLock {
     fileprivate var title: String {
         switch self {
         case .pinned: "Pinned"
         case .fixedPosition: "Fixed Position"
+        case .magnet: "Magnet to Window"
         }
     }
+
+    /// Choosing the magnet opens the window picker first.
+    fileprivate var menuTitle: String { self == .magnet ? "\(title)…" : title }
 
     fileprivate var symbol: String {
         switch self {
         case .pinned: "pin"
         case .fixedPosition: "mappin.and.ellipse"
+        case .magnet: "paperclip"
         }
     }
 
@@ -522,6 +548,7 @@ extension CaptureAreaLock {
         switch self {
         case .pinned: "pin.fill"
         case .fixedPosition: "mappin.and.ellipse"
+        case .magnet: "paperclip"
         }
     }
 }

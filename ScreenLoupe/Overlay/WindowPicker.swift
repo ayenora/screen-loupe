@@ -1,23 +1,27 @@
 import AppKit
 
-/// Picks a window for the Capture Area to take, like Space in ⇧⌘4: the window under the pointer is
-/// tinted, a click takes it, Escape or a click on no window cancels (docs/product.md, Capture Area).
+/// Picks a window for the Capture Area to take or to attach to, like Space in ⇧⌘4: the window under
+/// the pointer is tinted, a click takes it, Escape or a click on no window cancels (docs/product.md,
+/// Capture Area).
 ///
 /// A transparent panel over each display takes every click, so none reaches the app underneath and
 /// no Accessibility permission is needed.
 @MainActor
 final class WindowPicker {
-    /// Frames of the windows that can be picked, front to back, in AppKit global coordinates.
-    private let windows: [CGRect]
+    /// The windows that can be picked, front to back.
+    private let windows: [ScreenWindow]
     private let tint: NSColor
-    private let onFinish: (CGRect?) -> Void
+    /// What a click does, shown on the tinted window.
+    private let hint: String
+    private let onFinish: (ScreenWindow?) -> Void
     private var panels: [PickerPanel] = []
     private var observer: NSObjectProtocol?
 
-    /// `onFinish` gets the picked window's frame, or `nil` when picking was cancelled.
-    init(windows: [CGRect], tint: NSColor, onFinish: @escaping (CGRect?) -> Void) {
+    /// `onFinish` gets the picked window, or `nil` when picking was cancelled.
+    init(windows: [ScreenWindow], tint: NSColor, hint: String, onFinish: @escaping (ScreenWindow?) -> Void) {
         self.windows = windows
         self.tint = tint
+        self.hint = hint
         self.onFinish = onFinish
     }
 
@@ -25,7 +29,7 @@ final class WindowPicker {
         NSApp.activate()
         for screen in NSScreen.screens {
             let panel = PickerPanel(frame: screen.frame)
-            let view = PickerView(tint: tint)
+            let view = PickerView(tint: tint, hint: hint)
             view.picker = self
             panel.contentView = view
             panel.orderFrontRegardless()
@@ -43,18 +47,18 @@ final class WindowPicker {
     }
 
     fileprivate func mouseMoved() {
-        let hovered = EdgeSnapping.window(at: NSEvent.mouseLocation, in: windows)
+        let hovered = WindowMagnet.window(at: NSEvent.mouseLocation, in: windows)
         for panel in panels {
             (panel.contentView as? PickerView)?.show(
-                hovered.map { $0.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY) })
+                hovered.map { $0.frame.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY) })
         }
     }
 
     fileprivate func click() {
-        finish(EdgeSnapping.window(at: NSEvent.mouseLocation, in: windows))
+        finish(WindowMagnet.window(at: NSEvent.mouseLocation, in: windows))
     }
 
-    fileprivate func finish(_ picked: CGRect?) {
+    fileprivate func finish(_ picked: ScreenWindow?) {
         guard !panels.isEmpty else { return }
         observer.map(NotificationCenter.default.removeObserver)
         observer = nil
@@ -88,10 +92,12 @@ private final class PickerPanel: NSPanel {
 private final class PickerView: NSView {
     weak var picker: WindowPicker?
     private let tint: NSColor
+    private let hint: String
     private var hovered: CGRect?
 
-    init(tint: NSColor) {
+    init(tint: NSColor, hint: String) {
         self.tint = tint
+        self.hint = hint
         super.init(frame: .zero)
     }
 
@@ -130,7 +136,7 @@ private final class PickerView: NSView {
         tint.setStroke()
         outline.stroke()
 
-        let text = "Click to fit the Capture Area · Esc to cancel" as NSString
+        let text = hint as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: OverlayStyle.tabFont, .foregroundColor: NSColor.white]
         let size = text.size(withAttributes: attributes)
         let pill = CGRect(

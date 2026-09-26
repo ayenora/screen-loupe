@@ -212,6 +212,8 @@ struct OverlayPositionBoxTests {
     func fixedPositionFrameResizesButDoesNotMove(point: CGPoint, expected: OverlayHitTarget?) {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.hitTarget(at: point, lock: .fixedPosition) == expected)
+        // An attached magnet takes the same presses: only its window moves it.
+        #expect(l.hitTarget(at: point, lock: .magnet) == expected)
     }
 
     @Test func fixedPositionFrameAnswersItsButtons() {
@@ -226,13 +228,16 @@ struct OverlayPositionBoxTests {
     @Test func onlyPinnedBlocksResizing() {
         #expect(!CaptureAreaLock.pinned.allowsResize)
         #expect(CaptureAreaLock.fixedPosition.allowsResize)
+        #expect(CaptureAreaLock.magnet.allowsResize)
     }
 
-    @Test func arrowKeysOnlyResizeAFixedPositionFrame() {
+    @Test func arrowKeysOnlyResizeAFixedPositionOrMagnetFrame() {
         #expect(!CaptureAreaLock.pinned.allowsNudge(resizing: false))
         #expect(!CaptureAreaLock.pinned.allowsNudge(resizing: true))
         #expect(!CaptureAreaLock.fixedPosition.allowsNudge(resizing: false))
         #expect(CaptureAreaLock.fixedPosition.allowsNudge(resizing: true))
+        #expect(!CaptureAreaLock.magnet.allowsNudge(resizing: false))
+        #expect(CaptureAreaLock.magnet.allowsNudge(resizing: true))
     }
 
     @Test func theButtonsFollowThePinAwayFromTheTab() {
@@ -254,5 +259,37 @@ struct OverlayPositionBoxTests {
         #expect(l.raiseRect.maxX == l.pinRect.minX - 4)
         #expect(l.pickRect.maxX == l.raiseRect.minX - 4)
         #expect(l.windowFrame.contains(l.pickRect))
+    }
+}
+
+struct OverlayNoticeTests {
+    private func layout(_ capture: CGRect) -> OverlayLayout {
+        OverlayLayout(captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, noticeWidth: 140)
+    }
+
+    @Test func noticeSitsLeftOfTheTabAwayFromTheButtons() {
+        let l = layout(CGRect(x: 400, y: 100, width: 200, height: 100))
+        #expect(l.noticeRect == CGRect(x: l.tabRect.minX - 4 - 140, y: l.tabRect.minY + 3, width: 140, height: 16))
+        #expect(l.windowFrame.contains(l.noticeRect))
+    }
+
+    @Test func atTheLeftEdgeTheNoticeGoesPastThePickButton() {
+        let l = layout(CGRect(x: 10, y: 100, width: 200, height: 100))
+        #expect(l.noticeRect.minX == l.pickRect.maxX + 4)
+        #expect(l.windowFrame.contains(l.noticeRect))
+    }
+
+    @Test func atTheRightEdgeTheNoticeGoesPastThePickButtonOnTheLeft() {
+        let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
+        #expect(l.noticeRect.maxX == l.pickRect.minX - 4)
+        #expect(l.noticeRect.minX >= 6)
+        #expect(l.windowFrame.contains(l.noticeRect))
+    }
+
+    @Test func noNoticeTakesNoRoom() {
+        let capture = CGRect(x: 400, y: 100, width: 200, height: 100)
+        let plain = OverlayLayout(captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60)
+        #expect(plain.noticeRect == .zero)
+        #expect(plain.windowFrame == layout(capture).windowFrame.intersection(plain.windowFrame))
     }
 }

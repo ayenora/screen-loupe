@@ -32,8 +32,10 @@ enum CaptureAreaLock: String, Codable, CaseIterable, Sendable {
     case pinned
     /// Doesn't move, but every handle still resizes it.
     case fixedPosition
+    /// Moves only with the window it is attached to; every handle still resizes it.
+    case magnet
 
-    var allowsResize: Bool { self == .fixedPosition }
+    var allowsResize: Bool { self != .pinned }
 
     /// Arrow keys: a move never, a resize (with Option) only when the handles resize too.
     func allowsNudge(resizing: Bool) -> Bool { resizing && allowsResize }
@@ -87,12 +89,15 @@ struct OverlayLayout: Equatable, Sendable {
     var pickRect: CGRect
     /// The L T R B box: right of the frame, or left of it when there is no room on the right.
     var positionRect: CGRect
-    /// The overlay window's frame: the frame, its band and handles, the tab, the label and the box.
+    /// A short notice beside the tab, away from the buttons; empty when there is none.
+    var noticeRect: CGRect
+    /// The overlay window's frame: the frame, its band and handles, the tab, the label, the box and
+    /// the notice.
     var windowFrame: CGRect
 
     init(
         captureRect: CGRect, screenFrame: CGRect, tabWidth: CGFloat, labelWidth: CGFloat,
-        positionSize: CGSize = .zero, metrics m: OverlayMetrics = .standard
+        positionSize: CGSize = .zero, noticeWidth: CGFloat = 0, metrics m: OverlayMetrics = .standard
     ) {
         self.captureRect = captureRect
         let r = captureRect
@@ -130,6 +135,20 @@ struct OverlayLayout: Equatable, Sendable {
         raiseRect = CGRect(x: raiseX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
         pickRect = CGRect(x: pickX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
 
+        // Notice: left of the tab, or past the pick button when the tab is at the screen's left edge.
+        // With the buttons left of the tab, past the pick button on that side.
+        let buttonsOnRight = pinX > tabRect.maxX
+        var noticeX = (buttonsOnRight ? tabRect.minX : pickRect.minX) - m.pinGap - noticeWidth
+        if buttonsOnRight, noticeX < screen.minX + m.screenMargin {
+            noticeX = pickRect.maxX + m.pinGap
+        }
+        noticeRect =
+            noticeWidth > 0
+            ? CGRect(
+                x: noticeX.rounded(), y: (tabRect.midY - m.labelHeight / 2).rounded(), width: noticeWidth,
+                height: m.labelHeight)
+            : .zero
+
         // At-rest label: below on the right, or inside the bottom-right corner.
         let labelY: CGFloat
         if r.minY - m.labelGap - m.labelHeight >= screen.minY + m.screenMargin {
@@ -154,7 +173,7 @@ struct OverlayLayout: Equatable, Sendable {
         positionRect = CGRect(
             x: boxX.rounded(), y: boxY.rounded(), width: positionSize.width, height: positionSize.height)
 
-        windowFrame =
+        var frame =
             r.insetBy(dx: -m.windowPadding, dy: -m.windowPadding)
             .union(tabRect.insetBy(dx: -8, dy: -8))
             .union(labelRect.insetBy(dx: -8, dy: -8))
@@ -163,7 +182,10 @@ struct OverlayLayout: Equatable, Sendable {
             .union(pinMenuRect.insetBy(dx: -8, dy: -8))
             .union(raiseRect.insetBy(dx: -8, dy: -8))
             .union(pickRect.insetBy(dx: -8, dy: -8))
-            .integral
+        if noticeWidth > 0 {
+            frame = frame.union(noticeRect.insetBy(dx: -8, dy: -8))
+        }
+        windowFrame = frame.integral
     }
 
     /// Where each handle is drawn: centred on the line.

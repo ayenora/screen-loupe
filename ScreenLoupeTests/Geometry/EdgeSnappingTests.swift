@@ -67,12 +67,4 @@ struct EdgeSnappingTests {
         let rect = CGRect(x: 200, y: 200, width: 100, height: 100)
         #expect(EdgeSnapping.moved(rect, targets: [window]) == rect)
     }
-
-    @Test func pickTakesTheFrontmostWindowUnderThePoint() {
-        let front = CGRect(x: 300, y: 300, width: 400, height: 400)
-        let point = CGPoint(x: 350, y: 350)
-        #expect(EdgeSnapping.window(at: point, in: [front, window]) == front)
-        #expect(EdgeSnapping.window(at: CGPoint(x: 150, y: 150), in: [front, window]) == window)
-        #expect(EdgeSnapping.window(at: CGPoint(x: 900, y: 900), in: [front, window]) == nil)
-    }
 }
