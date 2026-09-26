@@ -32,13 +32,14 @@ final class CaptureOverlayView: NSView {
     /// Says why the magnet let go.
     private let notice = SizeLabelView()
     /// The pin with its ▾: shows the chosen lock, filled while it is on.
-    private let pinButton = TabButtonView(symbol: "pin", onSymbol: "pin.fill", label: "Pin", onLabel: "Unpin")
+    private let pinButton = TabButtonView(
+        image: CaptureAreaLock.pinned.image(isOn: false), onImage: CaptureAreaLock.pinned.image(isOn: true))
     /// Brings the Viewer forward, for when a click in the area sent another app's window over it.
     private let raiseButton = TabButtonView(
-        symbol: "arrow.up.forward.app", onSymbol: "arrow.up.forward.app", label: "Show Viewer", onLabel: "Show Viewer")
+        image: TabButtonView.symbol("arrow.up.forward.app"), onImage: TabButtonView.symbol("arrow.up.forward.app"))
     /// Picks a window for the area to take.
     private let pickButton = TabButtonView(
-        symbol: "macwindow", onSymbol: "macwindow", label: "Fit Area to Window", onLabel: "Fit Area to Window")
+        image: TabButtonView.symbol("macwindow"), onImage: TabButtonView.symbol("macwindow"))
     private var isDragging = false
     private var isRevealed = false
     private var isViewedPartShown = false
@@ -48,13 +49,11 @@ final class CaptureOverlayView: NSView {
         didSet { placeViewedPart() }
     }
 
-    /// The lock chosen with the pin's ▾, shown by the pin's symbol.
+    /// The lock chosen with the pin's ▾, shown by the pin's image.
     var lock = CaptureAreaLock.pinned {
         didSet {
-            pinButton.symbol = lock.symbol
-            pinButton.onSymbol = lock.onSymbol
-            pinButton.label = "\(lock.title) Off"
-            pinButton.onLabel = "\(lock.title) On"
+            pinButton.image = lock.image(isOn: false)
+            pinButton.onImage = lock.image(isOn: true)
             decorations.alphaValue = decorationsAlpha
         }
     }
@@ -289,7 +288,7 @@ final class CaptureOverlayView: NSView {
             let item = menu.addItem(withTitle: lock.menuTitle, action: #selector(lockChosen(_:)), keyEquivalent: "")
             item.target = self
             item.tag = index
-            item.image = NSImage(systemSymbolName: lock.symbol, accessibilityDescription: nil)
+            item.image = lock.image(isOn: false)
             item.state = lock == self.lock ? .on : .off
         }
         let pin = local(layout.pinRect)
@@ -417,24 +416,26 @@ private final class GripTabView: NSView {
 }
 
 /// A square button beside the tab — the pin, the raise and pick buttons: the tab's colour with an outlined
-/// symbol, or the accent with the filled one while it is on. The pin carries a ▾ on its right, past a
-/// thin divider.
+/// image, or the accent with the filled one while it is on. The images are templates, drawn in the tint.
+/// The pin carries a ▾ on its right, past a thin divider.
 private final class TabButtonView: NSView {
     var style: FrameStyle? { didSet { needsDisplay = true } }
     var isOn = false { didSet { needsDisplay = true } }
-    var symbol: String { didSet { needsDisplay = true } }
-    var onSymbol: String { didSet { needsDisplay = true } }
-    var label: String
-    var onLabel: String
+    var image: NSImage? { didSet { needsDisplay = true } }
+    var onImage: NSImage? { didSet { needsDisplay = true } }
     /// The ▾ part's width; 0 for a plain button.
     var menuWidth: CGFloat = 0 { didSet { needsDisplay = true } }
     var menuLabel = ""
 
-    init(symbol: String, onSymbol: String, label: String, onLabel: String) {
-        self.symbol = symbol
-        self.onSymbol = onSymbol
-        self.label = label
-        self.onLabel = onLabel
+    /// An SF Symbol at the buttons' size and weight.
+    nonisolated static func symbol(_ name: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+    }
+
+    init(image: NSImage?, onImage: NSImage?) {
+        self.image = image
+        self.onImage = onImage
         super.init(frame: .zero)
     }
 
@@ -448,24 +449,32 @@ private final class TabButtonView: NSView {
         (isOn ? style.accent : style.tabFill).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
         let tint = isOn ? (style.handleFill == .white ? NSColor.white : .black) : style.onTab
-        let colour = NSImage.SymbolConfiguration(paletteColors: [tint])
         let button = CGRect(x: 0, y: 0, width: bounds.width - menuWidth, height: bounds.height)
-        draw(
-            isOn ? onSymbol : symbol, label: isOn ? onLabel : label, in: button,
-            configuration: NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold).applying(colour))
+        if let image = isOn ? onImage : image {
+            draw(tinted(image, tint), in: button)
+        }
         guard menuWidth > 0 else { return }
         tint.withAlphaComponent(0.35).setFill()
         CGRect(x: button.maxX, y: 4, width: 1, height: bounds.height - 8).fill()
-        draw(
-            "chevron.down", label: menuLabel, in: CGRect(x: button.maxX, y: 0, width: menuWidth, height: bounds.height),
-            configuration: NSImage.SymbolConfiguration(pointSize: 7, weight: .bold).applying(colour))
+        let colour = NSImage.SymbolConfiguration(paletteColors: [tint])
+        guard
+            let chevron = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: menuLabel)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 7, weight: .bold).applying(colour))
+        else { return }
+        draw(chevron, in: CGRect(x: button.maxX, y: 0, width: menuWidth, height: bounds.height))
     }
 
-    private func draw(_ name: String, label: String, in rect: CGRect, configuration: NSImage.SymbolConfiguration) {
-        guard
-            let image = NSImage(systemSymbolName: name, accessibilityDescription: label)?
-                .withSymbolConfiguration(configuration)
-        else { return }
+    /// The template image in the tint, drawn at the destination's resolution.
+    private func tinted(_ image: NSImage, _ tint: NSColor) -> NSImage {
+        NSImage(size: image.size, flipped: false) { rect in
+            image.draw(in: rect)
+            tint.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+    }
+
+    private func draw(_ image: NSImage, in rect: CGRect) {
         image.draw(
             in: CGRect(
                 x: (rect.minX + (rect.width - image.size.width) / 2).rounded(),
@@ -522,8 +531,8 @@ private final class SizeLabelView: NSView {
     }
 }
 
-/// The pin's ▾ menu and symbols. SF Symbols has no anchor, so Fixed Position shows a map pin standing
-/// on its spot, and no magnet, so the magnet shows a paper clip: the area clipped to a window.
+/// The pin's ▾ menu and images. SF Symbols has no anchor and no magnet, so Fixed Position and Magnet
+/// show Lucide's (THIRD_PARTY_NOTICES.md), from the asset catalog: 14 pt, stroked to match the pin.
 extension CaptureAreaLock {
     fileprivate var title: String {
         switch self {
@@ -536,19 +545,12 @@ extension CaptureAreaLock {
     /// Choosing the magnet opens the window picker first.
     fileprivate var menuTitle: String { self == .magnet ? "\(title)…" : title }
 
-    fileprivate var symbol: String {
+    /// A template image, outlined, or filled while on where the shape has a filled form.
+    fileprivate func image(isOn: Bool) -> NSImage? {
         switch self {
-        case .pinned: "pin"
-        case .fixedPosition: "mappin.and.ellipse"
-        case .magnet: "paperclip"
-        }
-    }
-
-    fileprivate var onSymbol: String {
-        switch self {
-        case .pinned: "pin.fill"
-        case .fixedPosition: "mappin.and.ellipse"
-        case .magnet: "paperclip"
+        case .pinned: TabButtonView.symbol(isOn ? "pin.fill" : "pin")
+        case .fixedPosition: NSImage(named: "anchor")
+        case .magnet: NSImage(named: "magnet")
         }
     }
 }
