@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Copy and Save, of the view and of the source (docs/product.md, Screenshots): the images, the
 /// clipboard, the save panel with the Settings › Screenshots choices, and the confirmations.
@@ -57,30 +58,33 @@ final class ExportController {
             return NSSound.beep()
         }
         let keepCapture = viewer.captureKeeper(kind, image: image)
-        savePNG(png, kind: kind == .source ? "Source" : "View", sheetOn: window) { [weak self] url in
+        let name = ScreenshotName.fileName(
+            kind: kind == .source ? "Source" : "View", style: settings.settings.fileNameStyle)
+        saveImage(png, type: .png, name: name, sheetOn: window) { [weak self] url in
             keepCapture?()
             self?.viewer.showToast("Saved \(url.lastPathComponent)")
         }
     }
 
-    /// The save panel for a PNG named after `kind` (Settings › Screenshots), in the folder used last:
-    /// a sheet on `window`, or a panel of its own without one (the Screenshot studio). `onSaved` runs
-    /// once the file is written. Returns the panel, open until the user saves or cancels.
+    /// The save panel for `data` of `type`, suggesting `name` (`ScreenshotName`), in the folder used
+    /// last: a sheet on `window`, or a panel of its own without one (the Screenshot studio).
+    /// `onSaved` runs once the file is written. Returns the panel, open until the user saves or
+    /// cancels.
     @discardableResult
-    func savePNG(
-        _ png: Data, kind: String, sheetOn window: NSWindow?, onSaved: @escaping (URL) -> Void
+    func saveImage(
+        _ data: Data, type: UTType, name: String, sheetOn window: NSWindow?, onSaved: @escaping (URL) -> Void
     ) -> NSSavePanel {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
+        panel.allowedContentTypes = [type]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = ScreenshotExporter.fileName(kind: kind, style: settings.settings.fileNameStyle)
+        panel.nameFieldStringValue = name
         panel.directoryURL =
             settings.settings.screenshotDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
         let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             do {
-                try png.write(to: url, options: .atomic)
+                try data.write(to: url, options: .atomic)
                 self?.settings.update { $0.screenshotDirectory = url.deletingLastPathComponent().path }
                 onSaved(url)
                 if self?.settings.settings.revealsSavedFile == true {

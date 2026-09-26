@@ -2,6 +2,7 @@ import AppKit
 import ImageIO
 import OSLog
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The Screenshot studio (docs/product.md, Screenshot studio): its frame, its palette, Capture,
 /// Copy and Save, the frame's sizes and Aspect Lock, the timer, what pictures leave out and lay
@@ -616,9 +617,13 @@ final class StudioController {
     private var countdown = StudioCountdown.idle
     private var countdownTimer: Timer?
     private let countdownPanel = StudioCountdownPanel()
+    /// Output as it was at the last press of Capture, Copy or Save: the picture it starts, now or
+    /// when its countdown ends, is written so, whatever Output says meanwhile.
+    private var pressedOutput = StudioOutput()
     /// Capture, Copy or Save pressed: `StudioCountdown.after` decides — cancel a running countdown,
     /// refuse now, take now, or count down, stopping a running window picker first.
     private func press(_ shot: StudioShot) {
+        pressedOutput = settings.settings.studioOutput
         let pickerRunning = windowPicker != nil || oneWindowPicker != nil || frame.isPickingWindow
         advance(
             .press(
@@ -681,42 +686,51 @@ final class StudioController {
             permitted: permissions.hasScreenRecordingAccess, onOneDisplay: frame.isWhollyOnOneDisplay)
     }
 
+    /// Takes the picture, then writes it as Output said at the press, once for both the clipboard
+    /// and the file, off the main actor: a large picture takes most of a second to encode.
     private func take(_ shot: StudioShot) {
-        switch shot {
-        case .capture:
-            take { [weak self] image in
-                guard let png = ScreenshotExporter.pngData(image) else { return NSSound.beep() }
-                self?.copy(image, png: png)
-                self?.save(png)
-            }
-        case .copy:
-            take { [weak self] in self?.copy($0) }
-        case .save:
-            take { [weak self] image in
-                guard let png = ScreenshotExporter.pngData(image) else { return NSSound.beep() }
-                self?.save(png)
-            }
+        let output = pressedOutput
+        take { [weak self] image, pointScale in
+            let written = await Self.write(image, pointScale: pointScale, output: output, forPasteboard: shot != .save)
+            guard let self, isVisible else { return }
+            guard let written else { return NSSound.beep() }
+            if shot != .save { copy(written) }
+            if shot != .copy { save(written, as: output.format) }
         }
     }
 
-    private func copy(_ image: CGImage, png: Data? = nil) {
-        guard ScreenshotExporter.copy(image, png: png) else { return NSSound.beep() }
-        frame.showNotice("Copied \(image.width) × \(image.height) px")
+    @concurrent
+    private nonisolated static func write(
+        _ image: CGImage, pointScale: CGFloat, output: StudioOutput, forPasteboard: Bool
+    ) async -> StudioOutput.Written? {
+        output.written(image, pointScale: pointScale, forPasteboard: forPasteboard)
+    }
+
+    private func copy(_ written: StudioOutput.Written) {
+        ScreenshotExporter.copy(written.pasteboard)
+        frame.showNotice("Copied \(written.picture.width) × \(written.picture.height) px")
     }
 
     /// The sandbox lets the app write only where the user picks, so saving goes through the save
     /// panel, opened in the screenshot folder with the file already named.
-    private func save(_ png: Data) {
+    private func save(_ written: StudioOutput.Written, as format: StudioOutput.Format) {
         NSApp.activate()
-        savePanel = export.savePNG(png, kind: "Screenshot", sheetOn: nil) { [weak self] url in
+        let name = ScreenshotName.fileName(
+            kind: "Screenshot", style: settings.settings.fileNameStyle,
+            size: PixelSize(width: written.picture.width, height: written.picture.height),
+            fileExtension: format.fileExtension)
+        savePanel = export.saveImage(
+            written.data, type: UTType(format.typeIdentifier) ?? .png, name: name, sheetOn: nil
+        ) { [weak self] url in
             self?.frame.showNotice("Saved \(url.lastPathComponent)")
         }
     }
 
-    /// Captures the frame's rect and hands the image on, unless the studio was hidden meanwhile.
+    /// Captures the frame's rect and hands the image on with its display's scale, unless the
+    /// studio was hidden meanwhile.
     /// While a save panel is open, brings it forward instead: one panel at a time, and none in the
     /// picture.
-    private func take(_ then: @escaping (CGImage) -> Void) {
+    private func take(_ then: @escaping (CGImage, CGFloat) async -> Void) {
         switch check {
         case .ignore: return
         case .bringSavePanelForward:
@@ -756,7 +770,7 @@ final class StudioController {
                             of: geometry, including: included, leavingOut: leaveOut,
                             pointer: current.studioIncludesPointer, over: fill)
                     }
-                if isVisible { then(image) }
+                if isVisible { await then(image, geometry.display.scale) }
             } catch  where ScreenCaptureManager.isPermissionError(error) {
                 onNeedsPermission?(true)
             } catch let problem as StudioCapture.WindowProblem {

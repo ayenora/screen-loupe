@@ -3,8 +3,9 @@ import CoreVideo
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Capture Source images, the clipboard and PNG files (docs/product.md, Screenshots). Capture View is
-/// rendered by the Viewer itself (`ViewerView.renderViewImage`).
+/// Capture Source images, the clipboard and PNG files (docs/product.md, Screenshots), and the
+/// studio's pictures on the clipboard. Capture View is rendered by the Viewer itself
+/// (`ViewerView.renderViewImage`).
 enum ScreenshotExporter {
     // MARK: Images
 
@@ -71,11 +72,10 @@ enum ScreenshotExporter {
     }
 
     /// Puts the image on the clipboard as PNG and TIFF, so both design tools and older apps can paste it.
-    /// `png` is the image's PNG when it is already encoded.
     @MainActor
     @discardableResult
-    static func copy(_ image: CGImage, png: Data? = nil) -> Bool {
-        guard let png = png ?? pngData(image) else { return false }
+    static func copy(_ image: CGImage) -> Bool {
+        guard let png = pngData(image) else { return false }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setData(png, forType: .png)
@@ -85,18 +85,14 @@ enum ScreenshotExporter {
         return true
     }
 
-    /// `Screen Loupe View 2026-09-24 at 14.20.05.png`, in the style of macOS screenshots, or
-    /// `ScreenLoupe-View-20260924-142005.png`.
-    static func fileName(kind: String, style: FileNameStyle, date: Date = Date()) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        switch style {
-        case .macOS:
-            formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-            return "Screen Loupe \(kind) \(formatter.string(from: date)).png"
-        case .compact:
-            formatter.dateFormat = "yyyyMMdd-HHmmss"
-            return "ScreenLoupe-\(kind)-\(formatter.string(from: date)).png"
+    /// A studio picture on the clipboard: each type with its data, in order
+    /// (`StudioOutput.pasteboardTypes`).
+    @MainActor
+    static func copy(_ items: [(type: String, data: Data)]) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        for item in items {
+            pasteboard.setData(item.data, forType: NSPasteboard.PasteboardType(item.type))
         }
     }
 }

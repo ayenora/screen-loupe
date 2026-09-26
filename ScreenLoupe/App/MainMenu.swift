@@ -162,6 +162,10 @@ enum MainMenu {
         let delaysItem = submenuItem(delays)
         delaysItem.title = delays.title
         menu.addItem(delaysItem)
+        let output = outputMenu(target: target)
+        let outputItem = submenuItem(output)
+        outputItem.title = output.title
+        menu.addItem(outputItem)
         menu.addItem(.separator())
         let background = backgroundMenu(target: target)
         let backgroundItem = submenuItem(background)
@@ -192,6 +196,31 @@ enum MainMenu {
             withTitle: "Include the Pointer", action: #selector(AppController.toggleStudioPointer(_:)),
             keyEquivalent: "")
         pointer.target = target
+        return menu
+    }
+
+    /// Screenshot › Output: how studio pictures are written. Each item carries its choice;
+    /// `validateMenuItem` checks the current ones.
+    private static func outputMenu(target: AppController) -> NSMenu {
+        let menu = NSMenu(title: "Output")
+        func add(_ header: String, _ choices: [(title: String, value: Any)], action: Selector) {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            menu.addItem(.sectionHeader(title: header))
+            for choice in choices {
+                let item = menu.addItem(withTitle: choice.title, action: action, keyEquivalent: "")
+                item.representedObject = choice.value
+                item.target = target
+            }
+        }
+        add(
+            "Format", StudioOutput.Format.allCases.map { ($0.title, $0) },
+            action: #selector(AppController.chooseStudioFormat(_:)))
+        add(
+            "Color", StudioOutput.Colors.allCases.map { ($0.title, $0) },
+            action: #selector(AppController.chooseStudioColors(_:)))
+        add(
+            "Scale", StudioOutput.Scale.allCases.map { ($0.title, $0) },
+            action: #selector(AppController.chooseStudioScale(_:)))
         return menu
     }
 

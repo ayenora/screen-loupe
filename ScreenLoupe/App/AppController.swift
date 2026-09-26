@@ -143,6 +143,22 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.chooseDelay(delay)
     }
 
+    /// Screenshot › Output: each item carries its choice.
+    @objc func chooseStudioFormat(_ sender: NSMenuItem) {
+        guard let format = sender.representedObject as? StudioOutput.Format else { return }
+        settings.update { $0.studioOutput.format = format }
+    }
+
+    @objc func chooseStudioColors(_ sender: NSMenuItem) {
+        guard let colors = sender.representedObject as? StudioOutput.Colors else { return }
+        settings.update { $0.studioOutput.colors = colors }
+    }
+
+    @objc func chooseStudioScale(_ sender: NSMenuItem) {
+        guard let scale = sender.representedObject as? StudioOutput.Scale else { return }
+        settings.update { $0.studioOutput.scale = scale }
+    }
+
     @objc func toggleStudioPointer(_ sender: Any?) {
         windows.studio.togglePointer()
     }
@@ -345,6 +361,18 @@ extension AppController: NSMenuItemValidation {
             return true
         case #selector(chooseStudioDelay(_:)):
             menuItem.state = menuItem.tag == settings.settings.studioDelay.rawValue ? .on : .off
+            return true
+        case #selector(chooseStudioFormat(_:)):
+            let format = menuItem.representedObject as? StudioOutput.Format
+            menuItem.state = format == settings.settings.studioOutput.format ? .on : .off
+            return true
+        case #selector(chooseStudioColors(_:)):
+            let colors = menuItem.representedObject as? StudioOutput.Colors
+            menuItem.state = colors == settings.settings.studioOutput.colors ? .on : .off
+            return true
+        case #selector(chooseStudioScale(_:)):
+            let scale = menuItem.representedObject as? StudioOutput.Scale
+            menuItem.state = scale == settings.settings.studioOutput.scale ? .on : .off
             return true
         case #selector(toggleStudioPointer(_:)):
             menuItem.state = settings.settings.studioIncludesPointer ? .on : .off

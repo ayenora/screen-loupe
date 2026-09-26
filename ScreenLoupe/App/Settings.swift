@@ -32,6 +32,8 @@ struct Settings: Codable, Equatable {
     var studioDelay = StudioDelay.off
     /// Whether studio pictures, but One Window's, include the pointer.
     var studioIncludesPointer = false
+    /// The format, colour space and scale of studio pictures.
+    var studioOutput = StudioOutput()
     /// Where screenshots are saved; the Desktop when unset.
     var screenshotDirectory: String?
     /// Viewer overlays and the Color Meter panel.
@@ -107,6 +109,7 @@ struct Settings: Codable, Equatable {
         studioWindowShadow = c.value(.studioWindowShadow, or: d.studioWindowShadow)
         studioDelay = c.value(.studioDelay, or: d.studioDelay)
         studioIncludesPointer = c.value(.studioIncludesPointer, or: d.studioIncludesPointer)
+        studioOutput = c.value(.studioOutput, or: d.studioOutput)
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)
@@ -220,14 +223,6 @@ enum ViewerBackground: String, Codable, CaseIterable, Sendable {
 /// light lines over dark ones.
 enum GridLines: String, Codable, CaseIterable, Sendable {
     case auto, dark, light
-}
-
-/// How saved screenshots are named.
-enum FileNameStyle: String, Codable, CaseIterable, Sendable {
-    /// `Screen Loupe View 2026-09-24 at 14.20.05`, like macOS screenshots.
-    case macOS
-    /// `ScreenLoupe-View-20260924-142005`.
-    case compact
 }
 
 @MainActor

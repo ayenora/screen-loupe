@@ -159,7 +159,7 @@ struct ScreenshotSettingsView: View {
             SettingsRow("File name") {
                 Picker("File name", selection: store.binding(\.fileNameStyle)) {
                     ForEach(FileNameStyle.allCases, id: \.self) { style in
-                        Text(ScreenshotExporter.fileName(kind: "View", style: style)).tag(style)
+                        Text(ScreenshotName.fileName(kind: "View", style: style)).tag(style)
                     }
                 }
                 .labelsHidden().fixedSize()
