@@ -51,9 +51,13 @@ final class StudioPalette: NSPanel {
         didSet { updateOneWindowButton() }
     }
 
-    /// Whether One Window has a window.
+    /// Whether One Window has a window. Its pictures take the window alone, so the buttons for what
+    /// else a picture holds are off meanwhile, showing their settings.
     var hasOneWindow = false {
-        didSet { updateOneWindowButton() }
+        didSet {
+            updateOneWindowButton()
+            for button in [leaveOutWindowsButton, dockButton, pointerButton] { button.isEnabled = !hasOneWindow }
+        }
     }
 
     /// Filled while the window is picked and while one is chosen.
@@ -513,7 +517,19 @@ private final class PaletteButton: NSButton {
         }
     }
 
+    /// Off, the toolbar's disabled look: the symbol in the tertiary label colour, a toggle's on fill
+    /// kept, as a disabled menu item keeps its check mark.
+    override var isEnabled: Bool {
+        didSet {
+            // Else the cell halves the tinted symbol's alpha again, well below the tertiary colour.
+            (cell as? NSButtonCell)?.imageDimsWhenDisabled = false
+            contentTintColor = isEnabled ? .labelColor : .tertiaryLabelColor
+        }
+    }
+
+    /// A click on a button that is off does nothing, and its name stays.
     override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
         (window as? StudioPalette)?.endHover()
         super.mouseDown(with: event)
     }

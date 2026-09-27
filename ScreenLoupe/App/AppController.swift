@@ -343,6 +343,9 @@ extension AppController: NSMenuItemValidation {
     /// Reads the windows only when they exist: opening a menu doesn't build them.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let canExport = builtWindows?.export.canExport == true
+        // One Window takes a chosen window alone: the items for what else a picture holds are off,
+        // their settings kept.
+        let studioHasOneWindow = builtWindows?.studio.oneWindowMode.chosen != nil
         switch menuItem.action {
         case #selector(toggleCaptureArea(_:)):
             let isVisible = builtWindows?.captureArea.isVisible == true
@@ -388,7 +391,7 @@ extension AppController: NSMenuItemValidation {
             return true
         case #selector(toggleStudioPointer(_:)):
             menuItem.state = settings.settings.studioIncludesPointer ? .on : .off
-            return true
+            return !studioHasOneWindow
         case #selector(chooseStudioBackground(_:)):
             let background = menuItem.representedObject as? StudioBackground
             menuItem.state = background == settings.settings.studioBackground ? .on : .off
@@ -407,9 +410,9 @@ extension AppController: NSMenuItemValidation {
             return true
         case #selector(toggleStudioLeaveOutWindows(_:)):
             menuItem.state = builtWindows?.studio.isLeavingOutWindows == true ? .on : .off
-            return builtWindows?.studio.isVisible == true
+            return builtWindows?.studio.isVisible == true && !studioHasOneWindow
         case #selector(bringBackStudioWindows(_:)):
-            return builtWindows?.studio.hasLeftOutWindows == true
+            return builtWindows?.studio.hasLeftOutWindows == true && !studioHasOneWindow
         case #selector(toggleStudioOneWindow(_:)):
             // Checked while the window is picked; a chosen window can be let go also while the
             // studio is hidden.
@@ -422,15 +425,16 @@ extension AppController: NSMenuItemValidation {
             return true
         case #selector(toggleStudioLeaveOutDock(_:)):
             menuItem.state = settings.settings.studioLeavesOutDock ? .on : .off
-            return true
+            return !studioHasOneWindow
         case #selector(toggleStudioLeaveOutDesktopIcons(_:)):
-            // A background other than the screen leaves them out anyway.
+            // A background other than the screen leaves them out anyway; a chosen window is taken
+            // alone.
             let current = settings.settings
             let leaveOut = StudioLeaveOut(
                 dock: current.studioLeavesOutDock, desktopIcons: current.studioLeavesOutDesktopIcons,
                 background: current.studioBackground, windows: [])
             menuItem.state = leaveOut.desktopIcons ? .on : .off
-            return !leaveOut.wallpaper
+            return !leaveOut.wallpaper && !studioHasOneWindow
         case #selector(toggleMeasuringRuler(_:)):
             menuItem.state = builtWindows?.viewer.isRulerOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true
