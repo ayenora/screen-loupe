@@ -663,8 +663,10 @@ final class StudioController {
     /// when its countdown ends, is written so, whatever Output says meanwhile.
     private var pressedOutput = StudioOutput()
     /// Capture, Copy or Save pressed: `StudioCountdown.after` decides — cancel a running countdown,
-    /// refuse now, take now, or count down, stopping a running window picker first.
+    /// refuse now, take now, or count down, stopping a running window picker first. Any press
+    /// closes an open list.
     private func press(_ shot: StudioShot) {
+        listPanel.dismiss()
         pressedOutput = settings.settings.studioOutput
         let pickerRunning = windowPicker != nil || oneWindowPicker != nil || frame.isPickingWindow
         advance(
