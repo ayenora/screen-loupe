@@ -115,6 +115,7 @@ final class StudioPalette: NSPanel {
         // Dragged by any place but a button: the margins, the gaps and the groups' views all let
         // a mouse-down move the window, and the buttons don't.
         isMovableByWindowBackground = true
+        acceptsMouseMovedEvents = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         tabbingMode = .disallowed
@@ -433,7 +434,24 @@ private final class PaletteButton: NSButton {
         isToggle = true
     }
 
+    /// Whether the pointer is on the button where it takes the mouse, as the palette was last told.
+    private var isHovered = false
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// Only inside its slot in the group and the group's rounded outline, `point` in the superview's
+    /// coordinates: the group's stack, which fills the group. The slot is the alignment rect the
+    /// stack lays out, `buttonSize`; the frame is taller by the symbol's alignment insets and
+    /// overlaps the neighbours. The square corners outside the outline fall through to the stack,
+    /// which lets a mouse-down drag the palette.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let group = superview?.bounds,
+            PaletteHitShape.buttonTakes(
+                point, buttonFrame: alignmentRect(forFrame: frame), group: group,
+                radius: ToolbarLook.current.groupRadius)
+        else { return nil }
+        return super.hitTest(point)
+    }
 
     /// The toolbar's on and pressed look, under the symbol. A momentary button's `state` flips on
     /// every click too, though AppKit doesn't show it: only a toggle's is drawn.
@@ -446,11 +464,36 @@ private final class PaletteButton: NSButton {
         super.updateTrackingAreas()
         for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
         addTrackingArea(
-            NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+            NSTrackingArea(
+                rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { (window as? StudioPalette)?.pointerEntered(self) }
-    override func mouseExited(with event: NSEvent) { (window as? StudioPalette)?.pointerExited(self) }
+    /// From outside the frame, so not hovered yet, even if hiding the palette sent no exit.
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = false
+        updateHover(event)
+    }
+    override func mouseMoved(with event: NSEvent) { updateHover(event) }
+
+    override func mouseExited(with event: NSEvent) {
+        guard isHovered else { return }
+        isHovered = false
+        (window as? StudioPalette)?.pointerExited(self)
+    }
+
+    /// Hovered only where the button takes the mouse: not in a square corner outside the outline.
+    private func updateHover(_ event: NSEvent) {
+        guard let superview else { return }
+        let inside = hitTest(superview.convert(event.locationInWindow, from: nil)) != nil
+        guard inside != isHovered else { return }
+        isHovered = inside
+        if inside {
+            (window as? StudioPalette)?.pointerEntered(self)
+        } else {
+            (window as? StudioPalette)?.pointerExited(self)
+        }
+    }
 
     override func mouseDown(with event: NSEvent) {
         (window as? StudioPalette)?.endHover()
