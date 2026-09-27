@@ -231,6 +231,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.viewerView.frameArrived()
     }
 
+    /// The next frame keeps the framing (`AreaResizeTracker.forget`).
+    func forgetAreaOrigin() {
+        content.viewerView.forgetAreaOrigin()
+    }
+
     /// Shows or clears an interrupted capture.
     func setCaptureProblem(_ problem: CaptureProblem?) {
         let statusView = content.statusView

@@ -49,6 +49,10 @@ final class OverlayFrameController {
     private(set) var captureRect: CGRect = .zero
     /// Called whenever `captureRect` changes.
     var onChange: (() -> Void)?
+    /// True during `onChange` when the magnet moved the area with its window.
+    private(set) var isFollowingWindow = false
+    /// Called when the magnet turns off or lets go of its window.
+    var onMagnetStopped: (() -> Void)?
     /// Called when the mouse moves anywhere on screen while the frame is shown.
     var onMouseMoved: (() -> Void)?
     /// Called by the frame's raise button: bring the Viewer forward.
@@ -402,7 +406,9 @@ final class OverlayFrameController {
         magnet?.badReads = 0
         if now.frame != held.window.frame {
             magnet?.window = now
+            isFollowingWindow = true
             apply(WindowMagnet.area(at: held.placement, on: now.frame), persist: false)
+            isFollowingWindow = false
             magnetMoved = true
         } else if magnetMoved {
             // Saved once the window stops, not on every step of its move.
@@ -434,6 +440,7 @@ final class OverlayFrameController {
             magnetMoved = false
             settings.update { $0[keyPath: kind.savedRect] = captureRect }
         }
+        onMagnetStopped?()
     }
 
     // MARK: Notice

@@ -155,12 +155,16 @@ final class ScreenCaptureManager: NSObject {
             let configuration = Self.configuration(for: geometry, showsCursor: showsCursor)
             if let stream, streamDisplayID == display.displayID {
                 frameStore.setGeometry(geometry)
-                try await withTimeout(seconds: Self.callTimeout) { try await stream.updateConfiguration(configuration) }
+                let tookEffect = try await withTimeout(seconds: Self.callTimeout) {
+                    try await stream.updateConfiguration(configuration)
+                    return mach_absolute_time()
+                }
+                frameStore.geometryTookEffect(geometry, at: tookEffect)
             } else {
                 // A new display gets a new stream: swapping the filter of a running stream would apply
                 // the old display's source rect to the new display until the configuration follows.
                 await stop()
-                frameStore.setGeometry(geometry)
+                frameStore.setGeometry(geometry, configuredAt: 0)
                 try await start(display, in: content, configuration: configuration)
             }
             applied = geometry
@@ -389,9 +393,17 @@ private final class StreamOutput: NSObject, SCStreamOutput, @unchecked Sendable 
         #if DEBUG
             frameStore.count { $0.complete += 1 }
         #endif
-        if frameStore.store(pixelBuffer) {
+        if frameStore.store(pixelBuffer, capturedAt: Self.displayTime(of: sampleBuffer)) {
             frameArrived()
         }
+    }
+
+    /// When the frame was captured, in host time (`mach_absolute_time`).
+    private static func displayTime(of sampleBuffer: CMSampleBuffer) -> UInt64? {
+        let attachments =
+            CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+            as? [[SCStreamFrameInfo: Any]]
+        return attachments?.first?[.displayTime] as? UInt64
     }
 
     /// Idle frames (nothing changed) and blank frames carry no new image.

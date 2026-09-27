@@ -25,6 +25,7 @@
 				Geometry/ImageBudget.swift,
 				Geometry/ImageOrientation.swift,
 				Geometry/LenientDecoding.swift,
+				Geometry/MagnetHold.swift,
 				Geometry/OverlayLayout.swift,
 				Geometry/ReferenceLayers.swift,
 				Geometry/ScreenshotName.swift,

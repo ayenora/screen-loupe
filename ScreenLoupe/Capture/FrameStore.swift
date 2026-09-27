@@ -108,13 +108,46 @@ final class FrameStore: @unchecked Sendable {
     private var geometry: CaptureGeometry?
     private var frozen: ViewerFrame?
     private var capture: ViewerFrame?
+    private var held: ViewerFrame?
+    /// When the stream took `geometry` on (host time); `nil` until it has.
+    private var configuredAt: UInt64?
+    /// Whether `frame` was captured after that (`MagnetHold.isCaptured`).
+    private var frameIsCurrent = false
 
     /// Freezing keeps the live frame as a still, so the Viewer, the Color Meter and Copy/Save all
     /// keep the frame that was showing (docs/product.md, Freeze frame). Setting it while frozen
-    /// keeps the frame frozen first; without a live frame there is nothing to freeze.
+    /// keeps the frame frozen first; without a live frame there is nothing to freeze. Freezing
+    /// during a hold freezes the held frame and ends the hold.
     var isFrozen: Bool {
         get { lock.withLock { frozen != nil } }
-        set { lock.withLock { frozen = newValue ? frozen ?? frame : nil } }
+        set {
+            lock.withLock {
+                frozen = newValue ? frozen ?? held ?? frame : nil
+                if newValue { held = nil }
+            }
+        }
+    }
+
+    /// Whether the Viewer holds a live frame while the magnet moves the area (`MagnetHold`).
+    var isHolding: Bool {
+        lock.withLock { held != nil }
+    }
+
+    /// Holds the live frame the Viewer shows: `shownFrame` keeps it while live frames go on being
+    /// stored. Nothing to hold under a still picture or without a live frame.
+    func hold() {
+        lock.withLock { if capture == nil, frozen == nil, held == nil { held = frame } }
+    }
+
+    func releaseHold() {
+        lock.withLock { held = nil }
+    }
+
+    /// Whether the latest live frame shows `area`, the area where it is now (`MagnetHold.frameShows`).
+    func latestFrameShows(_ area: CaptureGeometry?) -> Bool {
+        lock.withLock {
+            MagnetHold.frameShows(area, frameGeometry: frame?.geometry, capturedAfterConfiguring: frameIsCurrent)
+        }
     }
 
     /// A recent capture, or an opened image, shown in place of the live frame (docs/product.md,
@@ -131,22 +164,32 @@ final class FrameStore: @unchecked Sendable {
         lock.withLock { capture ?? frozen }
     }
 
-    /// The frame the Viewer shows: the still one, or else the latest live frame.
+    /// The frame the Viewer shows: the still one, or else the held one, or else the latest live frame.
     var shownFrame: ViewerFrame? {
-        lock.withLock { capture ?? frozen ?? frame }
+        lock.withLock { capture ?? frozen ?? held ?? frame }
     }
 
     /// The geometry the stream is currently configured with. Frames arriving from now on carry it.
-    func setGeometry(_ geometry: CaptureGeometry?) {
+    /// `configuredAt` is when the stream took it on (host time): 0 for a new stream, whose every
+    /// frame has it; `nil` while an update of a running stream is in flight (`geometryTookEffect`).
+    func setGeometry(_ geometry: CaptureGeometry?, configuredAt: UInt64? = nil) {
         lock.withLock {
             self.geometry = geometry
+            self.configuredAt = configuredAt
             if geometry == nil { frame = nil }
         }
     }
 
-    /// Stores a buffer from the stream. Returns `false` when no geometry is set (the stream is
-    /// stopping) or the buffer doesn't match it (a frame from before the last reconfiguration).
-    func store(_ pixelBuffer: CVPixelBuffer) -> Bool {
+    /// The running stream's update to `geometry` finished at `time` (host time): frames captured
+    /// since have its source rect.
+    func geometryTookEffect(_ geometry: CaptureGeometry, at time: UInt64) {
+        lock.withLock { if self.geometry == geometry { configuredAt = time } }
+    }
+
+    /// Stores a buffer from the stream, captured at `capturedAt` (host time). Returns `false` when no
+    /// geometry is set (the stream is stopping) or the buffer doesn't match it (a frame from before
+    /// the last reconfiguration).
+    func store(_ pixelBuffer: CVPixelBuffer, capturedAt: UInt64?) -> Bool {
         lock.withLock {
             let size = PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
             guard let geometry, size == geometry.outputSize else {
@@ -156,6 +199,7 @@ final class FrameStore: @unchecked Sendable {
                 return false
             }
             frame = ViewerFrame(pixelBuffer: pixelBuffer, geometry: geometry)
+            frameIsCurrent = MagnetHold.isCaptured(at: capturedAt, afterConfiguringAt: configuredAt)
             #if DEBUG
                 stats.stored += 1
             #endif

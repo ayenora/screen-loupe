@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 
 /// Owns the two independent windows — the Capture Area overlay and the Viewer — and the capture
 /// stream between them, and the Screenshot studio beside them.
@@ -31,12 +32,15 @@ final class WindowManager {
             // A still picture in the Viewer (frozen, a recent capture) stays put; the live frame
             // waits in the store.
             guard let self, capture.frameStore.still == nil else { return }
+            // While the magnet moves the area the Viewer holds its frame; this one may end the hold.
+            if magnetHold != nil { return checkMagnetHold() }
             viewer.frameArrived()
             inspector.frameArrived()
             updateViewedPart()
         }
         viewer.onShowCapture = { [weak self] in
             guard let self else { return }
+            if viewer.isShowingCapture { magnetHoldEvent(.recentCaptureShown) }
             // A delayed freeze is for the live view it counted over.
             if viewer.isShowingCapture { cancelFreezeCountdown() }
             trackCursor()
@@ -52,9 +56,14 @@ final class WindowManager {
         settings.observe(\.capturesCursor) { [weak self] in self?.capture.showsCursor = $0 }
         // Stop Sharing in the system menu acts like closing the Viewer: both windows go away.
         capture.onUserStopped = { [weak self] in self?.viewer.close() }
-        capture.onProblem = { [weak self] problem in self?.viewer.setCaptureProblem(problem) }
+        capture.onProblem = { [weak self] problem in
+            if problem != nil { self?.magnetHoldEvent(.captureInterrupted) }
+            self?.viewer.setCaptureProblem(problem)
+        }
+        captureArea.onMagnetStopped = { [weak self] in self?.magnetHoldEvent(.magnetStopped) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
         viewer.onPermissionChange = { [weak self] in
+            self?.magnetHoldEvent(.captureInterrupted)
             self?.updateCapture()
             self?.updateViewedPart()
         }
@@ -62,6 +71,7 @@ final class WindowManager {
         viewer.onClose = { [weak self] in
             guard let self else { return }
             isViewerOpen = false
+            magnetHoldEvent(.viewerClosed)
             viewer.showLive()
             setFrozen(false)
             saveViewerState()
@@ -71,8 +81,14 @@ final class WindowManager {
             updateViewedPart()
         }
         captureArea.onChange = { [weak self] in
-            self?.updateCapture()
-            self?.trackCursor()
+            guard let self else { return }
+            if captureArea.isFollowingWindow {
+                magnetMovedArea()
+            } else {
+                magnetHoldEvent(.areaChanged(to: captureArea.captureRect))
+            }
+            updateCapture()
+            trackCursor()
         }
         captureArea.onMouseMoved = { [weak self] in self?.trackCursor() }
         captureArea.onViewportHandleDragBegan = { [weak self] in
@@ -126,17 +142,25 @@ final class WindowManager {
 
     /// Tells the frame which part of the area the Viewer shows (docs/product.md, Capture Area), placed
     /// with the geometry of the frame the Viewer shows, so it matches the image even while the area
-    /// is dragged ahead of the next frame. Only of the live view: a still picture (frozen, a recent
-    /// capture) is of another moment, the area may have moved since, and a closed Viewer or one
-    /// asking for permission shows nothing.
+    /// is dragged ahead of the next frame. While the Viewer holds a frame as the magnet moves the
+    /// area, on the area where it is (`MagnetHold.viewedPartGeometry`). Only of the live view: a still picture (frozen, a recent capture) is of another
+    /// moment, the area may have moved since, and a closed Viewer or one asking for permission shows
+    /// nothing.
     private func updateViewedPart() {
-        guard isViewerOpen, viewer.showsCapture, capture.frameStore.still == nil,
-            let geometry = capture.frameStore.shownFrame?.geometry
+        guard isViewerOpen, viewer.showsCapture, capture.frameStore.still == nil, let geometry = viewedPartGeometry
         else {
             captureArea.viewedPart = nil
             return
         }
         captureArea.viewedPart = DisplayCoordinateConverter.viewedPart(of: zoomPan.state, in: geometry)?.rect
+    }
+
+    /// The geometry the outline of the viewed part is placed with: the shown frame's, or during a
+    /// hold `MagnetHold.viewedPartGeometry`.
+    private var viewedPartGeometry: CaptureGeometry? {
+        let shown = capture.frameStore.shownFrame?.geometry
+        guard magnetHold != nil else { return shown }
+        return MagnetHold.viewedPartGeometry(area: captureArea.captureGeometry, held: shown)
     }
 
     /// A drag of the viewport handle on the Capture Area, which pans the Viewer.
@@ -156,7 +180,7 @@ final class WindowManager {
     /// Only while the outline shows, on the geometry it is placed with.
     private func dragViewedPart(by delta: CGVector) {
         guard var drag = viewedPartDrag, isViewerOpen, viewer.showsCapture, capture.frameStore.still == nil,
-            let geometry = capture.frameStore.shownFrame?.geometry
+            let geometry = viewedPartGeometry
         else { return }
         if zoomPan.state != drag.last {
             drag.start = zoomPan.state
@@ -303,7 +327,9 @@ final class WindowManager {
     private func setFrozen(_ frozen: Bool, hint: String? = nil) {
         cancelFreezeCountdown()
         let changed = frozen != isFrozen
+        // Freezing during a hold freezes the held frame.
         capture.frameStore.isFrozen = frozen
+        if frozen { magnetHoldEvent(.frozen) }
         viewer.showFreeze(frozen ? .frozen(hint: hint) : .hidden)
         // Live frames kept arriving while frozen: resuming shows the latest at once, not the frozen
         // one until the screen next changes.
@@ -312,6 +338,76 @@ final class WindowManager {
             inspector.frameArrived()
         }
         updateViewedPart()
+    }
+
+    // MARK: Holding while the magnet moves the area
+
+    /// The Viewer holds its frame while the magnet moves the area with its window (`MagnetHold`);
+    /// `nil` otherwise.
+    private var magnetHold: MagnetHold?
+    /// Checks the hold when no frame comes in to check it; runs only during a hold.
+    private var magnetHoldTimer: Timer?
+
+    /// The magnet moved the area: the live view holds the frame it shows, or goes on holding it.
+    private func magnetMovedArea() {
+        let now = ProcessInfo.processInfo.systemUptime
+        if magnetHold != nil {
+            magnetHold?.moved(to: captureArea.captureRect, at: now)
+        } else {
+            guard isViewerOpen, viewer.showsCapture else { return }
+            capture.frameStore.hold()
+            guard capture.frameStore.isHolding else { return }
+            magnetHold = MagnetHold(movedTo: captureArea.captureRect, at: now)
+        }
+        if magnetHoldTimer == nil { scheduleMagnetHoldCheck(in: MagnetHold.settle) }
+        updateViewedPart()
+    }
+
+    /// On each live frame, and once the window has been still for the settle time, since the frame
+    /// of the area may have come in before: the hold ends if that frame is in.
+    private func checkMagnetHold() {
+        guard let magnetHold else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let shows = capture.frameStore.latestFrameShows(captureArea.captureGeometry)
+        magnetHoldEvent(.check(at: now, showsArea: shows))
+        if self.magnetHold != nil, magnetHoldTimer == nil, let wait = magnetHold.untilSettled(at: now) {
+            scheduleMagnetHoldCheck(in: wait)
+        }
+    }
+
+    private func scheduleMagnetHoldCheck(in seconds: TimeInterval) {
+        let timer = Timer(timeInterval: seconds, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.magnetHoldTimer = nil
+                self?.checkMagnetHold()
+            }
+        }
+        // Also while a menu is open, as the magnet's own timer.
+        RunLoop.main.add(timer, forMode: .common)
+        magnetHoldTimer = timer
+    }
+
+    /// Ends the hold if `event` ends it (`MagnetHold.ends(on:)`). The live view goes on with the
+    /// latest frame, unless a still picture or a closed Viewer takes its place.
+    private func magnetHoldEvent(_ event: MagnetHold.Event) {
+        guard let magnetHold, magnetHold.ends(on: event) else { return }
+        #if DEBUG
+            Logger(category: "magnet").debug("Hold ended: \(String(describing: event), privacy: .public)")
+        #endif
+        self.magnetHold = nil
+        magnetHoldTimer?.invalidate()
+        magnetHoldTimer = nil
+        capture.frameStore.releaseHold()
+        switch event {
+        case .frozen, .recentCaptureShown, .viewerClosed:
+            return
+        case .check, .areaChanged, .magnetStopped, .displaysChanged, .captureInterrupted:
+            // The area moved since the frame the Viewer last took: a move, not an edge drag.
+            viewer.forgetAreaOrigin()
+            viewer.frameArrived()
+            inspector.frameArrived()
+            updateViewedPart()
+        }
     }
 
     func resetZoom() {
@@ -336,6 +432,7 @@ final class WindowManager {
     #endif
 
     func displaysChanged() {
+        magnetHoldEvent(.displaysChanged)
         captureArea.screenParametersChanged()
         studio.screenParametersChanged()
         capture.displaysChanged()
