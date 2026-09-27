@@ -138,6 +138,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.showCustomSizes()
     }
 
+    @objc func fitStudioToWindow(_ sender: Any?) {
+        windows.studio.toggleFitToWindow()
+    }
+
     @objc func toggleStudioAspectLock(_ sender: Any?) {
         windows.studio.toggleAspectLock()
     }
@@ -345,7 +349,8 @@ extension AppController: NSMenuItemValidation {
             let isVisible = builtWindows?.studio.isVisible == true
             menuItem.title = isVisible ? "Hide Screenshot Studio" : "Show Screenshot Studio"
             return true
-        case #selector(captureStudio(_:)), #selector(copyStudio(_:)), #selector(saveStudio(_:)):
+        case #selector(captureStudio(_:)), #selector(copyStudio(_:)), #selector(saveStudio(_:)),
+            #selector(fitStudioToWindow(_:)):
             return builtWindows?.studio.isVisible == true
         case #selector(applyStudioSize(_:)):
             let checked = (menuItem.representedObject as? [Int]).map {

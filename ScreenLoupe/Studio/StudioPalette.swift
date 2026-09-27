@@ -20,6 +20,7 @@ final class StudioPalette: NSPanel {
     var onSave: (() -> Void)?
     /// Called with the Size button, to open the sizes beside it.
     var onSize: ((NSView) -> Void)?
+    var onFitToWindow: (() -> Void)?
     var onToggleAspectLock: (() -> Void)?
     /// Called with the Timer button, to open the delays beside it.
     var onTimer: ((NSView) -> Void)?
@@ -77,6 +78,12 @@ final class StudioPalette: NSPanel {
         didSet { aspectLockButton.state = aspectLocked ? .on : .off }
     }
 
+    /// While Fit to Window's picker runs: its button shows pressed, and a click on it, above the
+    /// picker's panels, cancels.
+    var isPickingWindow = false {
+        didSet { fitToWindowButton.isPicking = isPickingWindow }
+    }
+
     /// The Size, Timer or Background button whose list is open: it shows pressed until the list
     /// closes. Set by the studio when it opens a list, cleared when the list is ordered out.
     var openListButton: NSView? {
@@ -87,6 +94,7 @@ final class StudioPalette: NSPanel {
         }
     }
 
+    private let fitToWindowButton = PaletteButton()
     private let aspectLockButton = PaletteButton()
     private let backgroundButton = PaletteButton()
     private let oneWindowButton = PaletteButton()
@@ -124,6 +132,7 @@ final class StudioPalette: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
         Self.configure(saveButton, "square.and.arrow.down", "Save…", #selector(saveClicked))
+        Self.configure(fitToWindowButton, "rectangle.dashed", "Fit to Window", #selector(fitToWindowClicked))
         Self.configure(aspectLockButton, "aspectratio", "Aspect Lock", #selector(aspectLockClicked))
         aspectLockButton.makeToggle()
         aspectLockButton.alternateImage = NSImage(
@@ -147,6 +156,7 @@ final class StudioPalette: NSPanel {
             ],
             [
                 Self.button("arrow.up.left.and.arrow.down.right", "Size", #selector(sizeClicked)),
+                fitToWindowButton,
                 aspectLockButton,
                 timerButton,
             ],
@@ -295,6 +305,7 @@ final class StudioPalette: NSPanel {
     @objc private func copyClicked() { onCopy?() }
     @objc private func saveClicked() { onSave?() }
     @objc private func sizeClicked(_ sender: NSButton) { onSize?(sender) }
+    @objc private func fitToWindowClicked() { onFitToWindow?() }
 
     /// Shows the setting, not the click: the setting sets it back.
     @objc private func aspectLockClicked(_ sender: NSButton) {
@@ -432,6 +443,11 @@ private final class PaletteButton: NSButton {
         didSet { needsDisplay = true }
     }
 
+    /// While the window picker it started runs, it is filled as though pressed.
+    var isPicking = false {
+        didSet { needsDisplay = true }
+    }
+
     /// Whether the pointer is on the button where it takes the mouse, as the palette was last told.
     private var isHovered = false
 
@@ -452,15 +468,15 @@ private final class PaletteButton: NSButton {
     }
 
     /// The toolbar's on and pressed look, in the button's slot: the bounds are taller by the
-    /// symbol's alignment insets. Pressed, or with its list open, a grey fill under the label-coloured
-    /// symbol; a toggle that is on, the accent colour under a near-white symbol, both faded while the
-    /// button is off, as the toolbar's are. A momentary button's `state` flips on every click too,
-    /// though AppKit doesn't show it: only a toggle's is drawn. The colours resolve here, so an
-    /// appearance or accent change shows at the next draw.
+    /// symbol's alignment insets. Pressed, with its list open or while its picker runs, a grey fill
+    /// under the label-coloured symbol; a toggle that is on, the accent colour under a near-white
+    /// symbol, both faded while the button is off, as the toolbar's are. A momentary button's `state`
+    /// flips on every click too, though AppKit doesn't show it: only a toggle's is drawn. The colours
+    /// resolve here, so an appearance or accent change shows at the next draw.
     override func draw(_ dirtyRect: NSRect) {
         let slot = convert(alignmentRect(forFrame: frame), from: superview)
         let tint: NSColor
-        if isHighlighted || isListOpen {
+        if isHighlighted || isListOpen || isPicking {
             ToolbarLook.current.drawFill(.systemFill, in: slot)
             tint = isEnabled ? .labelColor : .tertiaryLabelColor
         } else if isToggle && state == .on {

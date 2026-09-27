@@ -54,15 +54,15 @@ final class StudioController {
         frame = OverlayFrameController(settings: settings, kind: .studio) {
             StudioPlacement.defaultFrame(in: $0, paletteWidth: StudioPalette.width)
         }
-        // A window picked with Aspect Lock on gives the lock its ratio, as a size does.
-        frame.onPickWindow = { [weak self] in
-            self?.advance(.pickerStarted)
-            self?.frame.pickWindow { self?.retakeAspectRatio() }
-        }
+        frame.onPickWindow = { [weak self] in self?.toggleFitToWindow() }
+        // The palette's Fit to Window button shows pressed while the frame's picker runs.
+        frame.onPickerStarted = { [weak self] in self?.palette.isPickingWindow = true }
+        frame.onPickerEnded = { [weak self] in self?.palette.isPickingWindow = false }
         palette.onCapture = { [weak self] in self?.capture() }
         palette.onCopy = { [weak self] in self?.copy() }
         palette.onSave = { [weak self] in self?.save() }
         palette.onSize = { [weak self] in self?.showSizes(beside: $0) }
+        palette.onFitToWindow = { [weak self] in self?.toggleFitToWindow() }
         palette.onToggleAspectLock = { [weak self] in self?.toggleAspectLock() }
         palette.onTimer = { [weak self] in self?.showDelays(beside: $0) }
         palette.onBackground = { [weak self] in self?.showBackgrounds(beside: $0) }
@@ -127,8 +127,11 @@ final class StudioController {
         updateBackdrop()
     }
 
+    /// Ends Fit to Window's picker too, or a pick would show the frame alone; One Window's ends
+    /// with `.hidden`.
     func hide() {
         listPanel.dismiss()
+        frame.stopPickingWindow()
         frame.hide()
         palette.orderOut(nil)
         updatePositionAvoiding()
@@ -156,6 +159,17 @@ final class StudioController {
     func applySize(_ size: PixelSize) {
         guard isVisible else { return }
         if frame.resize(toPixels: size) { retakeAspectRatio() }
+    }
+
+    /// Fit to Window, from the frame's tab, the palette or the Screenshot menu: starts the window
+    /// picker, and a click on a window fits the frame to it; while the picker runs, cancels it.
+    /// Starting it is a picker start, which stops a countdown.
+    func toggleFitToWindow() {
+        if frame.isPickingWindow { return frame.stopPickingWindow() }
+        advance(.pickerStarted)
+        listPanel.dismiss()
+        // A window picked with Aspect Lock on gives the lock its ratio, as a size does.
+        frame.pickWindow { [weak self] in self?.retakeAspectRatio() }
     }
 
     /// With Aspect Lock on, the lock keeps the frame's ratio from now on.

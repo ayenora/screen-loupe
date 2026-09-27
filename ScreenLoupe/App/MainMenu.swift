@@ -149,6 +149,9 @@ enum MainMenu {
         let sizesItem = submenuItem(sizes)
         sizesItem.title = sizes.title
         menu.addItem(sizesItem)
+        let fit = menu.addItem(
+            withTitle: "Fit to Window…", action: #selector(AppController.fitStudioToWindow(_:)), keyEquivalent: "")
+        fit.target = target
         let aspectLock = menu.addItem(
             withTitle: "Lock Aspect Ratio", action: #selector(AppController.toggleStudioAspectLock(_:)),
             keyEquivalent: "")

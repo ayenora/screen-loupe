@@ -61,6 +61,8 @@ final class OverlayFrameController {
     var onPickWindow: (() -> Void)?
     /// Called when its window picker opens, for Fit to Window or the magnet.
     var onPickerStarted: (() -> Void)?
+    /// Called when that picker closes, by a pick or a cancel.
+    var onPickerEnded: (() -> Void)?
 
     /// The part of the area the Viewer shows, in AppKit global coordinates; `nil` while it shows the
     /// whole area, or nothing of it live. Outlined while the Viewer's image moves and while the cursor
@@ -344,6 +346,7 @@ final class OverlayFrameController {
             windows: ScreenWindows.windows(converter: converter), tint: view.style.accent, hint: hint
         ) { [weak self] picked in
             self?.picker = nil
+            self?.onPickerEnded?()
             if let picked { onPicked(picked) }
         }
         self.picker = picker
