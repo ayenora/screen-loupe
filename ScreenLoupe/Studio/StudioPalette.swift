@@ -86,6 +86,16 @@ final class StudioPalette: NSPanel {
         didSet { aspectLockButton.state = aspectLocked ? .on : .off }
     }
 
+    /// The Size, Timer or Background button whose list is open: it shows pressed until the list
+    /// closes. Set by the studio when it opens a list, cleared when the list is ordered out.
+    var openListButton: NSView? {
+        didSet {
+            guard openListButton !== oldValue else { return }
+            (oldValue as? PaletteButton)?.isListOpen = false
+            (openListButton as? PaletteButton)?.isListOpen = true
+        }
+    }
+
     private let aspectLockButton = PaletteButton()
     private let backgroundButton = PaletteButton()
     private let leaveOutWindowsButton = PaletteButton()
@@ -410,9 +420,9 @@ private struct ToolbarLook {
         return groups
     }
 
-    /// The on or pressed fill of a button with `bounds`.
-    @MainActor func drawFill(in bounds: CGRect) {
-        let rect = bounds.insetBy(dx: fillInset.width, dy: fillInset.height)
+    /// The on or pressed fill of a button whose slot is `slot`.
+    @MainActor func drawFill(in slot: CGRect) {
+        let rect = slot.insetBy(dx: fillInset.width, dy: fillInset.height)
         let radius = fillRadius ?? min(rect.width, rect.height) / 2
         NSColor.systemFill.setFill()
         NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
@@ -434,6 +444,11 @@ private final class PaletteButton: NSButton {
         isToggle = true
     }
 
+    /// While the list the button opened shows, it is filled as though pressed.
+    var isListOpen = false {
+        didSet { needsDisplay = true }
+    }
+
     /// Whether the pointer is on the button where it takes the mouse, as the palette was last told.
     private var isHovered = false
 
@@ -453,10 +468,13 @@ private final class PaletteButton: NSButton {
         return super.hitTest(point)
     }
 
-    /// The toolbar's on and pressed look, under the symbol. A momentary button's `state` flips on
-    /// every click too, though AppKit doesn't show it: only a toggle's is drawn.
+    /// The toolbar's on and pressed look, under the symbol, in the button's slot: the bounds are
+    /// taller by the symbol's alignment insets. A momentary button's `state` flips on every click
+    /// too, though AppKit doesn't show it: only a toggle's is drawn.
     override func draw(_ dirtyRect: NSRect) {
-        if isHighlighted || (isToggle && state == .on) { ToolbarLook.current.drawFill(in: bounds) }
+        if isHighlighted || isListOpen || (isToggle && state == .on) {
+            ToolbarLook.current.drawFill(in: convert(alignmentRect(forFrame: frame), from: superview))
+        }
         super.draw(dirtyRect)
     }
 

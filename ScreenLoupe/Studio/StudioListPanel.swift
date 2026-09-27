@@ -36,6 +36,8 @@ struct SizeRow: View {
 /// opened it, a drag of the palette, hiding the studio, or a click outside it and the palette.
 @MainActor
 final class StudioListPanel: NSPanel {
+    /// Called whenever the list is ordered out, by any of the ways that close it.
+    var onClose: (() -> Void)?
     private var monitors: [Any] = []
 
     init() {
@@ -89,6 +91,11 @@ final class StudioListPanel: NSPanel {
         monitors.removeAll()
         parent?.removeChildWindow(self)
         orderOut(nil)
+    }
+
+    override func orderOut(_ sender: Any?) {
+        super.orderOut(sender)
+        onClose?()
     }
 
     /// A press in another app, or in a window of this app other than the panel and the palette,

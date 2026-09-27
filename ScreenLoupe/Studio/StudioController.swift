@@ -32,10 +32,8 @@ final class StudioController {
     private var isCapturing = false
     /// The last save panel; while it is open, the commands bring it forward instead.
     private var savePanel: NSSavePanel?
-    /// The Size, the Timer or the Background list beside the palette, and which of them it shows.
+    /// The Size, the Timer or the Background list beside the palette; the palette knows whose it is.
     private let listPanel = StudioListPanel()
-    private enum ListKind { case sizes, timer, background }
-    private var shownList: ListKind?
     /// Built the first time Custom Size… is chosen, then kept.
     private var customSizesWindow: NSPanel?
     /// Windows of other apps left out by pointing: for this session only, never saved.
@@ -81,6 +79,7 @@ final class StudioController {
         palette.onTogglePointer = { [weak self] in self?.togglePointer() }
         palette.onHide = { [weak self] in self?.hide() }
         palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
+        listPanel.onClose = { [weak self] in self?.palette.openListButton = nil }
         palette.studioFrame = { [weak self] in self?.frame.captureRect }
         palette.onMoved = { [weak self] in
             guard let self else { return }
@@ -189,7 +188,7 @@ final class StudioController {
     /// The Size list beside the palette's Size button, or closes it while it shows. Nothing is
     /// activated.
     private func showSizes(beside button: NSView) {
-        toggleList(.sizes, beside: button) {
+        toggleList(beside: button) {
             StudioSizeList(
                 current: frame.pixelSize, custom: settings.settings.studioCustomSizes,
                 apply: { [weak self] size in
@@ -204,20 +203,20 @@ final class StudioController {
     }
 
     /// Shows `list` in the list panel beside `button`, or closes the panel when it already shows
-    /// that list; another list in it is replaced.
-    private func toggleList<List: View>(_ kind: ListKind, beside button: NSView, _ list: () -> List) {
-        if listPanel.isVisible, shownList == kind {
+    /// that button's list; another list in it is replaced.
+    private func toggleList<List: View>(beside button: NSView, _ list: () -> List) {
+        if palette.openListButton === button {
             listPanel.dismiss()
             return
         }
         listPanel.dismiss()
-        shownList = kind
         let paletteFrame = palette.frame
         let anchorTop = palette.convertToScreen(button.convert(button.bounds, to: nil)).maxY
         let visible = palette.screen?.visibleFrame ?? paletteFrame
         listPanel.show(list(), beside: palette) {
             StudioPlacement.popoverOrigin(size: $0, beside: paletteFrame, anchorTop: anchorTop, in: visible)
         }
+        palette.openListButton = button
     }
 
     /// The Custom Sizes window: four slots for sizes of the user's own. A non-activating panel, so
@@ -260,7 +259,7 @@ final class StudioController {
 
     /// The Timer list beside the palette's Timer button, or closes it while it shows.
     private func showDelays(beside button: NSView) {
-        toggleList(.timer, beside: button) {
+        toggleList(beside: button) {
             StudioTimerList(current: delay) { [weak self] delay in
                 self?.listPanel.dismiss()
                 self?.chooseDelay(delay)
@@ -274,7 +273,7 @@ final class StudioController {
 
     /// The Background list beside the palette's Background button, or closes it while it shows.
     private func showBackgrounds(beside button: NSView) {
-        toggleList(.background, beside: button) {
+        toggleList(beside: button) {
             StudioBackgroundList(
                 current: background,
                 choose: { [weak self] background in
