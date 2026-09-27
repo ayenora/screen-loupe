@@ -19,8 +19,8 @@ enum OneWindowMode: Equatable, Sendable {
         case toggle(studioVisible: Bool)
         /// The picker's click on a window.
         case picked(OneWindowChoice)
-        /// The picker ended without a window: Escape, a right click, a click on no window, the app
-        /// losing focus.
+        /// The picker ended without a window: Escape, a right click, a click on no window, another
+        /// app becoming active.
         case cancelled
         /// The studio was hidden.
         case hidden

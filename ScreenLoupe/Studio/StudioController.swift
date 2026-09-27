@@ -588,9 +588,14 @@ final class StudioController {
             guard let picked else { return send(.cancelled) }
             let owner = ScreenWindows.owner(picked.id)
             send(.picked(OneWindowChoice(id: picked.id, appName: owner.name ?? "Window")))
-            // The picker made this app active; the chosen window's app takes it back, so the window
-            // is captured looking active.
-            owner.pid.flatMap(NSRunningApplication.init(processIdentifier:))?.activate()
+            // The chosen window's app becomes the active one, so the window is captured looking active.
+            // It takes that from the app active now: another app when picking started from the
+            // palette, this one after the Screenshot menu; a plain `activate()` is refused in the
+            // first case.
+            if let app = owner.pid.flatMap(NSRunningApplication.init(processIdentifier:)) {
+                NSApp.yieldActivation(to: app)
+                app.activate(from: NSWorkspace.shared.frontmostApplication ?? .current, options: [])
+            }
         }
         oneWindowPicker = picker
         picker.start()

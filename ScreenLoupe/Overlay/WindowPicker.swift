@@ -34,7 +34,7 @@ final class WindowPicker {
     }
 
     /// Keeps picking: a click on a window calls `onClick`, a click on no window does nothing, and
-    /// Escape, a right click, the app losing focus or `stop()` ends it with `onFinish`. `windows` is
+    /// Escape, a right click, another app becoming active or `stop()` ends it with `onFinish`. `windows` is
     /// read again on every move and click, since windows move while picking goes on.
     init(
         windows: @escaping () -> [ScreenWindow], tint: NSColor, hint: @escaping (ScreenWindow) -> String,
@@ -50,7 +50,8 @@ final class WindowPicker {
     func start() {
         Self.running?.stop()
         Self.running = self
-        NSApp.activate()
+        // The app isn't activated: that would bring the Viewer forward over the other apps' windows.
+        // A non-activating panel becomes key all the same, and takes Escape.
         for screen in NSScreen.screens {
             let panel = PickerPanel(frame: screen.frame)
             let view = PickerView(tint: tint)
@@ -62,11 +63,17 @@ final class WindowPicker {
         let mouse = NSEvent.mouseLocation
         (panels.first { $0.frame.contains(mouse) } ?? panels.first)?.makeKey()
         mouseMoved()
-        // Switching to another app leaves no panel behind to swallow its clicks.
-        observer = NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.finish(nil) }
+        // Switching to another app leaves no panel behind to swallow its clicks. The app may not be
+        // the active one, so it is another app becoming active that ends picking, not this one
+        // resigning.
+        observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+            MainActor.assumeIsolated {
+                guard pid != NSRunningApplication.current.processIdentifier else { return }
+                self?.finish(nil)
+            }
         }
     }
 
@@ -97,7 +104,7 @@ final class WindowPicker {
     fileprivate func finish(_ picked: ScreenWindow?) {
         guard !panels.isEmpty else { return }
         if Self.running === self { Self.running = nil }
-        observer.map(NotificationCenter.default.removeObserver)
+        observer.map(NSWorkspace.shared.notificationCenter.removeObserver)
         observer = nil
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
