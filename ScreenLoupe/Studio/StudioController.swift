@@ -122,8 +122,7 @@ final class StudioController {
         if !palette.isVisible { placePalette() }
         palette.orderFrontRegardless()
         updatePositionAvoiding()
-        checkOneWindow()
-        updateOneWindowTimer()
+        updateOneWindowWatch()
         updateBackdrop()
     }
 
@@ -137,7 +136,7 @@ final class StudioController {
         updatePositionAvoiding()
         advance(.hidden)
         send(.hidden)
-        updateOneWindowTimer()
+        updateOneWindowWatch()
         updateBackdrop()
     }
 
@@ -567,9 +566,15 @@ final class StudioController {
     /// Off, picking, or on for a window; for this session only, never saved.
     private(set) var oneWindowMode = OneWindowMode.off
     private var oneWindowPicker: WindowPicker?
-    /// Looks once a second whether the chosen window closed, while one is chosen and the studio
-    /// shows.
+    /// The chosen window's outline, while one is chosen and the studio shows.
+    private let oneWindowOutline = OneWindowOutlinePanel()
+    private var oneWindowWatch = OneWindowWatch()
+    /// Reads the chosen window's place about 60 times a second, while one is chosen and the studio
+    /// shows, and only then.
     private var oneWindowTimer: Timer?
+    private var oneWindowSpaceObserver: NSObjectProtocol?
+    /// The displays as they were when the reads started, or at their last change.
+    private var oneWindowConverter: DisplayCoordinateConverter?
 
     /// Starts picking the window for One Window, or ends picking, or lets the chosen window go.
     func toggleOneWindow() {
@@ -581,7 +586,7 @@ final class StudioController {
     }
 
     /// Moves One Window on by `event` (`OneWindowMode.after`) and shows the result: the picker,
-    /// the palette's button, the tab, and "Window gone" when the chosen window closed.
+    /// the palette's button and the chosen window's outline.
     private func send(_ event: OneWindowMode.Event) {
         let old = oneWindowMode
         let new = old.after(event)
@@ -590,11 +595,9 @@ final class StudioController {
         // Set first: stopping the picker reports a cancel, which then changes nothing.
         if old.isPicking { oneWindowPicker?.stop() }
         if new.isPicking { startOneWindowPicker() }
-        if old.chosen != nil, new == .off, case .checked = event { frame.showNotice("Window gone") }
         palette.isPickingOneWindow = new.isPicking
         palette.hasOneWindow = new.chosen != nil
-        frame.tabNote = new.tabNote
-        updateOneWindowTimer()
+        updateOneWindowWatch()
     }
 
     /// As Fit to Window does: the window under the pointer is tinted, a click chooses it, Escape
@@ -624,25 +627,48 @@ final class StudioController {
         picker.start()
     }
 
-    /// Lets the chosen window go when it closed. A minimised or hidden one, or one on another
-    /// Space, still exists and stays chosen.
-    private func checkOneWindow() {
-        guard oneWindowMode.chosen != nil, let existing = ScreenWindows.existingIDs() else { return }
-        send(.checked(existing: existing))
-    }
-
-    private func updateOneWindowTimer() {
+    /// Reads the chosen window's place while one is chosen and the studio shows: the outline
+    /// follows it, and One Window turns off once it is unavailable (`OneWindowWatch`), or at a
+    /// change of Space — the user leaving for another one, or the window going full screen. Stops
+    /// reading and hides the outline otherwise.
+    private func updateOneWindowWatch() {
         guard isVisible, oneWindowMode.chosen != nil else {
             oneWindowTimer?.invalidate()
             oneWindowTimer = nil
+            oneWindowSpaceObserver.map(NSWorkspace.shared.notificationCenter.removeObserver)
+            oneWindowSpaceObserver = nil
+            oneWindowOutline.hide()
             return
         }
         guard oneWindowTimer == nil else { return }
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkOneWindow() }
+        oneWindowWatch = OneWindowWatch()
+        oneWindowConverter = converter
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.readOneWindow() }
         }
+        // Also while a menu is open or a window is dragged.
         RunLoop.main.add(timer, forMode: .common)
         oneWindowTimer = timer
+        oneWindowSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.send(.unavailable) }
+        }
+        readOneWindow()
+    }
+
+    private func readOneWindow() {
+        guard let chosen = oneWindowMode.chosen, let converter = oneWindowConverter else { return }
+        switch oneWindowWatch.read(ScreenWindows.window(chosen.id, converter: converter)) {
+        case .shows(let window):
+            let display = converter.owningDisplay(for: GlobalRect(rect: window))
+            let screen = display.flatMap { NSScreen.screen(forDisplay: $0.id) }?.visibleFrame ?? window
+            oneWindowOutline.show(
+                around: window, appName: chosen.appName, lineWidth: CGFloat(settings.settings.frameLineWidth),
+                screen: screen)
+        case .unsure: break
+        case .unavailable: send(.unavailable)
+        }
     }
 
     // MARK: Displays
@@ -651,6 +677,7 @@ final class StudioController {
     /// display as it now is.
     func screenParametersChanged() {
         frame.screenParametersChanged()
+        if oneWindowConverter != nil { oneWindowConverter = converter }
         if palette.isVisible, converter?.owningDisplay(for: GlobalRect(rect: palette.frame)) == nil {
             placePalette(besideFrame: true)
         }
@@ -832,12 +859,8 @@ final class StudioController {
             defer { isCapturing = false }
             do {
                 let image: CGImage
-                if let chosen {
-                    // With the screen as the background, a lone window has none: it stays transparent.
-                    let fill = try await fill(for: current.studioBackground)
-                    image = try await StudioCapture.window(
-                        chosen.id, frame: geometry.areaSize, display: geometry.display,
-                        shadow: current.studioWindowShadow, over: fill)
+                if let chosen, let window = try await windowPicture(chosen, geometry: geometry, settings: current) {
+                    image = window
                 } else {
                     // The backdrop is on screen: the picture is what the frame shows.
                     await backdropOnScreen()
@@ -847,15 +870,6 @@ final class StudioController {
                 if isVisible { await then(image, geometry.display.scale) }
             } catch  where ScreenCaptureManager.isPermissionError(error) {
                 onNeedsPermission?(true)
-            } catch let problem as StudioCapture.WindowProblem {
-                switch problem {
-                case .notListed:
-                    // Closed, or minimised, hidden or on another Space.
-                    checkOneWindow()
-                    if oneWindowMode.chosen != nil { frame.showNotice("Window not on screen") }
-                case .otherScale: frame.showNotice("Window on a display of another scale")
-                case .largerThanFrame: frame.showNotice("Window larger than the frame")
-                }
             } catch is BackgroundImageUnreadable {
                 NSSound.beep()
                 frame.showNotice("Background image can't be read")
@@ -864,6 +878,24 @@ final class StudioController {
                 NSSound.beep()
                 frame.showNotice("Capture failed")
             }
+        }
+    }
+
+    /// One Window's picture of `chosen` (`StudioCapture.window`), or `nil` when the window turns out
+    /// unavailable (`OneWindowPicture.shot`): One Window turns off, and the press takes the frame's
+    /// picture instead.
+    private func windowPicture(
+        _ chosen: OneWindowChoice, geometry: CaptureGeometry, settings current: Settings
+    ) async throws -> CGImage? {
+        do {
+            // With the screen as the background, a lone window has none: it stays transparent.
+            let fill = try await fill(for: current.studioBackground)
+            return try await StudioCapture.window(
+                chosen.id, frame: geometry.areaSize, display: geometry.display, shadow: current.studioWindowShadow,
+                over: fill)
+        } catch is OneWindowProblem {
+            if oneWindowMode.chosen == chosen { send(.unavailable) }
+            return nil
         }
     }
 }

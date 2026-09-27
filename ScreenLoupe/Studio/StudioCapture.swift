@@ -53,16 +53,6 @@ enum StudioCapture {
         StudioComposite.composited(image, in: space)
     }
 
-    /// Why One Window captured nothing; each is said beside the tab.
-    enum WindowProblem: Error {
-        /// Not among the on-screen windows: closed, minimised, hidden or on another Space.
-        case notListed
-        /// Its pixels aren't the frame display's: it would have to be scaled.
-        case otherScale
-        /// The window itself is larger than the frame; its shadow never is too large.
-        case largerThanFrame
-    }
-
     struct WindowCaptureError: LocalizedError {
         var errorDescription: String?
     }
@@ -71,22 +61,26 @@ enum StudioCapture {
     /// with or without its `shadow`, at its native pixels, centred in a picture of `frame` pixels,
     /// grown where the window with its shadow needs more (`OneWindowPicture.pictureSize`), in
     /// `display`'s colour space, over `fill` or transparent without one (docs/design.md, Screenshot
-    /// studio). Never scaled: a window on a display of another scale, or itself larger than the
-    /// frame, gives a `WindowProblem`.
+    /// studio). Never scaled: a window not on screen, or on a display of another scale, gives a
+    /// `OneWindowProblem` before anything is captured.
     static func window(
         _ id: CGWindowID, frame: PixelSize, display: DisplayInfo, shadow: Bool, over fill: StudioFill?
     ) async throws -> CGImage {
         let content = try await withTimeout(seconds: callTimeout) {
             try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
         }
-        guard let window = content.windows.first(where: { $0.windowID == id }) else { throw WindowProblem.notListed }
-        let filter = SCContentFilter(desktopIndependentWindow: window)
-        guard CGFloat(filter.pointPixelScale) == display.scale else { throw WindowProblem.otherScale }
-        // The window alone must fit the frame; its shadow may grow the picture.
+        let window = content.windows.first { $0.windowID == id }
+        let filter = window.map { SCContentFilter(desktopIndependentWindow: $0) }
+        if case .frameInstead(let problem) = OneWindowPicture.shot(
+            windowScale: filter.map { CGFloat($0.pointPixelScale) }, frameScale: display.scale)
+        {
+            throw problem
+        }
+        // Listed, as `shot` said.
+        guard let window, let filter else { throw OneWindowProblem.notListed }
         let windowPixels = PixelSize(
             width: Int((window.frame.width * display.scale).rounded()),
             height: Int((window.frame.height * display.scale).rounded()))
-        guard OneWindowPicture.fits(windowPixels, in: frame) else { throw WindowProblem.largerThanFrame }
         // Room to spare around the window for its shadow: ScreenCaptureKit scales a window down to
         // fit the output but never up, so the window with its shadow comes at its own size.
         let output = OneWindowPicture.captureSize(window: windowPixels, scale: display.scale)

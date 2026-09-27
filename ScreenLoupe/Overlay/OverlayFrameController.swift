@@ -84,11 +84,6 @@ final class OverlayFrameController {
     /// resizes freely. The arrow keys don't keep it.
     var aspectRatio: CGFloat?
 
-    /// Added to the tab after the size, as `size · note`; `nil` for the size alone.
-    var tabNote: String? {
-        didSet { if tabNote != oldValue { apply(captureRect, persist: false) } }
-    }
-
     /// A rect the position box never covers, in AppKit global coordinates: the studio's palette while
     /// it shows; `.null` for none.
     var positionAvoiding = CGRect.null {
@@ -483,8 +478,7 @@ final class OverlayFrameController {
         let scale = display?.scale ?? 1
 
         let units = settings.settings.sizeUnits
-        let size = SizeText.tab(rect.size, scale: scale, units: units)
-        let tabText = tabNote.map { "\(size) · \($0)" } ?? size
+        let tabText = SizeText.tab(rect.size, scale: scale, units: units)
         let labelText = SizeText.label(rect.size, scale: scale, units: units)
         // L T R B from the top-left corner of the display the area is on.
         let local = display.flatMap { display in

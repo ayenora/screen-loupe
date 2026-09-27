@@ -58,8 +58,8 @@ struct OneWindowModeTests {
         #expect(OneWindowMode.picking.after(.hidden) == .off)
     }
 
-    @Test func aWindowCheckWhilePickingChangesNothing() {
-        #expect(OneWindowMode.picking.after(.checked(existing: [])) == .picking)
+    @Test func anUnavailableWindowWhilePickingChangesNothing() {
+        #expect(OneWindowMode.picking.after(.unavailable) == .picking)
     }
 
     @Test func toggleTurnsAChosenWindowOff() {
@@ -71,10 +71,9 @@ struct OneWindowModeTests {
         #expect(OneWindowMode.on(safari).after(.hidden) == .on(safari))
     }
 
-    @Test func theChosenWindowClosingTurnsItOff() {
-        #expect(OneWindowMode.on(safari).after(.checked(existing: [1, 42, 99])) == .on(safari))
-        #expect(OneWindowMode.on(safari).after(.checked(existing: [1, 7, 99])) == .off)
-        #expect(OneWindowMode.on(safari).after(.checked(existing: [])) == .off)
+    @Test func theChosenWindowBecomingUnavailableTurnsItOff() {
+        #expect(OneWindowMode.on(safari).after(.unavailable) == .off)
+        #expect(OneWindowMode.on(notes).after(.unavailable) == .off)
     }
 
     @Test func eventsThatDontApplyLeaveTheModeAsItIs() {
@@ -83,7 +82,7 @@ struct OneWindowModeTests {
         #expect(OneWindowMode.off.after(.picked(safari)) == .off)
         #expect(OneWindowMode.off.after(.cancelled) == .off)
         #expect(OneWindowMode.off.after(.hidden) == .off)
-        #expect(OneWindowMode.off.after(.checked(existing: [])) == .off)
+        #expect(OneWindowMode.off.after(.unavailable) == .off)
     }
 
     @Test func aSessionChooseHideShowAndGone() {
@@ -92,9 +91,9 @@ struct OneWindowModeTests {
             (OneWindowMode.Event.toggle(studioVisible: true), OneWindowMode.picking),
             (.picked(safari), .on(safari)),
             (.hidden, .on(safari)),
-            // Shown again: the window is still there.
-            (.checked(existing: [42]), .on(safari)),
-            (.checked(existing: [43]), .off),
+            // Shown again, then the window is minimised.
+            (.unavailable, .off),
+            (.unavailable, .off),
             (.toggle(studioVisible: true), .picking),
             (.picked(notes), .on(notes)),
         ] {
@@ -103,11 +102,10 @@ struct OneWindowModeTests {
         }
     }
 
-    @Test func theTabNamesTheChosenWindowsApp() {
-        #expect(OneWindowMode.on(safari).tabNote == "One window: Safari")
-        #expect(OneWindowMode.off.tabNote == nil)
-        #expect(OneWindowMode.picking.tabNote == nil)
+    @Test func theChosenWindowAndPicking() {
         #expect(OneWindowMode.on(safari).chosen == safari)
+        #expect(OneWindowMode.off.chosen == nil)
+        #expect(OneWindowMode.picking.chosen == nil)
         #expect(OneWindowMode.picking.isPicking)
         #expect(!OneWindowMode.on(safari).isPicking)
     }
@@ -129,15 +127,6 @@ struct OneWindowPictureTests {
         #expect(!OneWindowPicture.fits(PixelSize(width: 2881, height: 1801), in: frame))
         // Narrower but taller.
         #expect(!OneWindowPicture.fits(PixelSize(width: 100, height: 1801), in: frame))
-    }
-
-    @Test func theWindowAloneDecidesTheFitNotItsShadow() {
-        // Fit to Window: the frame is exactly the window, 400 × 600 pt at 2×.
-        let frame = PixelSize(width: 800, height: 1200)
-        #expect(OneWindowPicture.fits(PixelSize(width: 800, height: 1200), in: frame))
-        // The window one pixel over is still refused, whatever the shadow.
-        #expect(!OneWindowPicture.fits(PixelSize(width: 801, height: 1200), in: frame))
-        #expect(!OneWindowPicture.fits(PixelSize(width: 800, height: 1201), in: frame))
     }
 
     // MARK: Capture room
@@ -231,6 +220,51 @@ struct OneWindowPictureTests {
             let visible = PixelSize(width: (400 + 112) * scale, height: (300 + 112) * scale)
             #expect(OneWindowPicture.pictureSize(frame: frame, visible: visible) == visible)
         }
+    }
+
+    @Test func aWindowLargerThanTheFrameComesAtItsOwnSize() {
+        // A 400 × 300 pt frame at 2×, a 1200 × 800 pt window without its shadow: the window's size.
+        let frame = PixelSize(width: 800, height: 600)
+        let window = PixelSize(width: 2400, height: 1600)
+        #expect(OneWindowPicture.pictureSize(frame: frame, visible: window) == window)
+        #expect(OneWindowPicture.centredOrigin(of: window, in: window) == (0, 0))
+        // One pixel over on each axis.
+        #expect(
+            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 801, height: 601))
+                == PixelSize(width: 801, height: 601))
+    }
+
+    @Test func aWindowLargerOnOneAxisTakesThatAxisAndCentresOnTheOther() {
+        // Wider than the frame, shorter: as wide as the window, as tall as the frame, centred in it.
+        let frame = PixelSize(width: 1000, height: 1000)
+        let wide = PixelSize(width: 1500, height: 401)
+        let picture = OneWindowPicture.pictureSize(frame: frame, visible: wide)
+        #expect(picture == PixelSize(width: 1500, height: 1000))
+        // 1000 − 401 = 599: 299 above, 300 below.
+        #expect(OneWindowPicture.centredOrigin(of: wide, in: picture) == (0, 299))
+        // Taller, narrower.
+        let tall = PixelSize(width: 333, height: 1201)
+        let tallPicture = OneWindowPicture.pictureSize(frame: frame, visible: tall)
+        #expect(tallPicture == PixelSize(width: 1000, height: 1201))
+        #expect(OneWindowPicture.centredOrigin(of: tall, in: tallPicture) == (333, 0))
+    }
+
+    @Test func aWindowWithItsShadowLargerThanTheFrameTakesTheShadowToo() {
+        // A 600 × 400 pt window at 2× with an asymmetric shadow — 56 pt at the sides, 36 above,
+        // 76 below — on a 300 × 200 pt frame: the picture is the window with its whole shadow.
+        let frame = PixelSize(width: 600, height: 400)
+        let visible = PixelSize(width: (600 + 112) * 2, height: (400 + 36 + 76) * 2)
+        #expect(OneWindowPicture.pictureSize(frame: frame, visible: visible) == visible)
+        // The same at 1×.
+        let visible1x = PixelSize(width: 600 + 112, height: 400 + 36 + 76)
+        #expect(
+            OneWindowPicture.pictureSize(frame: PixelSize(width: 300, height: 200), visible: visible1x) == visible1x)
+    }
+
+    @Test func aWindowAsLargeAsTheFrameIsTheFrame() {
+        let frame = PixelSize(width: 1441, height: 901)
+        #expect(OneWindowPicture.pictureSize(frame: frame, visible: frame) == frame)
+        #expect(OneWindowPicture.centredOrigin(of: frame, in: frame) == (0, 0))
     }
 
     @Test func aDegenerateFrameTakesTheVisibleSize() {
@@ -416,7 +450,6 @@ struct OneWindowPictureTests {
         let bounds = OneWindowPicture.visibleBounds(of: captured)!
         #expect(bounds == PixelRect(x: 3, y: 3, width: 4, height: 4))
         let frame = PixelSize(width: 2, height: 2)
-        #expect(OneWindowPicture.fits(PixelSize(width: 2, height: 2), in: frame))
         let size = OneWindowPicture.pictureSize(frame: frame, visible: bounds.size)
         #expect(size == PixelSize(width: 4, height: 4))
         let cut = captured.cropping(to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height))!
@@ -444,5 +477,195 @@ struct OneWindowPictureTests {
         #expect(out[6 + 2] == [1, 2, 3, 255])
         #expect(out[6 + 3] == [4, 5, 6, 255])
         #expect(out.enumerated().filter { $0.element[3] != 0 }.map(\.offset) == [8, 9])
+    }
+}
+
+private func listed(
+    _ frame: CGRect, onScreen: Bool = true, layer: Int = 0, alpha: Double = 1
+) -> ScreenWindow {
+    ScreenWindow(id: 42, frame: frame, layer: layer, isOnScreen: onScreen, alpha: alpha)
+}
+
+struct OneWindowWatchTests {
+    private let frame = CGRect(x: 100, y: 200, width: 640, height: 480)
+
+    @Test func aWindowOnScreenShowsWhereItIs() {
+        var watch = OneWindowWatch()
+        #expect(watch.read(listed(frame)) == .shows(frame))
+        // Moved and resized: the next read follows.
+        let moved = CGRect(x: 130, y: 180, width: 700, height: 500)
+        #expect(watch.read(listed(moved)) == .shows(moved))
+    }
+
+    @Test func aWindowOnADisplayWithANegativeOriginShows() {
+        var watch = OneWindowWatch()
+        let left = CGRect(x: -1800, y: -300, width: 800, height: 600)
+        #expect(watch.read(listed(left)) == .shows(left))
+    }
+
+    @Test func oneOddReadWaitsTwoInARowRelease() {
+        var watch = OneWindowWatch()
+        #expect(watch.read(nil) == .unsure)
+        #expect(watch.read(nil) == .unavailable)
+    }
+
+    @Test func aGoodReadBetweenOddOnesStartsTheCountAgain() {
+        var watch = OneWindowWatch()
+        #expect(watch.read(nil) == .unsure)
+        #expect(watch.read(listed(frame)) == .shows(frame))
+        #expect(watch.badReads == 0)
+        #expect(watch.read(nil) == .unsure)
+        #expect(watch.read(listed(frame)) == .shows(frame))
+    }
+
+    @Test func closedMinimisedHiddenOrOnAnotherSpaceReleases() {
+        // Closed: not listed. Minimised, hidden with its app, on another Space: off screen, or
+        // listed with empty bounds.
+        for read in [
+            nil, listed(frame, onScreen: false), listed(.zero, onScreen: false), listed(.zero),
+            listed(CGRect(x: 100, y: 200, width: 0, height: 480)),
+        ] {
+            var watch = OneWindowWatch()
+            #expect(watch.read(read) == .unsure)
+            #expect(watch.read(read) == .unavailable)
+        }
+    }
+
+    @Test func aWindowFadedOutOrNotOrdinaryReleases() {
+        for read in [listed(frame, alpha: 0), listed(frame, layer: 3), listed(frame, layer: -1)] {
+            var watch = OneWindowWatch()
+            #expect(watch.read(read) == .unsure)
+            #expect(watch.read(read) == .unavailable)
+        }
+    }
+
+    @Test func differentOddReadsInARowRelease() {
+        var watch = OneWindowWatch()
+        #expect(watch.read(listed(frame, onScreen: false)) == .unsure)
+        #expect(watch.read(nil) == .unavailable)
+    }
+
+    @Test func aHalfTransparentWindowStillShows() {
+        var watch = OneWindowWatch()
+        #expect(watch.read(listed(frame, alpha: 0.5)) == .shows(frame))
+    }
+}
+
+struct OneWindowOutlineTests {
+    private let label = CGSize(width: 60, height: 16)
+    /// A 1440 × 900 pt display's visible frame under a 25 pt menu bar.
+    private let screen = CGRect(x: 0, y: 0, width: 1440, height: 875)
+
+    @Test func theLineIsJustOutsideTheWindow() {
+        let window = CGRect(x: 200, y: 100, width: 400, height: 300)
+        let outline = OneWindowOutline(window: window, lineWidth: 2, labelSize: label, screen: screen)
+        #expect(outline.line == CGRect(x: 198, y: 98, width: 404, height: 304))
+        let thin = OneWindowOutline(window: window, lineWidth: 1, labelSize: label, screen: screen)
+        #expect(thin.line == CGRect(x: 199, y: 99, width: 402, height: 302))
+    }
+
+    @Test func theLabelSitsAboveTheTopLeftCorner() {
+        let window = CGRect(x: 200, y: 100, width: 400, height: 300)
+        let outline = OneWindowOutline(window: window, lineWidth: 2, labelSize: label, screen: screen)
+        #expect(!outline.labelInside)
+        // Level with the line's left edge, 6 pt above its top.
+        #expect(outline.label == CGRect(x: 198, y: 402 + 6, width: 60, height: 16))
+    }
+
+    @Test func thePanelHoldsTheLineItsHaloAndTheLabel() {
+        let window = CGRect(x: 200, y: 100, width: 400, height: 300)
+        let outline = OneWindowOutline(window: window, lineWidth: 2, labelSize: label, screen: screen)
+        #expect(outline.panel == CGRect(x: 197, y: 97, width: 406, height: 424 - 97))
+        #expect(outline.panel.contains(outline.label))
+        #expect(outline.panel.contains(outline.line))
+    }
+
+    @Test func withNoRoomAboveTheLabelGoesInsideTheTopLeftCorner() {
+        // A window just under the menu bar: 875 − 6 is the highest a label may reach.
+        let window = CGRect(x: 0, y: 75, width: 800, height: 800)
+        let outline = OneWindowOutline(window: window, lineWidth: 2, labelSize: label, screen: screen)
+        #expect(outline.labelInside)
+        #expect(outline.label == CGRect(x: 6, y: 875 - 6 - 16, width: 60, height: 16))
+        #expect(outline.panel.contains(outline.label))
+    }
+
+    @Test func theLabelGoesInsideExactlyWhenItWouldPassTheMargin() {
+        // Top of the line at 875 − 6 − 16 − 6 = 847: the label just fits above.
+        let fits = CGRect(x: 300, y: 400, width: 200, height: 445)
+        #expect(!OneWindowOutline(window: fits, lineWidth: 2, labelSize: label, screen: screen).labelInside)
+        let over = CGRect(x: 300, y: 400, width: 200, height: 446)
+        #expect(OneWindowOutline(window: over, lineWidth: 2, labelSize: label, screen: screen).labelInside)
+    }
+
+    @Test func aWindowReachingAboveTheScreenKeepsItsLabelOnScreen() {
+        // Top off the screen: the label goes inside, below the screen's top.
+        let window = CGRect(x: 300, y: 500, width: 400, height: 600)
+        let outline = OneWindowOutline(window: window, lineWidth: 1, labelSize: label, screen: screen)
+        #expect(outline.labelInside)
+        #expect(outline.label.maxY == CGFloat(875 - 6))
+    }
+
+    @Test func aWindowPartlyOffTheScreenSidewaysKeepsItsLabelOnScreen() {
+        let left = CGRect(x: -300, y: 100, width: 500, height: 300)
+        #expect(OneWindowOutline(window: left, lineWidth: 2, labelSize: label, screen: screen).label.minX == 6)
+        let right = CGRect(x: 1400, y: 100, width: 500, height: 300)
+        #expect(
+            OneWindowOutline(window: right, lineWidth: 2, labelSize: label, screen: screen).label.maxX
+                == CGFloat(1440 - 6))
+    }
+
+    @Test func aDisplayWithNegativeCoordinates() {
+        // A display left of and below the primary one.
+        let secondary = CGRect(x: -1920, y: -1080, width: 1920, height: 1055)
+        let window = CGRect(x: -1500, y: -900, width: 600, height: 400)
+        let outline = OneWindowOutline(window: window, lineWidth: 2, labelSize: label, screen: secondary)
+        #expect(!outline.labelInside)
+        #expect(outline.label == CGRect(x: -1502, y: -498 + 6, width: 60, height: 16))
+        // Its top at the display's top: inside.
+        let high = CGRect(x: -1900, y: -600, width: 600, height: 575)
+        let inside = OneWindowOutline(window: high, lineWidth: 2, labelSize: label, screen: secondary)
+        #expect(inside.labelInside)
+        #expect(inside.label == CGRect(x: -1894, y: -25 - 6 - 16, width: 60, height: 16))
+    }
+
+    @Test func aWindowOnHalfPointsAtTwoXPutsTheLabelOnWholePoints() {
+        // A Retina window may sit on half points.
+        let window = CGRect(x: 100.5, y: 200.5, width: 300, height: 200)
+        let outline = OneWindowOutline(window: window, lineWidth: 1, labelSize: label, screen: screen)
+        #expect(outline.line == CGRect(x: 99.5, y: 199.5, width: 302, height: 202))
+        #expect(outline.label.minX == outline.label.minX.rounded())
+        #expect(outline.label.minY == outline.label.minY.rounded())
+    }
+
+    @Test func aLabelWiderThanTheWindowStillStartsAtItsLeft() {
+        let window = CGRect(x: 400, y: 100, width: 30, height: 30)
+        let wide = CGSize(width: 180, height: 16)
+        let outline = OneWindowOutline(window: window, lineWidth: 2, labelSize: wide, screen: screen)
+        #expect(outline.label.minX == 398)
+        // From the halo's left edge, 1 pt left of the label, to the label's right.
+        #expect(outline.panel == CGRect(x: 397, y: 97, width: 181, height: 132 + 6 + 16 - 97))
+    }
+}
+
+struct OneWindowShotTests {
+    @Test func aWindowListedAtTheFramesScaleIsTaken() {
+        #expect(OneWindowPicture.shot(windowScale: 2, frameScale: 2) == .window)
+        #expect(OneWindowPicture.shot(windowScale: 1, frameScale: 1) == .window)
+    }
+
+    @Test func aWindowNotListedFallsBackToTheFrame() {
+        #expect(OneWindowPicture.shot(windowScale: nil, frameScale: 2) == .frameInstead(.notListed))
+        #expect(OneWindowPicture.shot(windowScale: nil, frameScale: 1) == .frameInstead(.notListed))
+    }
+
+    @Test func aWindowOnADisplayOfAnotherScaleFallsBackToTheFrame() {
+        #expect(OneWindowPicture.shot(windowScale: 1, frameScale: 2) == .frameInstead(.otherScale))
+        #expect(OneWindowPicture.shot(windowScale: 2, frameScale: 1) == .frameInstead(.otherScale))
+        #expect(OneWindowPicture.shot(windowScale: 1.5, frameScale: 2) == .frameInstead(.otherScale))
+    }
+
+    @Test func fallingBackReleasesTheWindow() {
+        // The press's fallback turns One Window off, whatever the problem.
+        #expect(OneWindowMode.on(safari).after(.unavailable) == .off)
     }
 }

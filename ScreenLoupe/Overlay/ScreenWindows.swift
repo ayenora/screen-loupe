@@ -40,15 +40,6 @@ enum ScreenWindows {
         return (info?[kCGWindowOwnerName as String] as? String, info?[kCGWindowOwnerPID as String] as? pid_t)
     }
 
-    /// The numbers of every window that exists, on screen or not: a window minimised, hidden with
-    /// its app or on another Space is among them, a closed one isn't. Reads the whole list, about
-    /// 2 ms, so it is read only now and then. `nil` when the list can't be read: nothing is known
-    /// to have closed.
-    static func existingIDs() -> Set<CGWindowID>? {
-        guard let list = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else { return nil }
-        return Set(list.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
-    }
-
     private static func window(_ info: [String: Any], converter: DisplayCoordinateConverter) -> ScreenWindow? {
         guard let id = info[kCGWindowNumber as String] as? CGWindowID,
             let layer = info[kCGWindowLayer as String] as? Int,
