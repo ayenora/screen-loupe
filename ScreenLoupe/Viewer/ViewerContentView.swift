@@ -312,12 +312,14 @@ final class ViewerContentView: NSStackView {
     }
 
     /// Decodes image files off the main thread and keeps each as a recent capture, in order, the last
-    /// one shown, as Open Image does; only as many as the list keeps. When none could be read, says so.
+    /// one shown, as Open Image does; only as many as the list keeps. The rows are added once all are
+    /// read, so the Viewer shows the last one only, not each in turn. When none could be read, says so.
     private func inspect(_ urls: [URL]) {
         let urls = Array(urls.suffix(RecentCaptures.limit))
         let request = newImageRequest()
         Task {
             var failed: [URL] = []
+            var read: [RecentCapture] = []
             for url in urls {
                 let decoded = await ImageFileLoader.frame(at: url)
                 // A later file was asked for, or the Viewer has closed.
@@ -326,9 +328,12 @@ final class ViewerContentView: NSStackView {
                     failed.append(url)
                     continue
                 }
-                showImage(decoded.frame, thumbnail: decoded.thumbnail, name: url.lastPathComponent)
+                read.append(
+                    RecentCaptures.file(decoded.frame, thumbnail: decoded.thumbnail, name: url.lastPathComponent))
             }
-            if failed.count == urls.count { showFailure(failed, verb: "opened") }
+            guard let last = read.last else { return showFailure(failed, verb: "opened") }
+            read.dropLast().forEach(captures.add)
+            showFile(last)
         }
     }
 
@@ -356,12 +361,16 @@ final class ViewerContentView: NSStackView {
     /// (docs/product.md, Open Image), fitted to the Viewer (`show`), with Recent Captures open.
     /// `name` is its file's.
     func showImage(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) {
+        showFile(RecentCaptures.file(frame, thumbnail: thumbnail, name: name))
+    }
+
+    /// Keeps `capture`, an image file's, as the newest recent capture and shows it (`showImage`).
+    private func showFile(_ capture: RecentCapture) {
         settings.update {
             $0.capturesVisible = true
             $0.referencesVisible = false
             $0.expandedSidePanel = .captures
         }
-        let capture = RecentCaptures.file(frame, thumbnail: thumbnail, name: name)
         captures.add(capture)
         captures.show(capture.id)
     }

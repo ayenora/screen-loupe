@@ -91,10 +91,7 @@ struct Settings: Codable, Equatable {
         let d = Settings()
         captureArea = c.value(.captureArea, or: d.captureArea)
         captureAreaLock = c.value(.captureAreaLock, or: d.captureAreaLock)
-        // Saved before the pin had a choice of locks: a plain pin, on or off.
-        let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
-        captureAreaLocked = c.value(
-            .captureAreaLocked, or: legacy?.value(.captureAreaPinned, or: d.captureAreaLocked) ?? d.captureAreaLocked)
+        captureAreaLocked = (try? CaptureAreaLock.SavedPin(from: decoder))?.isOn ?? d.captureAreaLocked
         viewerAlwaysOnTop = c.value(.viewerAlwaysOnTop, or: d.viewerAlwaysOnTop)
         studioFrame = c.value(.studioFrame, or: d.studioFrame)
         studioPaletteOrigin = c.value(.studioPaletteOrigin, or: d.studioPaletteOrigin)
@@ -136,10 +133,6 @@ struct Settings: Codable, Equatable {
         fileNameStyle = c.value(.fileNameStyle, or: d.fileNameStyle)
         revealsSavedFile = c.value(.revealsSavedFile, or: d.revealsSavedFile)
         shortcuts = c.value(.shortcuts, or: d.shortcuts)
-    }
-
-    private enum LegacyKeys: String, CodingKey {
-        case captureAreaPinned
     }
 
     /// The lock that holds the Capture Area now, or `nil` while the pin is off.

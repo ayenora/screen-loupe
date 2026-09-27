@@ -1,6 +1,6 @@
 import AppKit
 
-/// Which frame a `CaptureAreaController` runs. Both share the overlay window, drawing, dragging,
+/// Which frame an `OverlayFrameController` runs. Both share the overlay window, drawing, dragging,
 /// ⌘-snapping, pixel snapping, the arrow keys, Fit to Window and the notice; only the Capture Area
 /// has the pin's locks, the magnet, the raise button and the outline of the part the Viewer shows.
 enum OverlayFrameKind {
@@ -28,6 +28,10 @@ enum OverlayFrameKind {
     /// The pin with its locks and the magnet, and the raise button.
     var hasLocks: Bool { self == .captureArea }
 
+    /// Placed when first shown, on the displays then connected, and kept only from then on. The
+    /// Capture Area is placed at launch, for the Viewer to open beside it.
+    var placedWhenFirstShown: Bool { self == .studio }
+
     var name: String {
         switch self {
         case .captureArea: "Capture Area"
@@ -39,7 +43,7 @@ enum OverlayFrameKind {
 /// Owns a frame above the screen — the Capture Area, or the Screenshot studio's frame (`kind`): its
 /// rect, the overlay window, dragging, arrow keys, hover, the magnet and persistence.
 @MainActor
-final class CaptureAreaController {
+final class OverlayFrameController {
     /// The captured rect, in AppKit global coordinates, snapped to its display's pixel grid.
     private(set) var captureRect: CGRect = .zero
     /// Called whenever `captureRect` changes.
@@ -50,6 +54,8 @@ final class CaptureAreaController {
     var onRaiseViewer: (() -> Void)?
     /// Called by the frame's pick button: pick a window for the area.
     var onPickWindow: (() -> Void)?
+    /// Called when its window picker opens, for Fit to Window or the magnet.
+    var onPickerStarted: (() -> Void)?
 
     /// The part of the area the Viewer shows, in AppKit global coordinates; `nil` while it shows the
     /// whole area, or nothing of it live. Outlined while the Viewer's image moves and while the cursor
@@ -129,6 +135,7 @@ final class CaptureAreaController {
     /// The notice beside the tab, while it shows.
     private var noticeText: String?
     private var noticeTimer: Timer?
+    private var hasBeenShown = false
 
     private static let defaultSize = CGSize(width: 320, height: 200)
     /// The rect with nothing kept, from the main display's visible frame; `nil` for the Capture
@@ -179,6 +186,8 @@ final class CaptureAreaController {
     var windowNumber: Int { window.windowNumber }
 
     func show() {
+        if !hasBeenShown, kind.placedWhenFirstShown { apply(initialRect(), persist: false) }
+        hasBeenShown = true
         window.orderFrontRegardless()
         startMonitoringMouse()
     }
@@ -206,7 +215,7 @@ final class CaptureAreaController {
         guard DisplayLayout.current() != nil else { return }
         refreshDisplays()
         let onScreen = converter?.owningDisplay(for: GlobalRect(rect: captureRect)) != nil
-        apply(onScreen ? captureRect : defaultRect(), persist: true)
+        apply(onScreen ? captureRect : defaultRect(), persist: hasBeenShown || !kind.placedWhenFirstShown)
     }
 
     private func refreshDisplays() {
@@ -298,6 +307,7 @@ final class CaptureAreaController {
             if let picked { onPicked(picked) }
         }
         self.picker = picker
+        onPickerStarted?()
         picker.start()
     }
 
@@ -326,9 +336,12 @@ final class CaptureAreaController {
             $0.captureAreaLocked = true
         }
         guard magnetTimer == nil else { return }
-        magnetTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.followMagnetWindow() }
         }
+        // Also while a menu is open or a window is dragged.
+        RunLoop.main.add(timer, forMode: .common)
+        magnetTimer = timer
         // A window going full screen, or the user leaving for another Space.
         spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
@@ -551,7 +564,7 @@ final class CaptureAreaController {
 
 // MARK: - Mouse and keys
 
-extension CaptureAreaController: CaptureOverlayViewDelegate {
+extension OverlayFrameController: CaptureOverlayViewDelegate {
     /// The studio's frame has no locks.
     private var lock: CaptureAreaLock? { kind.hasLocks ? settings.settings.activeCaptureAreaLock : nil }
 

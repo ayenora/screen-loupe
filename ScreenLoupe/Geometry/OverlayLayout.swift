@@ -39,6 +39,24 @@ enum CaptureAreaLock: String, Codable, CaseIterable, Sendable {
 
     /// Arrow keys: a move never, a resize (with Option) only when the handles resize too.
     func allowsNudge(resizing: Bool) -> Bool { resizing && allowsResize }
+
+    /// Whether the pin was on, as saved: under `captureAreaLocked`, else under `captureAreaPinned`,
+    /// where the plain pin was saved before there was a choice of locks. `isOn` is `nil` when
+    /// neither can be read.
+    struct SavedPin: Decodable {
+        let isOn: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case captureAreaLocked, captureAreaPinned
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            isOn =
+                (try? c.decodeIfPresent(Bool.self, forKey: .captureAreaLocked))
+                ?? (try? c.decodeIfPresent(Bool.self, forKey: .captureAreaPinned))
+        }
+    }
 }
 
 enum TabPlacement: Equatable, Sendable {

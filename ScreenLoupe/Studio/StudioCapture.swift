@@ -56,8 +56,16 @@ enum StudioCapture {
             }
             fill = nil
         }
-        return StudioComposite.composited(image, in: NSScreen.colorSpace(forDisplay: display.displayID), over: fill)
-            ?? image
+        return await composited(image, in: NSScreen.colorSpace(forDisplay: display.displayID), over: fill) ?? image
+    }
+
+    /// `StudioComposite.composited`, off the main actor: a large picture over an image takes a while
+    /// to draw.
+    @concurrent
+    private nonisolated static func composited(
+        _ image: CGImage, in space: CGColorSpace, over fill: StudioFill?
+    ) async -> CGImage? {
+        StudioComposite.composited(image, in: space, over: fill)
     }
 
     /// Why One Window captured nothing; each is said beside the tab.
@@ -111,12 +119,22 @@ enum StudioCapture {
         let image = try await withTimeout(seconds: callTimeout) {
             try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
         }
-        log.info(
+        log.debug(
             """
             One window: content \(String(describing: filter.contentRect), privacy: .public) pt at \
             \(filter.pointPixelScale)×, window \(String(describing: window.frame), privacy: .public) pt, \
             image \(image.width) × \(image.height) px in \(String(describing: image.colorSpace?.name), privacy: .public)
             """)
+        return try await picture(
+            ofWindow: image, frame: frame, space: NSScreen.colorSpace(forDisplay: display.id), over: fill)
+    }
+
+    /// A lone window's capture cut to its visible pixels and centred in a picture of `frame` pixels,
+    /// off the main actor: reading every pixel's alpha and drawing take a while for a large frame.
+    @concurrent
+    private nonisolated static func picture(
+        ofWindow image: CGImage, frame: PixelSize, space: CGColorSpace, over fill: StudioFill?
+    ) async throws -> CGImage {
         // Where the window and its shadow are is told by alpha alone.
         guard StudioComposite.hasAlpha(image) else {
             throw WindowCaptureError(errorDescription: "The window's capture has no alpha.")
@@ -128,8 +146,7 @@ enum StudioCapture {
         guard
             let cut = image.cropping(
                 to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height)),
-            let picture = StudioComposite.centred(
-                cut, in: frame, space: NSScreen.colorSpace(forDisplay: display.id), over: fill)
+            let picture = StudioComposite.centred(cut, in: frame, space: space, over: fill)
         else { throw WindowCaptureError(errorDescription: "The window's picture couldn't be made.") }
         return picture
     }

@@ -7,8 +7,12 @@ import AppKit
 ///
 /// A transparent panel over each display takes every click, so none reaches the app underneath and
 /// no Accessibility permission is needed.
+///
+/// One picker runs at a time, app-wide: starting one ends the one running, as a cancel.
 @MainActor
 final class WindowPicker {
+    /// The picker running, if any.
+    private static weak var running: WindowPicker?
     /// The windows that can be picked, front to back, as of now.
     private let windows: () -> [ScreenWindow]
     private let tint: NSColor
@@ -44,6 +48,8 @@ final class WindowPicker {
     }
 
     func start() {
+        Self.running?.stop()
+        Self.running = self
         NSApp.activate()
         for screen in NSScreen.screens {
             let panel = PickerPanel(frame: screen.frame)
@@ -90,6 +96,7 @@ final class WindowPicker {
 
     fileprivate func finish(_ picked: ScreenWindow?) {
         guard !panels.isEmpty else { return }
+        if Self.running === self { Self.running = nil }
         observer.map(NotificationCenter.default.removeObserver)
         observer = nil
         panels.forEach { $0.orderOut(nil) }

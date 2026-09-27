@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 
 private let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
@@ -337,5 +338,35 @@ struct OverlayLayoutWithoutLockButtonsTests {
         #expect(l.hitTarget(at: CGPoint(x: 97, y: 120)) == .move)
         #expect(l.hitTarget(at: CGPoint(x: l.tabRect.midX, y: l.tabRect.midY)) == .move)
         #expect(l.hitTarget(at: CGPoint(x: 150, y: 150)) == nil)
+    }
+}
+
+struct SavedPinTests {
+    private func savedPin(_ json: String) throws -> Bool? {
+        try JSONDecoder().decode(CaptureAreaLock.SavedPin.self, from: Data(json.utf8)).isOn
+    }
+
+    @Test(arguments: [true, false])
+    func theLockIsReadAsSaved(_ locked: Bool) throws {
+        #expect(try savedPin(#"{"captureAreaLocked": \#(locked)}"#) == locked)
+    }
+
+    @Test(arguments: [true, false])
+    func aPinSavedBeforeTheLocksCarriesOver(_ pinned: Bool) throws {
+        #expect(try savedPin(#"{"captureAreaPinned": \#(pinned)}"#) == pinned)
+    }
+
+    @Test func theLockWinsOverTheOldPin() throws {
+        #expect(try savedPin(#"{"captureAreaLocked": false, "captureAreaPinned": true}"#) == false)
+        #expect(try savedPin(#"{"captureAreaLocked": true, "captureAreaPinned": false}"#) == true)
+    }
+
+    @Test func anUnreadableLockFallsBackToTheOldPin() throws {
+        #expect(try savedPin(#"{"captureAreaLocked": "yes", "captureAreaPinned": true}"#) == true)
+    }
+
+    @Test func nothingReadableIsNil() throws {
+        #expect(try savedPin("{}") == nil)
+        #expect(try savedPin(#"{"captureAreaLocked": 2, "captureAreaPinned": "on"}"#) == nil)
     }
 }

@@ -30,7 +30,7 @@ final class CaptureOverlayView: NSView {
     private let tab = GripTabView()
     private let label = SizeLabelView()
     private let positionBox = PositionBoxView()
-    /// Says why the magnet let go.
+    /// A short notice beside the tab, such as why the magnet let go or what was copied.
     private let notice = SizeLabelView()
     /// The pin with its ▾: shows the chosen lock, filled while it is on.
     private let pinButton = TabButtonView(

@@ -4,7 +4,7 @@ import AppKit
 /// stream between them, and the Screenshot studio beside them.
 @MainActor
 final class WindowManager {
-    let captureArea: CaptureAreaController
+    let captureArea: OverlayFrameController
     let viewer: ViewerWindowController
     let export: ExportController
     let studio: StudioController
@@ -20,7 +20,7 @@ final class WindowManager {
         self.settings = settings
         zoomPan.restoredZoom = settings.settings.viewerZoom.map { CGFloat($0) }
         inspector = PixelInspector(frameStore: capture.frameStore, settings: settings)
-        captureArea = CaptureAreaController(settings: settings)
+        captureArea = OverlayFrameController(settings: settings)
         viewer = ViewerWindowController(
             permissions: permissions, settings: settings, frameStore: capture.frameStore, zoomPan: zoomPan,
             inspector: inspector, project: project)
@@ -78,6 +78,8 @@ final class WindowManager {
         // The frame's raise button: a click in the area may have sent another app's window over the Viewer.
         captureArea.onRaiseViewer = { [weak self] in self?.showViewer() }
         captureArea.onPickWindow = { [weak self] in self?.pickWindow() }
+        // Its picker ends the studio's (`WindowPicker`) and a studio countdown, as the studio's own do.
+        captureArea.onPickerStarted = { [weak self] in self?.studio.windowPickerStarted() }
         // The studio has no permission flow of its own: the Viewer explains and asks.
         studio.capturedAppWindows = { [weak self] in
             guard let self else { return [] }

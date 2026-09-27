@@ -11,12 +11,12 @@ Decided to build; the details settle when each moves into product.md.
 ### Images in the Viewer
 
 - **A frozen frame is an image.** To the Viewer, freezing and looking at a picture are the same thing, technically and as a concept: every tool works on both, as it already does on a recent capture. The items below follow from that.
-- **Open an image** in the Viewer as a frozen frame, with zoom, ruler, Color Meter and references, to look at a file with the same pixel-true tools.
-- **Drop images onto the Viewer** to add them as references, besides Add… in the panel.
+- **Open an image** in the Viewer: it shows as a row of Recent Captures, with zoom, ruler, Color Meter and references, to look at a file with the same pixel-true tools.
+- **Drop images onto the Viewer:** with References open they become reference layers, with Recent Captures open they open for inspection, and otherwise a menu asks which.
 
 ### Capture Area
 
-- **Magnet to a window.** Besides the pin, the area can be attached to a chosen window: while the window is on screen and moves, the area moves with it and keeps its place from the window's corner (the iOS Simulator, a browser window). A resized window leaves the area's size as it is. When the window closes, hides, minimises, goes full screen or anything else unusual happens, the magnet lets go and the area stays where it is.
+- **Magnet to a window.** Besides the pin, the area can be attached to a chosen window: while the window is on screen and moves, the area moves with it and keeps its place from the window's corner (the iOS Simulator, a browser window). A resized window leaves the area's size as it is. When the window closes, hides or minimises, the Space changes or the displays do, the magnet lets go and the area stays where it is.
 - **The part the Viewer shows, on the frame.** At a high zoom the Viewer shows a small part of the area; a thin outline inside the frame marks which, and fades when it isn't needed.
 - **A square area with Shift** while dragging a corner.
 - **A fixed position:** the area can't be moved by a stray drag, and its handles still resize it.
@@ -27,7 +27,9 @@ Decided to build; the details settle when each moves into product.md.
 
 ### Screenshot studio
 
-A screenshot tool on the same capture, apart from the Capture Area and the Viewer: its own frame and a panel of buttons, shown and hidden on their own, with their own section in the menu. It can capture anything on screen, the Viewer included, and hides itself for the capture. Exact pixel sizes and clean backgrounds for App Store and website screenshots, docs and bug reports.
+A screenshot tool on the same capture, apart from the Capture Area and the Viewer: its own frame and a panel of buttons, shown and hidden on their own, with their own section in the menu. It can capture anything on screen, the Viewer included, and leaves its own windows out of the picture without hiding them. Exact pixel sizes and clean backgrounds for App Store and website screenshots, docs and bug reports.
+
+Sizes and custom sizes with Aspect Lock; a timer; a clean background of a colour, a gradient or an image, with the Dock, the desktop icons and chosen windows left out; one window alone, with or without its shadow; the pointer if wanted; and the output's format, colours and scale, with no personal metadata.
 
 ## The version after: colour
 

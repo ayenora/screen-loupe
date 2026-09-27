@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 /// under, the pointer, and One Window.
 /// Shown and hidden on its own, apart from the Viewer and the Capture Area.
 ///
-/// The frame is a `CaptureAreaController` of kind `.studio`: the Capture Area's window, drawing,
+/// The frame is an `OverlayFrameController` of kind `.studio`: the Capture Area's window, drawing,
 /// dragging and snapping, without its locks. The palette is a separate panel, parked anywhere.
 @MainActor
 final class StudioController {
@@ -22,7 +22,7 @@ final class StudioController {
     /// The Viewer's window number, while it has a window: a left-out window behind it isn't dimmed.
     var viewerWindowNumber: (() -> Int?)?
 
-    private let frame: CaptureAreaController
+    private let frame: OverlayFrameController
     private let palette = StudioPalette()
     private let settings: SettingsStore
     private let permissions: PermissionsManager
@@ -59,7 +59,7 @@ final class StudioController {
         self.settings = settings
         self.permissions = permissions
         self.export = export
-        frame = CaptureAreaController(settings: settings, kind: .studio) {
+        frame = OverlayFrameController(settings: settings, kind: .studio) {
             StudioPlacement.defaultFrame(in: $0, paletteWidth: StudioPalette.width)
         }
         // A window picked with Aspect Lock on gives the lock its ratio, as a size does.
@@ -89,7 +89,11 @@ final class StudioController {
         settings.observe(\.studioAspectLocked) { [weak self] in self?.palette.aspectLocked = $0 }
         settings.observe(\.activeStudioAspectRatio) { [weak self] in self?.frame.aspectRatio = $0.map { CGFloat($0) } }
         settings.observe(\.studioLeavesOutDock) { [weak self] in self?.palette.leavesOutDock = $0 }
-        settings.observe(\.studioBackground) { [weak self] in self?.palette.hasBackground = $0 != .screen }
+        settings.observe(\.studioBackground) { [weak self] in
+            self?.palette.hasBackground = $0 != .screen
+            // The decoded image isn't kept for a background that no longer is one.
+            if case .image = $0 {} else { self?.backgroundImage = nil }
+        }
         settings.observe(\.studioDelay) { [weak self] in self?.palette.hasDelay = $0 != .off }
         settings.observe(\.studioIncludesPointer) { [weak self] in self?.palette.includesPointer = $0 }
         // The dimmed windows and the countdown move with the frame.
@@ -136,8 +140,6 @@ final class StudioController {
         isVisible ? hide() : show()
     }
 
-    var keepsOnTop: Bool { settings.settings.studioOnTop }
-
     func toggleKeepOnTop() {
         settings.update { $0.studioOnTop.toggle() }
     }
@@ -147,7 +149,7 @@ final class StudioController {
     /// The frame's size in pixels of its display, for the checkmark in the size lists.
     var pixelSize: PixelSize? { frame.pixelSize }
 
-    /// Gives the frame `size` pixels (`CaptureAreaController.resize(toPixels:)`), unless its display
+    /// Gives the frame `size` pixels (`OverlayFrameController.resize(toPixels:)`), unless its display
     /// can't hold them. With Aspect Lock on, the lock takes the frame's ratio.
     func applySize(_ size: PixelSize) {
         guard isVisible else { return }
@@ -291,18 +293,17 @@ final class StudioController {
         settings.update { $0.studioBackground = background }
     }
 
-    /// The system colour panel: each colour taken in it becomes the background. The app is
-    /// activated first, since the panel hides while the app is inactive.
+    /// The system colour panel: each colour taken in it becomes the background, until the panel
+    /// closes or a colour well in Settings takes it (`ColorPanelTarget`). The app is activated
+    /// first, since the panel hides while the app is inactive.
     func chooseCustomColor() {
-        let panel = NSColorPanel.shared
-        panel.showsAlpha = false
+        NSColorPanel.shared.showsAlpha = false
+        var current: NSColor?
         if case .color(let color) = background {
-            panel.color = NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1)
+            current = NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1)
         }
-        panel.setTarget(colorTarget)
-        panel.setAction(#selector(ColorPanelTarget.colorChanged(_:)))
         NSApp.activate()
-        panel.makeKeyAndOrderFront(nil)
+        colorTarget.show(from: current)
     }
 
     /// An image file chosen in the open panel becomes the background. The sandbox lets the app read
@@ -319,10 +320,17 @@ final class StudioController {
         }
     }
 
+    /// Counts the images chosen: one chosen later wins, even when an earlier one finishes after it.
+    private var backgroundRequest = 0
+
     private func useBackgroundImage(at url: URL) {
+        backgroundRequest += 1
+        let request = backgroundRequest
         Task {
             let largest = largestPicture
-            guard let decoded = await Self.decodeBackground(at: url, largest: largest) else {
+            let decoded = await Self.decodeBackground(at: url, largest: largest)
+            guard request == backgroundRequest else { return }
+            guard let decoded else {
                 let alert = NSAlert()
                 alert.messageText = "The image couldn't be opened."
                 alert.informativeText = url.lastPathComponent
@@ -331,13 +339,16 @@ final class StudioController {
             }
             let ext = url.pathExtension.isEmpty ? "png" : url.pathExtension.lowercased()
             let fileName = "Background-\(UUID().uuidString).\(ext)"
+            let copy = backgroundFolder.appending(path: fileName)
+            let copyError = await Self.copy(url, to: copy)
             let manager = FileManager.default
-            do {
-                try manager.createDirectory(at: backgroundFolder, withIntermediateDirectories: true)
-                try manager.copyItem(at: url, to: backgroundFolder.appending(path: fileName))
-            } catch {
+            guard request == backgroundRequest else {
+                try? manager.removeItem(at: copy)
+                return
+            }
+            if let copyError {
                 // The image chosen before stays, and stays the background.
-                log.error("Copying the background image failed: \(error.localizedDescription, privacy: .public)")
+                log.error("Copying the background image failed: \(copyError.localizedDescription, privacy: .public)")
                 return NSSound.beep()
             }
             // Only once the new copy is in place.
@@ -348,6 +359,20 @@ final class StudioController {
             settings.update {
                 $0.studioBackground = .image(BackgroundImage(fileName: fileName, name: url.lastPathComponent))
             }
+        }
+    }
+
+    /// Copies `url` to `copy`, making its folder, off the main actor: a large photo takes a moment.
+    /// The error, if it failed.
+    @concurrent
+    nonisolated private static func copy(_ url: URL, to copy: URL) async -> (any Error)? {
+        let manager = FileManager.default
+        do {
+            try manager.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try manager.copyItem(at: url, to: copy)
+            return nil
+        } catch {
+            return error
         }
     }
 
@@ -403,7 +428,8 @@ final class StudioController {
                 let decoded = await Self.decodeBackground(
                     at: backgroundFolder.appending(path: image.fileName), largest: largest)
             else { throw BackgroundImageUnreadable() }
-            backgroundImage = (image.fileName, largest, decoded.value)
+            // Kept only while it is still the background.
+            if self.background == background { backgroundImage = (image.fileName, largest, decoded.value) }
             return .image(decoded.value)
         }
     }
@@ -420,10 +446,20 @@ final class StudioController {
         settings.update { $0.studioIncludesPointer.toggle() }
     }
 
+    /// Another window picker of the app opened, which ended any of the studio's: a countdown stops.
+    func windowPickerStarted() {
+        advance(.pickerStarted)
+    }
+
     // MARK: Leaving out windows
 
     var isLeavingOutWindows: Bool { windowPicker != nil }
-    var hasLeftOutWindows: Bool { !leftOutWindows.isEmpty }
+    /// Whether a window that still exists is left out; the closed ones are forgotten first, also
+    /// while the studio is hidden and nothing else looks.
+    var hasLeftOutWindows: Bool {
+        dropClosedWindows()
+        return !leftOutWindows.isEmpty
+    }
 
     /// Starts pointing at windows to leave out, or ends it. While it runs, the window under the
     /// pointer is tinted, a click leaves it out or brings it back, and the palette floats above the
@@ -693,7 +729,10 @@ final class StudioController {
         take { [weak self] image, pointScale in
             let written = await Self.write(image, pointScale: pointScale, output: output, forPasteboard: shot != .save)
             guard let self, isVisible else { return }
-            guard let written else { return NSSound.beep() }
+            guard let written else {
+                NSSound.beep()
+                return frame.showNotice("Capture failed")
+            }
             if shot != .save { copy(written) }
             if shot != .copy { save(written, as: output.format) }
         }
