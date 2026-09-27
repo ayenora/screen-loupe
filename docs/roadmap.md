@@ -18,6 +18,7 @@ Decided to build; the details settle when each moves into product.md.
 
 - **Magnet to a window.** Besides the pin, the area can be attached to a chosen window: while the window is on screen and moves, the area moves with it and keeps its place from the window's corner (the iOS Simulator, a browser window). A resized window leaves the area's size as it is. When the window closes, hides or minimises, the Space changes or the displays do, the magnet lets go and the area stays where it is.
 - **The part the Viewer shows, on the frame.** At a high zoom the Viewer shows a small part of the area; a thin outline inside the frame marks which, and fades when it isn't needed.
+- **Viewport handle:** a mode that keeps the outline of the part the Viewer shows on the frame, with a handle that pans the Viewer.
 - **A square area with Shift** while dragging a corner.
 - **A fixed position:** the area can't be moved by a stray drag, and its handles still resize it.
 

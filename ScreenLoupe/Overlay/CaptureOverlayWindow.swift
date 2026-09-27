@@ -16,6 +16,9 @@ final class CaptureOverlayWindow: NSPanel {
         hidesOnDeactivate = false
         isMovable = false
         acceptsMouseMovedEvents = true
+        // Key only for a press whose view needs it (`CaptureOverlayView.needsPanelToBecomeKey`): not
+        // for the viewport handle, which leaves the keyboard with the app underneath.
+        becomesKeyOnlyIfNeeded = true
     }
 
     /// Borderless windows can't become key by default; the frame needs it for arrow-key nudges.

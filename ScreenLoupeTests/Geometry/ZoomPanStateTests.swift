@@ -195,4 +195,73 @@ struct ZoomPanStateTests {
         ).centered()
         #expect(state.visibleSourceRect == nil)
     }
+
+    // MARK: Dragging the outline of the visible part
+
+    /// 400×200 at 8× in an 800×400 viewport, showing 100×50 from (100, 50).
+    private let zoomedIn = ZoomPanState(
+        zoom: 8, offset: CGPoint(x: -800, y: -400), contentSize: CGSize(width: 400, height: 200),
+        viewportSize: CGSize(width: 800, height: 400))
+
+    @Test func movingTheVisiblePartMovesItBySourcePixels() {
+        let moved = zoomedIn.movingVisiblePart(by: CGPoint(x: 10, y: -5))
+        #expect(moved.visibleSourceRect == CGRect(x: 110, y: 45, width: 100, height: 50))
+        #expect(moved.offset == CGPoint(x: -880, y: -360))
+        #expect(moved.zoom == 8)
+    }
+
+    @Test func movingTheVisiblePartByNothingChangesNothing() {
+        #expect(zoomedIn.movingVisiblePart(by: .zero) == zoomedIn)
+    }
+
+    @Test(arguments: [
+        // Past each edge: the part stops at it.
+        (CGPoint(x: -1000, y: 0), CGRect(x: 0, y: 50, width: 100, height: 50)),
+        (CGPoint(x: 1000, y: 0), CGRect(x: 300, y: 50, width: 100, height: 50)),
+        (CGPoint(x: 0, y: -1000), CGRect(x: 100, y: 0, width: 100, height: 50)),
+        (CGPoint(x: 0, y: 1000), CGRect(x: 100, y: 150, width: 100, height: 50)),
+        // Exactly to an edge, and to a corner.
+        (CGPoint(x: -100, y: 0), CGRect(x: 0, y: 50, width: 100, height: 50)),
+        (CGPoint(x: 200, y: 100), CGRect(x: 300, y: 150, width: 100, height: 50)),
+        (CGPoint(x: -5000, y: 5000), CGRect(x: 0, y: 150, width: 100, height: 50)),
+    ])
+    func movingTheVisiblePartStopsAtTheImageEdges(delta: CGPoint, expected: CGRect) {
+        let moved = zoomedIn.movingVisiblePart(by: delta)
+        #expect(moved.visibleSourceRect == expected)
+        // The same clamp as the Viewer's own panning, which moves the image the other way.
+        #expect(moved == zoomedIn.panned(by: CGPoint(x: -delta.x * 8, y: -delta.y * 8)))
+    }
+
+    @Test(arguments: [
+        // Zoom, and the viewport in drawable pixels: a 1× Viewer and a 2× one of the same size in points.
+        (CGFloat(1), CGSize(width: 800, height: 500)), (CGFloat(1), CGSize(width: 1600, height: 1000)),
+        (CGFloat(2), CGSize(width: 800, height: 500)), (CGFloat(8), CGSize(width: 1600, height: 1000)),
+        (CGFloat(0.5), CGSize(width: 800, height: 500)), (CGFloat(2.5), CGSize(width: 1600, height: 1000)),
+        (CGFloat(1.37), CGSize(width: 800, height: 500)),
+    ])
+    func movingTheVisiblePartByNPixelsMovesItByNPixels(zoom: CGFloat, viewport: CGSize) throws {
+        let state = ZoomPanState(
+            zoom: zoom, offset: CGPoint(x: (-1000 * zoom).rounded(), y: (-1000 * zoom).rounded()),
+            contentSize: CGSize(width: 4000, height: 3000), viewportSize: viewport)
+        let before = try #require(state.visibleSourceRect)
+        let after = try #require(state.movingVisiblePart(by: CGPoint(x: 7, y: -3)).visibleSourceRect)
+        #expect(abs(after.width - before.width) < 1e-9 && abs(after.height - before.height) < 1e-9)
+        // The offset is whole drawable pixels: at a fractional zoom within half of one.
+        let tolerance = 0.5 / zoom + 1e-9
+        #expect(abs(after.minX - before.minX - 7) <= tolerance)
+        #expect(abs(after.minY - before.minY + 3) <= tolerance)
+        if zoom == zoom.rounded() {
+            #expect(after.origin == CGPoint(x: before.minX + 7, y: before.minY - 3))
+        }
+    }
+
+    @Test func movingTheVisiblePartLeavesAnAxisWhereTheWholeImageShows() {
+        // 400×100 at 2× in a 400×400 viewport: cut left and right, the whole height with room around it.
+        let state = ZoomPanState(
+            zoom: 2, offset: CGPoint(x: -200, y: 100), contentSize: CGSize(width: 400, height: 100),
+            viewportSize: CGSize(width: 400, height: 400))
+        let moved = state.movingVisiblePart(by: CGPoint(x: 10, y: 30))
+        #expect(moved.offset == CGPoint(x: -220, y: 100))
+        #expect(moved.visibleSourceRect == CGRect(x: 110, y: 0, width: 200, height: 100))
+    }
 }

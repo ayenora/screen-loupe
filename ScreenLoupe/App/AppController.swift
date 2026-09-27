@@ -102,6 +102,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.pickWindow()
     }
 
+    /// View › Show Viewport Handle and the global shortcut; the Capture Area's viewport button turns
+    /// the same setting.
+    @objc func toggleViewportHandle(_ sender: Any?) {
+        settings.update { $0.showsViewportHandle.toggle() }
+    }
+
     @objc func toggleViewerAlwaysOnTop(_ sender: Any?) {
         windows.viewer.toggleAlwaysOnTop()
     }
@@ -321,6 +327,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         case .copySource: windows.export.copySource()
         case .toggleFreeze: windows.toggleFreeze(hint: frozenFromAnotherAppHint())
         case .pickWindow: windows.pickWindow()
+        case .toggleViewportHandle: toggleViewportHandle(nil)
         }
     }
 
@@ -344,6 +351,9 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleCaptureArea(_:)):
             let isVisible = builtWindows?.captureArea.isVisible == true
             menuItem.title = isVisible ? "Hide Capture Area" : "Show Capture Area"
+            return true
+        case #selector(toggleViewportHandle(_:)):
+            menuItem.state = settings.settings.showsViewportHandle ? .on : .off
             return true
         case #selector(toggleViewerAlwaysOnTop(_:)):
             menuItem.state = settings.settings.viewerAlwaysOnTop ? .on : .off

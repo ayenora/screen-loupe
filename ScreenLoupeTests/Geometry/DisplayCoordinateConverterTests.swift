@@ -212,6 +212,66 @@ struct DisplayCoordinateConverterTests {
         #expect(part.rect == CGRect(x: 100, y: 100, width: 200, height: 50))
     }
 
+    // MARK: Dragging the outline of the viewed part
+
+    /// Areas of 200 × 100 pt on each kind of display, and zooms in drawable pixels per source pixel:
+    /// a 1× and a 2× Viewer at the same zoom in points differ by a factor of 2.
+    private static let dragCases: [(CGRect, CGFloat)] = [
+        CGRect(x: 100, y: 100, width: 200, height: 100),  // Retina primary.
+        CGRect(x: -500, y: 100, width: 200, height: 100),  // 1× left of the primary, at negative x.
+        CGRect(x: 1600, y: -150, width: 200, height: 100),  // 1× right of the primary, at negative y.
+        CGRect(x: 100, y: 1000, width: 200, height: 100),  // Retina above the primary.
+    ].flatMap { area in [CGFloat(1), 2, 2.5, 8, 16].map { (area, $0) } }
+
+    @Test(arguments: dragCases)
+    func draggingTheViewedPartMovesItWithThePointer(area: CGRect, zoom: CGFloat) throws {
+        let geometry = try #require(converter.captureGeometry(for: GlobalRect(rect: area)))
+        // Whole drawable pixels at every zoom, as the Viewer keeps its offset.
+        let start = state(showing: CGRect(x: 48, y: 24, width: 100, height: 50), of: geometry.areaSize, zoom: zoom)
+        let before = try #require(DisplayCoordinateConverter.viewedPart(of: start, in: geometry))
+        // Right and up in global points: right and up on the display, whatever its scale.
+        let delta = CGVector(dx: 10, dy: 4)
+        let next = DisplayCoordinateConverter.panned(start, draggingViewedPartBy: delta, in: geometry)
+        let after = try #require(DisplayCoordinateConverter.viewedPart(of: next, in: geometry))
+        #expect(after.rect == before.rect.offsetBy(dx: 10, dy: 4))
+        // In source pixels of the display: N points are N × scale pixels, y down.
+        let scale = geometry.display.scale
+        let moved = try #require(next.visibleSourceRect)
+        #expect(moved.origin == CGPoint(x: 48 + 10 * scale, y: 24 - 4 * scale))
+        #expect(next.zoom == zoom)
+    }
+
+    @Test(arguments: [
+        (CGVector(dx: 1000, dy: 0), CGRect(x: 250, y: 150, width: 50, height: 25)),
+        (CGVector(dx: -1000, dy: 0), CGRect(x: 100, y: 150, width: 50, height: 25)),
+        (CGVector(dx: 0, dy: 1000), CGRect(x: 150, y: 175, width: 50, height: 25)),
+        (CGVector(dx: 0, dy: -1000), CGRect(x: 150, y: 100, width: 50, height: 25)),
+        (CGVector(dx: 1000, dy: 1000), CGRect(x: 250, y: 175, width: 50, height: 25)),
+    ])
+    func draggingTheViewedPartStopsAtTheAreaEdges(delta: CGVector, expected: CGRect) throws {
+        // Retina primary: the area is 400×200 px, 100×50 px of it shown from pixel (100, 50).
+        let area = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let geometry = try #require(converter.captureGeometry(for: GlobalRect(rect: area)))
+        let start = state(showing: CGRect(x: 100, y: 50, width: 100, height: 50), of: geometry.areaSize, zoom: 8)
+        let next = DisplayCoordinateConverter.panned(start, draggingViewedPartBy: delta, in: geometry)
+        let part = try #require(DisplayCoordinateConverter.viewedPart(of: next, in: geometry))
+        #expect(part.rect == expected)
+        #expect(area.contains(part.rect))
+    }
+
+    @Test func draggingTheViewedPartOfAStraddlingAreaUsesTheCapturingDisplaysScale() throws {
+        // 40 pt on the 2× primary, 60 pt on the 1× right display, which captures: 1 pt is 1 px.
+        let geometry = try #require(
+            converter.captureGeometry(for: GlobalRect(rect: CGRect(x: 1400, y: 100, width: 100, height: 100))))
+        let start = state(showing: CGRect(x: 0, y: 0, width: 50, height: 50), of: geometry.areaSize, zoom: 4)
+        let before = try #require(DisplayCoordinateConverter.viewedPart(of: start, in: geometry))
+        let next = DisplayCoordinateConverter.panned(
+            start, draggingViewedPartBy: CGVector(dx: 10, dy: -10), in: geometry)
+        let after = try #require(DisplayCoordinateConverter.viewedPart(of: next, in: geometry))
+        #expect(after.rect == before.rect.offsetBy(dx: 10, dy: -10))
+        #expect(next.visibleSourceRect?.origin == CGPoint(x: 10, y: 10))
+    }
+
     @Test func noViewedPartWhenTheWholeAreaShows() throws {
         let geometry = try #require(
             converter.captureGeometry(for: GlobalRect(rect: CGRect(x: 100, y: 100, width: 200, height: 100))))

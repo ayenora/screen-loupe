@@ -140,4 +140,32 @@ struct ShortcutRulesTests {
         #expect(!ShortcutRules.isAllowed(M(), isHighFunctionKey: false, allowsLoneFunctionKey: true))
         #expect(!ShortcutRules.isAllowed(M(shift: true), isHighFunctionKey: true, allowsLoneFunctionKey: true))
     }
+
+    /// A key code and modifiers, with the label a keyboard layout gives them.
+    private struct Keys {
+        var code: Int
+        var modifiers: Int
+        var label: String
+    }
+
+    private func newDefault(_ fallback: Keys?, saved: [Keys?]) -> Keys? {
+        ShortcutRules.newDefault(fallback, saved: saved) { $0.code == $1.code && $0.modifiers == $1.modifiers }
+    }
+
+    @Test func aNewActionGetsItsDefaultWhenNoSavedShortcutHasItsKeys() {
+        let m = Keys(code: 46, modifiers: 5, label: "M")
+        let result = newDefault(m, saved: [Keys(code: 37, modifiers: 7, label: "L"), nil])
+        #expect(result?.code == 46)
+        // The same key with other modifiers, or other keys with the same modifiers, don't take it.
+        #expect(newDefault(m, saved: [Keys(code: 46, modifiers: 7, label: "M")]) != nil)
+        #expect(newDefault(m, saved: [Keys(code: 37, modifiers: 5, label: "L")]) != nil)
+        #expect(newDefault(m, saved: []) != nil)
+    }
+
+    @Test func aNewActionStartsUnassignedWhenASavedShortcutHasItsKeys() {
+        let m = Keys(code: 46, modifiers: 5, label: "M")
+        // Taken by the user's own choice, whatever the layout labelled it.
+        #expect(newDefault(m, saved: [nil, Keys(code: 46, modifiers: 5, label: "µ")]) == nil)
+        #expect(newDefault(nil, saved: []) == nil)
+    }
 }

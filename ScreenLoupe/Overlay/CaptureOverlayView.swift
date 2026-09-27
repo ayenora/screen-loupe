@@ -7,6 +7,8 @@ protocol CaptureOverlayViewDelegate: AnyObject {
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint)
     func overlayView(_ view: CaptureOverlayView, mouseDraggedTo point: CGPoint)
     func overlayViewMouseUp(_ view: CaptureOverlayView)
+    /// Whether a press at `point` makes the frame key.
+    func overlayView(_ view: CaptureOverlayView, takesKeyForPressAt point: CGPoint) -> Bool
     /// A lock was chosen from the pin's ▾.
     func overlayView(_ view: CaptureOverlayView, didChoose lock: CaptureAreaLock)
     /// Returns whether the key was handled.
@@ -17,16 +19,16 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 ///
 /// The line is always drawn. The band, the handles, the tab and the position box fade in on hover;
 /// the muted size label shows at rest. A frame whose lock stops resizing shows no band or handles.
-/// The dashed outline of the part the Viewer shows, and a notice beside the tab, fade in and out as
-/// the controller asks. Without `lockButtons` (the Screenshot studio's frame) there is no pin and no
-/// raise button, only the pick button beside the tab.
+/// The viewport handle on the outline of the part the Viewer shows (the outline itself is in its own
+/// click-through panel, `ViewedPartOverlay`), and a notice beside the tab, fade in and out as the
+/// controller asks. Without `lockButtons` (the Screenshot studio's frame) there
+/// is no pin, no viewport button and no raise button, only the pick button beside the tab.
 /// Subviews never take the mouse, so every event lands here.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
 
     private var layout: OverlayLayout?
     private let decorations = FrameDecorationsView()
-    private let viewedPartOutline = ViewedPartView()
     private let tab = GripTabView()
     private let label = SizeLabelView()
     private let positionBox = PositionBoxView()
@@ -35,6 +37,13 @@ final class CaptureOverlayView: NSView {
     /// The pin with its ▾: shows the chosen lock, filled while it is on.
     private let pinButton = TabButtonView(
         image: CaptureAreaLock.pinned.image(isOn: false), onImage: CaptureAreaLock.pinned.image(isOn: true))
+    /// Turns the viewport handle on and off: filled while it is on.
+    private let viewportButton = TabButtonView(
+        image: TabButtonView.symbol("rectangle.dashed"), onImage: TabButtonView.symbol("rectangle.dashed"))
+    /// The pill on the outline of the viewed part that pans the Viewer.
+    private let viewportHandle = TabButtonView(
+        image: TabButtonView.symbol("arrow.up.and.down.and.arrow.left.and.right"),
+        onImage: TabButtonView.symbol("arrow.up.and.down.and.arrow.left.and.right"))
     /// Brings the Viewer forward, for when a click in the area sent another app's window over it.
     private let raiseButton = TabButtonView(
         image: TabButtonView.symbol("arrow.up.forward.app"), onImage: TabButtonView.symbol("arrow.up.forward.app"))
@@ -45,11 +54,28 @@ final class CaptureOverlayView: NSView {
     private let lockButtons: Bool
     private var isDragging = false
     private var isRevealed = false
-    private var isViewedPartShown = false
 
-    /// The part of the area the Viewer shows, in AppKit global coordinates.
-    var viewedPart: CGRect? {
-        didSet { placeViewedPart() }
+    /// The viewport handle, in AppKit global coordinates; `nil` hides it. It fades in, but goes at
+    /// once: a fading pill would still be drawn pixels, taking presses it no longer answers.
+    var viewportHandleRect: CGRect? {
+        didSet {
+            guard viewportHandleRect != oldValue else { return }
+            placeViewportHandle()
+            guard viewportHandleRect != nil else {
+                viewportHandle.layer?.removeAllAnimations()
+                viewportHandle.alphaValue = 0
+                return
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = OverlayStyle.revealDuration
+                viewportHandle.animator().alphaValue = 1
+            }
+        }
+    }
+
+    /// The viewport button is filled.
+    var isViewportHandleOn = false {
+        didSet { viewportButton.isOn = isViewportHandleOn }
     }
 
     /// The lock chosen with the pin's ▾, shown by the pin's image.
@@ -76,9 +102,10 @@ final class CaptureOverlayView: NSView {
     var style: FrameStyle {
         didSet {
             decorations.style = style
-            viewedPartOutline.style = style
             tab.style = style
             pinButton.style = style
+            viewportButton.style = style
+            viewportHandle.style = style
             raiseButton.style = style
             pickButton.style = style
             label.alphaValue = labelAlpha
@@ -90,26 +117,31 @@ final class CaptureOverlayView: NSView {
         self.style = style
         self.lockButtons = lockButtons
         decorations.style = style
-        viewedPartOutline.style = style
         tab.style = style
         pinButton.style = style
+        viewportButton.style = style
+        viewportHandle.style = style
         raiseButton.style = style
         pickButton.style = style
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        let buttons: [NSView] = lockButtons ? [pinButton, raiseButton, pickButton] : [pickButton]
-        for subview in [viewedPartOutline, decorations, label, positionBox, tab] + buttons + [notice] {
+        let buttons: [NSView] =
+            lockButtons ? [pinButton, viewportButton, raiseButton, pickButton] : [pickButton]
+        let parts: [NSView] = [decorations, label, positionBox, tab, viewportHandle]
+        for subview in parts + buttons + [notice] {
             addSubview(subview)
         }
         decorations.alphaValue = 0
-        viewedPartOutline.alphaValue = 0
         tab.alphaValue = 0
         positionBox.alphaValue = 0
         notice.alphaValue = 0
         pinButton.menuWidth = OverlayMetrics.standard.pinMenuWidth
         pinButton.menuLabel = "Pin Mode"
         pinButton.alphaValue = 0
+        viewportButton.alphaValue = 0
+        viewportHandle.alphaValue = 0
+        viewportHandle.cornerRadius = OverlayMetrics.standard.viewportHandleSize.height / 2
         raiseButton.alphaValue = 0
         pickButton.alphaValue = 0
     }
@@ -128,8 +160,7 @@ final class CaptureOverlayView: NSView {
 
         decorations.frame = bounds
         decorations.captureRect = local(layout.captureRect)
-        viewedPartOutline.frame = bounds
-        placeViewedPart()
+        placeViewportHandle()
         decorations.handleRects = OverlayHandle.allCases.map {
             local(layout.handleRect($0, size: OverlayMetrics.standard.handleSize))
         }
@@ -140,6 +171,7 @@ final class CaptureOverlayView: NSView {
         notice.frame = local(layout.noticeRect)
         if lockButtons {
             pinButton.frame = local(layout.pinRect.union(layout.pinMenuRect))
+            viewportButton.frame = local(layout.viewportRect)
             raiseButton.frame = local(layout.raiseRect)
         }
         pickButton.frame = local(layout.pickRect)
@@ -168,20 +200,10 @@ final class CaptureOverlayView: NSView {
             tab.animator().alphaValue = revealed ? 1 : 0
             positionBox.animator().alphaValue = revealed ? 1 : 0
             pinButton.animator().alphaValue = revealed ? 1 : 0
+            viewportButton.animator().alphaValue = revealed ? 1 : 0
             raiseButton.animator().alphaValue = revealed ? 1 : 0
             pickButton.animator().alphaValue = revealed ? 1 : 0
             label.animator().alphaValue = labelAlpha
-        }
-    }
-
-    /// Fades the outline of the viewed part in or out.
-    func setViewedPartShown(_ shown: Bool) {
-        guard shown != isViewedPartShown else { return }
-        isViewedPartShown = shown
-        placeViewedPart()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = OverlayStyle.revealDuration
-            viewedPartOutline.animator().alphaValue = shown ? 1 : 0
         }
     }
 
@@ -201,11 +223,9 @@ final class CaptureOverlayView: NSView {
         }
     }
 
-    /// A hidden outline isn't redrawn, and one whose part is gone fades out where it last was.
-    private func placeViewedPart() {
-        guard isViewedPartShown, let layout, let viewedPart else { return }
-        viewedPartOutline.captureRect = local(layout.captureRect)
-        viewedPartOutline.viewedRect = local(viewedPart)
+    private func placeViewportHandle() {
+        guard let viewportHandleRect else { return }
+        viewportHandle.frame = local(viewportHandleRect)
     }
 
     private var labelAlpha: CGFloat { !isRevealed && style.showsLabelAtRest ? 1 : 0 }
@@ -236,6 +256,12 @@ final class CaptureOverlayView: NSView {
     // MARK: Mouse
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// The frame becomes key for the arrow keys on a press on it, but not on the viewport handle nor
+    /// on anything else inside the area: the app underneath keeps the keyboard.
+    override var needsPanelToBecomeKey: Bool {
+        delegate?.overlayView(self, takesKeyForPressAt: NSEvent.mouseLocation) ?? false
+    }
     override var acceptsFirstResponder: Bool { true }
 
     override func updateTrackingAreas() {
@@ -258,11 +284,14 @@ final class CaptureOverlayView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        window?.makeKey()
-        isDragging = true
         let point = NSEvent.mouseLocation
         let target = delegate?.overlayView(self, hitTargetAt: point)
-        if target == .move || (target == nil && !isLocked) {
+        // Also with `becomesKeyOnlyIfNeeded`, which a click from another app may not go through.
+        let takesKey = needsPanelToBecomeKey
+        if takesKey { window?.makeKey() }
+        isDragging = true
+        // A press on no target moves an unlocked frame, except inside the area (`takesKey` false).
+        if target == .move || target == .viewportHandle || (target == nil && !isLocked && takesKey) {
             NSCursor.closedHand.set()
         }
         delegate?.overlayView(self, mouseDownAt: point)
@@ -345,33 +374,6 @@ private final class FrameDecorationsView: NSView {
     }
 }
 
-/// The part of the area the Viewer shows: a 1 pt dashed line in the accent with the line's halo,
-/// inside the captured rect so it never covers the frame's line.
-private final class ViewedPartView: NSView {
-    var captureRect: CGRect = .zero { didSet { needsDisplay = true } }
-    var viewedRect: CGRect? { didSet { needsDisplay = true } }
-    var style: FrameStyle? { didSet { needsDisplay = true } }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let style, let viewedRect else { return }
-        NSBezierPath(rect: captureRect).setClip()
-        let rect = viewedRect.insetBy(dx: 0.5, dy: 0.5)
-        let dashes: [CGFloat] = [4, 3]
-        let halo = NSBezierPath(rect: rect)
-        halo.lineWidth = 3
-        halo.setLineDash(dashes, count: dashes.count, phase: 0)
-        OverlayStyle.halo(for: effectiveAppearance).setStroke()
-        halo.stroke()
-        let line = NSBezierPath(rect: rect)
-        line.lineWidth = 1
-        line.setLineDash(dashes, count: dashes.count, phase: 0)
-        style.accent.setStroke()
-        line.stroke()
-    }
-}
-
 /// The pill above the frame: a grip and the size in points and pixels. Dragging it moves the frame.
 private final class GripTabView: NSView {
     var text = "" { didSet { if text != oldValue { needsDisplay = true } } }
@@ -420,11 +422,13 @@ private final class GripTabView: NSView {
     }
 }
 
-/// A square button beside the tab — the pin, the raise and pick buttons: the tab's colour with an outlined
-/// image, or the accent with the filled one while it is on. The images are templates, drawn in the tint.
-/// The pin carries a ▾ on its right, past a thin divider.
+/// A square button beside the tab — the pin, the viewport, raise and pick buttons — or the viewport
+/// handle's pill: the tab's colour with an outlined image, or the accent with the filled one while it
+/// is on. The images are templates, drawn in the tint. The pin carries a ▾ on its right, past a thin
+/// divider.
 private final class TabButtonView: NSView {
     var style: FrameStyle? { didSet { needsDisplay = true } }
+    var cornerRadius: CGFloat = 6 { didSet { needsDisplay = true } }
     var isOn = false { didSet { needsDisplay = true } }
     var image: NSImage? { didSet { needsDisplay = true } }
     var onImage: NSImage? { didSet { needsDisplay = true } }
@@ -452,7 +456,7 @@ private final class TabButtonView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let style else { return }
         (isOn ? style.accent : style.tabFill).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
         let tint = isOn ? (style.handleFill == .white ? NSColor.white : .black) : style.onTab
         let button = CGRect(x: 0, y: 0, width: bounds.width - menuWidth, height: bounds.height)
         if let image = isOn ? onImage : image {

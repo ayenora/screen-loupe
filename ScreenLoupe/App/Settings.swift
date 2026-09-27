@@ -9,6 +9,9 @@ struct Settings: Codable, Equatable {
     /// The lock chosen with the pin's ▾, and whether the pin has it on.
     var captureAreaLock = CaptureAreaLock.pinned
     var captureAreaLocked = false
+    /// The viewport handle mode: the outline of the part the Viewer shows stays on the Capture Area
+    /// with a handle that pans the Viewer.
+    var showsViewportHandle = false
     /// Keep the Viewer above the windows of other apps.
     var viewerAlwaysOnTop = false
     /// The Screenshot studio's frame in AppKit global coordinates, and its palette's origin.
@@ -92,6 +95,7 @@ struct Settings: Codable, Equatable {
         captureArea = c.value(.captureArea, or: d.captureArea)
         captureAreaLock = c.value(.captureAreaLock, or: d.captureAreaLock)
         captureAreaLocked = (try? CaptureAreaLock.SavedPin(from: decoder))?.isOn ?? d.captureAreaLocked
+        showsViewportHandle = c.value(.showsViewportHandle, or: d.showsViewportHandle)
         viewerAlwaysOnTop = c.value(.viewerAlwaysOnTop, or: d.viewerAlwaysOnTop)
         studioFrame = c.value(.studioFrame, or: d.studioFrame)
         studioPaletteOrigin = c.value(.studioPaletteOrigin, or: d.studioPaletteOrigin)

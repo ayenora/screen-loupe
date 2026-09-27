@@ -92,6 +92,84 @@ struct OverlayLayoutTests {
     func hoverZoneHugsTheLine(point: CGPoint, expected: Bool) {
         #expect(layout(CGRect(x: 100, y: 100, width: 200, height: 100)).isInHoverZone(point) == expected)
     }
+
+    // MARK: The viewport handle
+
+    @Test(arguments: [
+        // A 30 × 18 pill centred on the part's top edge (y 160): from (160, 151) to (190, 169).
+        (CGPoint(x: 175, y: 160), OverlayHitTarget?.some(.viewportHandle)),
+        // Its bottom-left corner and left edge take the press; its right and top edges don't, as
+        // `CGRect.contains` counts them.
+        (CGPoint(x: 160, y: 151), .viewportHandle),
+        (CGPoint(x: 160, y: 165), .viewportHandle),
+        (CGPoint(x: 189.9, y: 168.9), .viewportHandle),
+        (CGPoint(x: 190, y: 160), nil),
+        (CGPoint(x: 175, y: 169), nil),
+        (CGPoint(x: 159.9, y: 160), nil),
+        (CGPoint(x: 175, y: 150.9), nil),
+        // Elsewhere inside the part and the area the press goes to the app underneath.
+        (CGPoint(x: 175, y: 130), nil),
+        (CGPoint(x: 250, y: 150), nil),
+    ])
+    func viewportHandleTakesPressesOnlyInsideIt(point: CGPoint, expected: OverlayHitTarget?) {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        let handle = l.viewportHandleRect(for: CGRect(x: 150, y: 120, width: 50, height: 40))
+        #expect(handle == CGRect(x: 160, y: 151, width: 30, height: 18))
+        // It moves the Viewer, not the area: every lock lets it.
+        for lock in [nil, CaptureAreaLock.pinned, .fixedPosition, .magnet] {
+            #expect(l.hitTarget(at: point, lock: lock, viewportHandle: handle) == expected)
+        }
+        // Without the handle nothing inside the area takes a press.
+        #expect(l.hitTarget(at: point) == nil)
+    }
+
+    @Test(arguments: [
+        // Part, then the handle: centred on the part's top edge.
+        (CGRect(x: 150, y: 120, width: 50, height: 40), CGRect(x: 160, y: 151, width: 30, height: 18)),
+        // The part's top is the area's top: the handle sits just inside.
+        (CGRect(x: 150, y: 150, width: 50, height: 50), CGRect(x: 160, y: 182, width: 30, height: 18)),
+        // A top edge 3 pt under the area's: still inside, not sticking out.
+        (CGRect(x: 150, y: 150, width: 50, height: 47), CGRect(x: 160, y: 182, width: 30, height: 18)),
+        // Exactly half the pill under the area's top: centred, touching it.
+        (CGRect(x: 150, y: 150, width: 50, height: 41), CGRect(x: 160, y: 182, width: 30, height: 18)),
+        (CGRect(x: 150, y: 150, width: 50, height: 40), CGRect(x: 160, y: 181, width: 30, height: 18)),
+        // A narrow part at a side of the area: the handle stays within the area's sides.
+        (CGRect(x: 100, y: 120, width: 10, height: 40), CGRect(x: 100, y: 151, width: 30, height: 18)),
+        (CGRect(x: 290, y: 120, width: 10, height: 40), CGRect(x: 270, y: 151, width: 30, height: 18)),
+        // Half-point edges on a 2× display.
+        (CGRect(x: 150.5, y: 120, width: 50, height: 40.5), CGRect(x: 160.5, y: 151.5, width: 30, height: 18)),
+    ])
+    func viewportHandleSitsOnThePartsTopEdgeInsideTheArea(part: CGRect, expected: CGRect) {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        let handle = l.viewportHandleRect(for: part)
+        #expect(handle == expected)
+        #expect(l.captureRect.contains(handle))
+    }
+
+    @Test func viewportHandleOnADisplayAtNegativeCoordinates() {
+        let screen = CGRect(x: -2560, y: -180, width: 2560, height: 1440)
+        let l = OverlayLayout(
+            captureRect: CGRect(x: -500, y: -150, width: 200, height: 100), screenFrame: screen, tabWidth: 180,
+            labelWidth: 60)
+        let handle = l.viewportHandleRect(for: CGRect(x: -450, y: -120, width: 100, height: 70))
+        #expect(handle == CGRect(x: -415, y: -68, width: 30, height: 18))
+        #expect(l.hitTarget(at: CGPoint(x: -400, y: -60), viewportHandle: handle) == .viewportHandle)
+        #expect(l.hitTarget(at: CGPoint(x: -400, y: -100), viewportHandle: handle) == nil)
+    }
+
+    @Test func viewportHandleWinsOverTheResizeHandlesAndTheTabButNotTheButtons() {
+        // A tall area: the tab sits inside at the top, where the handle of a part reaching the top is.
+        let l = layout(CGRect(x: 100, y: 0, width: 200, height: 900))
+        #expect(l.tabPlacement == .inside)
+        let handle = l.viewportHandleRect(for: CGRect(x: 100, y: 450, width: 200, height: 450))
+        #expect(handle == CGRect(x: 185, y: 882, width: 30, height: 18))
+        #expect(l.hitTarget(at: CGPoint(x: 200, y: 895), viewportHandle: handle) == .viewportHandle)
+        #expect(l.hitTarget(at: CGPoint(x: 200, y: 895)) == .resize(.top))
+        #expect(l.hitTarget(at: CGPoint(x: 200, y: 885), viewportHandle: handle) == .viewportHandle)
+        #expect(l.hitTarget(at: CGPoint(x: 200, y: 885)) == .move)
+        #expect(
+            l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), viewportHandle: l.pinRect) == .pin)
+    }
 }
 
 struct CaptureAreaEditingTests {
@@ -245,10 +323,15 @@ struct OverlayPositionBoxTests {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.pinRect.minX == l.tabRect.maxX + 4)
         #expect(l.pinMenuRect == CGRect(x: l.pinRect.maxX, y: l.pinRect.minY, width: 13, height: 22))
-        #expect(l.raiseRect.minX == l.pinMenuRect.maxX + 4)
+        #expect(l.viewportRect == CGRect(x: l.pinMenuRect.maxX + 4, y: l.pinRect.minY, width: 22, height: 22))
+        #expect(l.raiseRect.minX == l.viewportRect.maxX + 4)
         #expect(l.pickRect.minX == l.raiseRect.maxX + 4)
         #expect(l.pickRect.minY == l.tabRect.minY)
         #expect(l.isInHoverZone(CGPoint(x: l.pinMenuRect.midX, y: l.pinMenuRect.midY)))
+        #expect(l.isInHoverZone(CGPoint(x: l.viewportRect.midX, y: l.viewportRect.midY)))
+        #expect(l.hitTarget(at: CGPoint(x: l.viewportRect.midX, y: l.viewportRect.midY)) == .viewportButton)
+        #expect(
+            l.hitTarget(at: CGPoint(x: l.viewportRect.midX, y: l.viewportRect.midY), lock: .pinned) == .viewportButton)
     }
 
     @Test func atTheRightEdgeAllButtonsMoveLeftOfTheTab() {
@@ -257,7 +340,8 @@ struct OverlayPositionBoxTests {
         let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
         #expect(l.pinMenuRect.maxX == l.tabRect.minX - 4)
         #expect(l.pinMenuRect.minX == l.pinRect.maxX)
-        #expect(l.raiseRect.maxX == l.pinRect.minX - 4)
+        #expect(l.viewportRect.maxX == l.pinRect.minX - 4)
+        #expect(l.raiseRect.maxX == l.viewportRect.minX - 4)
         #expect(l.pickRect.maxX == l.raiseRect.minX - 4)
         #expect(l.windowFrame.contains(l.pickRect))
     }
@@ -308,6 +392,7 @@ struct OverlayLayoutWithoutLockButtonsTests {
         #expect(l.pickRect == CGRect(x: l.tabRect.maxX + 4, y: l.tabRect.minY, width: 22, height: 22))
         #expect(l.pinRect.isNull)
         #expect(l.pinMenuRect.isNull)
+        #expect(l.viewportRect.isNull)
         #expect(l.raiseRect.isNull)
         #expect(l.hitTarget(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY)) == .pickWindow)
         #expect(l.isInHoverZone(CGPoint(x: l.pickRect.midX, y: l.pickRect.midY)))

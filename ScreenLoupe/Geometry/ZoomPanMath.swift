@@ -155,6 +155,16 @@ struct ZoomPanState: Equatable, Sendable {
         return next.clamped()
     }
 
+    /// The part the viewport shows moved by `delta` source pixels: dragging its outline on the Capture
+    /// Area. On an axis where the whole image shows there is no part to move, and the image stays.
+    /// Clamped as any pan is.
+    func movingVisiblePart(by delta: CGPoint) -> ZoomPanState {
+        var next = self
+        if scaledContentSize.width > viewportSize.width { next.offset.x -= delta.x * zoom }
+        if scaledContentSize.height > viewportSize.height { next.offset.y -= delta.y * zoom }
+        return next.clamped()
+    }
+
     func panned(by delta: CGPoint) -> ZoomPanState {
         var next = self
         next.offset = CGPoint(x: offset.x + delta.x, y: offset.y + delta.y)

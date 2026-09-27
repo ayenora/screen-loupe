@@ -113,6 +113,10 @@ enum MainMenu {
         let ruler = menu.addItem(
             withTitle: "Ruler", action: #selector(AppController.toggleMeasuringRuler(_:)), keyEquivalent: "r")
         ruler.target = target
+        let viewportHandle = menu.addItem(
+            withTitle: "Show Viewport Handle", action: #selector(AppController.toggleViewportHandle(_:)),
+            keyEquivalent: "")
+        viewportHandle.target = target
         menu.addItem(.separator())
         // AppKit retitles this item "Exit Full Screen" on its own while the window is full screen.
         let fullScreen = menu.addItem(

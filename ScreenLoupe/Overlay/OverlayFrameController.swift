@@ -2,7 +2,8 @@ import AppKit
 
 /// Which frame an `OverlayFrameController` runs. Both share the overlay window, drawing, dragging,
 /// ⌘-snapping, pixel snapping, the arrow keys, Fit to Window and the notice; only the Capture Area
-/// has the pin's locks, the magnet, the raise button and the outline of the part the Viewer shows.
+/// has the pin's locks, the magnet, the raise button and the outline of the part the Viewer shows,
+/// with its viewport handle.
 enum OverlayFrameKind {
     /// The Capture Area the Viewer shows.
     case captureArea
@@ -25,7 +26,7 @@ enum OverlayFrameKind {
         }
     }
 
-    /// The pin with its locks and the magnet, and the raise button.
+    /// The pin with its locks and the magnet, the viewport and raise buttons.
     var hasLocks: Bool { self == .captureArea }
 
     /// Placed when first shown, on the displays then connected, and kept only from then on. The
@@ -63,10 +64,15 @@ final class OverlayFrameController {
     var viewedPart: CGRect? {
         didSet {
             guard viewedPart != oldValue else { return }
-            view.viewedPart = viewedPart
             updateViewedPartShown()
         }
     }
+
+    /// A drag of the viewport handle started: the Viewer's pan it starts from.
+    var onViewportHandleDragBegan: (() -> Void)?
+    /// The viewport handle is dragged: how far the pointer moved since the drag began, in global
+    /// points; the Viewer pans so the outline follows the pointer.
+    var onViewportHandleDragged: ((CGVector) -> Void)?
 
     /// The width-to-height ratio a drag of a handle keeps, unless Shift squares the frame; `nil`
     /// resizes freely. The arrow keys don't keep it.
@@ -96,6 +102,8 @@ final class OverlayFrameController {
     private let kind: OverlayFrameKind
     private let window = CaptureOverlayWindow()
     private let view: CaptureOverlayView
+    /// The outline of the part the Viewer shows, click-through; the Capture Area's only.
+    private let outline: ViewedPartOverlay?
     private let settings: SettingsStore
     private var converter: DisplayCoordinateConverter?
     private var layout: OverlayLayout?
@@ -113,6 +121,11 @@ final class OverlayFrameController {
     private var hideTimer: Timer?
     /// Runs while the outline of the viewed part holds after the Viewer's image moved.
     private var viewedPartTimer: Timer?
+    /// The viewport handle mode is on (`Settings.showsViewportHandle`): the outline stays and carries
+    /// the handle.
+    private var showsViewportHandle = false {
+        didSet { updateViewedPartShown() }
+    }
     private var eventMonitors: [Any] = []
     private var keyObservers: [NSObjectProtocol] = []
     private var picker: WindowPicker?
@@ -149,6 +162,7 @@ final class OverlayFrameController {
         self.kind = kind
         makeDefaultRect = defaultRect
         view = CaptureOverlayView(style: FrameStyle(settings.settings[keyPath: kind.style]), lockButtons: kind.hasLocks)
+        outline = kind.hasLocks ? ViewedPartOverlay() : nil
         window.contentView = view
         view.delegate = self
         refreshDisplays()
@@ -162,7 +176,10 @@ final class OverlayFrameController {
                 })
         }
         // Settings › Capture Area. Each first call repeats what init just set up, harmlessly.
-        settings.observe(kind.style) { [weak self] in self?.view.style = FrameStyle($0) }
+        settings.observe(kind.style) { [weak self] in
+            self?.view.style = FrameStyle($0)
+            self?.outline?.style = FrameStyle($0)
+        }
         settings.observe(\.sizeUnits) { [weak self] _ in
             guard let self else { return }
             apply(captureRect, persist: false)
@@ -172,6 +189,10 @@ final class OverlayFrameController {
         settings.update { if $0.captureAreaLock == .magnet { $0.captureAreaLocked = false } }
         settings.observe(\.captureAreaLock) { [weak self] in self?.view.lock = $0 }
         settings.observe(\.captureAreaLocked) { [weak self] in self?.view.isLocked = $0 }
+        settings.observe(\.showsViewportHandle) { [weak self] in
+            self?.view.isViewportHandleOn = $0
+            self?.showsViewportHandle = $0
+        }
         // The magnet turned off, or another lock chosen.
         settings.observe(\.activeCaptureAreaLock) { [weak self] in
             if $0 != .magnet { self?.stopMagnet() }
@@ -185,16 +206,21 @@ final class OverlayFrameController {
     /// The overlay window's number, to leave it out of a screenshot.
     var windowNumber: Int { window.windowNumber }
 
+    /// The numbers of the frame's windows: its overlay and the outline's panel.
+    var windowNumbers: [Int] { [window.windowNumber] + (outline.map { [$0.windowNumber] } ?? []) }
+
     func show() {
         if !hasBeenShown, kind.placedWhenFirstShown { apply(initialRect(), persist: false) }
         hasBeenShown = true
         window.orderFrontRegardless()
+        outline?.order(.below, relativeTo: window.windowNumber)
         startMonitoringMouse()
     }
 
     /// A hidden area doesn't follow a window: the magnet turns off quietly, as at launch.
     func hide() {
         window.orderOut(nil)
+        outline?.orderOut(nil)
         stopMonitoringMouse()
         if magnet != nil { settings.update { $0.captureAreaLocked = false } }
     }
@@ -457,6 +483,7 @@ final class OverlayFrameController {
         self.layout = layout
         window.setFrame(layout.windowFrame, display: false)
         view.update(layout: layout, tabText: tabText, labelText: labelText, positionLines: positionLines)
+        updateViewedPartShown()
 
         if persist {
             settings.update { $0[keyPath: kind.savedRect] = rect }
@@ -557,8 +584,19 @@ final class OverlayFrameController {
         updateViewedPartShown()
     }
 
+    /// With the viewport handle on, the outline stays, with the handle, and doesn't fade.
     private func updateViewedPartShown() {
-        view.setViewedPartShown(viewedPart != nil && (isNear || viewedPartTimer != nil))
+        outline?.setShown(viewedPart != nil && (isNear || viewedPartTimer != nil || showsViewportHandle))
+        if let layout {
+            outline?.place(frame: layout.windowFrame, captureRect: layout.captureRect, viewedPart: viewedPart)
+        }
+        view.viewportHandleRect = viewportHandle
+    }
+
+    /// The viewport handle's rect, or `nil` while it isn't shown.
+    private var viewportHandle: CGRect? {
+        guard showsViewportHandle, let viewedPart, let layout else { return nil }
+        return layout.viewportHandleRect(for: viewedPart, metrics: view.style.metrics)
     }
 }
 
@@ -569,11 +607,21 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
     private var lock: CaptureAreaLock? { kind.hasLocks ? settings.settings.activeCaptureAreaLock : nil }
 
     func overlayView(_ view: CaptureOverlayView, hitTargetAt point: CGPoint) -> OverlayHitTarget? {
-        layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock)
+        layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock, viewportHandle: viewportHandle)
     }
 
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint) {
-        let target = layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock)
+        let target = self.overlayView(view, hitTargetAt: point)
+        if target == .viewportButton {
+            settings.update { $0.showsViewportHandle.toggle() }
+            return
+        }
+        if target == .viewportHandle {
+            drag = Drag(target: .viewportHandle, startMouse: point, startRect: captureRect)
+            onViewportHandleDragBegan?()
+            updateReveal()
+            return
+        }
         if target == .pin {
             let current = settings.settings
             if current.captureAreaLock == .magnet, !current.captureAreaLocked {
@@ -596,9 +644,9 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
             return
         }
         // A locked frame takes only the handles its lock allows, which the hit test already left out.
-        // Otherwise the window only receives presses on its drawn pixels, and anything that isn't a
-        // handle moves it.
-        guard let target = target ?? (lock == nil ? .move : nil) else { return }
+        // Otherwise the window only receives presses on its drawn pixels, and anything outside the
+        // area that isn't a handle moves it. Inside, a press on no target does nothing.
+        guard let target = target ?? (lock == nil && !captureRect.contains(point) ? .move : nil) else { return }
         drag = Drag(target: target, startMouse: point, startRect: captureRect)
         updateReveal()
     }
@@ -606,6 +654,10 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
     func overlayView(_ view: CaptureOverlayView, mouseDraggedTo point: CGPoint) {
         guard let drag else { return }
         let delta = CGVector(dx: point.x - drag.startMouse.x, dy: point.y - drag.startMouse.y)
+        if drag.target == .viewportHandle {
+            onViewportHandleDragged?(delta)
+            return
+        }
         // With ⌘ held, edges snap to windows and displays (docs/product.md, Capture Area).
         let targets = NSEvent.modifierFlags.contains(.command) ? snapTargets() : []
         switch drag.target {
@@ -637,7 +689,7 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
                     rect, handle: handle, ratio: ratio, scale: scale(of: fitted), minimumSize: minimum, lead: lead)
             }
             applyEdited(rect, snap: .edges, persist: false)
-        case .pin, .pinMenu, .raiseViewer, .pickWindow:
+        case .pin, .pinMenu, .viewportButton, .raiseViewer, .pickWindow, .viewportHandle:
             break
         }
     }
@@ -656,11 +708,20 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
         return targets
     }
 
+    /// Not the viewport handle, and nothing else inside the area: the app underneath keeps the keyboard.
+    func overlayView(_ view: CaptureOverlayView, takesKeyForPressAt point: CGPoint) -> Bool {
+        let target = overlayView(view, hitTargetAt: point)
+        return target != .viewportHandle && (target != nil || !captureRect.contains(point))
+    }
+
     func overlayViewMouseUp(_ view: CaptureOverlayView) {
-        guard drag != nil else { return }
+        guard let ended = drag else { return }
         drag = nil
-        rememberMagnetPlacement()
-        settings.update { $0[keyPath: kind.savedRect] = captureRect }
+        // The viewport handle moved the Viewer, not the area.
+        if ended.target != .viewportHandle {
+            rememberMagnetPlacement()
+            settings.update { $0[keyPath: kind.savedRect] = captureRect }
+        }
         mouseMovedAnywhere()
     }
 

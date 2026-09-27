@@ -48,7 +48,7 @@ struct Shortcut: Codable, Hashable, Sendable {
 
 /// The global shortcuts (docs/product.md, Global shortcuts). A cleared shortcut is `nil`, saved as
 /// `null`, so it stays cleared; a key missing from saved settings (an action added later) gets its
-/// default.
+/// default, unless a saved shortcut already has its keys (`ShortcutRules.newDefault`).
 struct Shortcuts: Codable, Equatable, Sendable {
     var toggleCaptureArea: Shortcut? = Shortcut(
         keyCode: kVK_ANSI_L, modifiers: [.control, .option, .command], key: "L")
@@ -59,11 +59,12 @@ struct Shortcuts: Codable, Equatable, Sendable {
     /// F13 alone: no modifier reaches the app the mouse is held down in.
     var toggleFreeze: Shortcut? = Shortcut(keyCode: kVK_F13, modifiers: [], key: "F13")
     var pickWindow: Shortcut? = Shortcut(keyCode: kVK_ANSI_W, modifiers: [.control, .option, .command], key: "W")
+    var toggleViewportHandle: Shortcut? = Shortcut(keyCode: kVK_ANSI_M, modifiers: [.control, .command], key: "M")
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze, pickWindow
+        case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze, pickWindow, toggleViewportHandle
     }
 
     init(from decoder: Decoder) throws {
@@ -80,6 +81,24 @@ struct Shortcuts: Codable, Equatable, Sendable {
         copySource = shortcut(.copySource, d.copySource)
         toggleFreeze = shortcut(.toggleFreeze, d.toggleFreeze)
         pickWindow = shortcut(.pickWindow, d.pickWindow)
+        toggleViewportHandle = shortcut(.toggleViewportHandle, d.toggleViewportHandle)
+        for action in ShortcutAction.allCases where !c.contains(Self.codingKey(action)) {
+            let saved = ShortcutAction.allCases.filter { $0 != action }.map { self[keyPath: $0.keyPath] }
+            self[keyPath: action.keyPath] = ShortcutRules.newDefault(
+                self[keyPath: action.keyPath], saved: saved, sameKeys: { $0.hasSameKeys(as: $1) })
+        }
+    }
+
+    private static func codingKey(_ action: ShortcutAction) -> CodingKeys {
+        switch action {
+        case .toggleCaptureArea: .toggleCaptureArea
+        case .toggleViewer: .toggleViewer
+        case .copyView: .copyView
+        case .copySource: .copySource
+        case .toggleFreeze: .toggleFreeze
+        case .pickWindow: .pickWindow
+        case .toggleViewportHandle: .toggleViewportHandle
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -90,11 +109,12 @@ struct Shortcuts: Codable, Equatable, Sendable {
         try c.encode(copySource, forKey: .copySource)
         try c.encode(toggleFreeze, forKey: .toggleFreeze)
         try c.encode(pickWindow, forKey: .pickWindow)
+        try c.encode(toggleViewportHandle, forKey: .toggleViewportHandle)
     }
 }
 
 enum ShortcutAction: CaseIterable, Sendable {
-    case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze, pickWindow
+    case toggleCaptureArea, toggleViewer, copyView, copySource, toggleFreeze, pickWindow, toggleViewportHandle
 
     var title: String {
         switch self {
@@ -104,6 +124,7 @@ enum ShortcutAction: CaseIterable, Sendable {
         case .copySource: "Copy Source"
         case .toggleFreeze: "Freeze / Resume Viewer"
         case .pickWindow: "Fit Capture Area to Window"
+        case .toggleViewportHandle: "Show / Hide Viewport Handle"
         }
     }
 
@@ -118,6 +139,7 @@ enum ShortcutAction: CaseIterable, Sendable {
         case .copySource: \.copySource
         case .toggleFreeze: \.toggleFreeze
         case .pickWindow: \.pickWindow
+        case .toggleViewportHandle: \.toggleViewportHandle
         }
     }
 }

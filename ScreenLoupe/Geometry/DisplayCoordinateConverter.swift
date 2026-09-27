@@ -160,6 +160,16 @@ struct DisplayCoordinateConverter: Sendable {
         state.visibleSourceRect.map { globalRect(ofAreaPixels: $0, in: geometry) }
     }
 
+    /// The Viewer's view after the outline of the part it shows is dragged by `delta` global points
+    /// (y up): the part follows the pointer, in pixels of the display `geometry` was captured on (y
+    /// down), as `viewedPart(of:in:)` places it.
+    static func panned(
+        _ state: ZoomPanState, draggingViewedPartBy delta: CGVector, in geometry: CaptureGeometry
+    ) -> ZoomPanState {
+        let scale = geometry.display.scale
+        return state.movingVisiblePart(by: CGPoint(x: delta.dx * scale, y: -delta.dy * scale))
+    }
+
     /// `pixels` of the Capture Area, counted from its top-left corner in pixels of the capturing
     /// display, y down, as a rect in AppKit global points.
     static func globalRect(ofAreaPixels pixels: CGRect, in geometry: CaptureGeometry) -> GlobalRect {

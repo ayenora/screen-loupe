@@ -17,4 +17,14 @@ enum ShortcutRules {
         if modifiers.control || (modifiers.option && modifiers.command) { return true }
         return allowsLoneFunctionKey && isHighFunctionKey && modifiers.isEmpty
     }
+
+    /// The shortcut an action added since the settings were saved starts with: its default, unless
+    /// one of the saved shortcuts already has the same keys. Then the user's choice stays and the new
+    /// action starts unassigned, as a cleared one, rather than both registering the same keys.
+    static func newDefault<Keys>(_ fallback: Keys?, saved: [Keys?], sameKeys: (Keys, Keys) -> Bool) -> Keys? {
+        guard let fallback, !saved.contains(where: { $0.map { sameKeys($0, fallback) } ?? false }) else {
+            return nil
+        }
+        return fallback
+    }
 }

@@ -75,6 +75,12 @@ final class WindowManager {
             self?.trackCursor()
         }
         captureArea.onMouseMoved = { [weak self] in self?.trackCursor() }
+        captureArea.onViewportHandleDragBegan = { [weak self] in
+            guard let self else { return }
+            viewedPartDrag = ViewedPartDrag(
+                start: zoomPan.state, startDelta: .zero, last: zoomPan.state, lastDelta: .zero)
+        }
+        captureArea.onViewportHandleDragged = { [weak self] in self?.dragViewedPart(by: $0) }
         // The frame's raise button: a click in the area may have sent another app's window over the Viewer.
         captureArea.onRaiseViewer = { [weak self] in self?.showViewer() }
         captureArea.onPickWindow = { [weak self] in self?.pickWindow() }
@@ -83,7 +89,7 @@ final class WindowManager {
         // The studio has no permission flow of its own: the Viewer explains and asks.
         studio.capturedAppWindows = { [weak self] in
             guard let self else { return [] }
-            return [captureArea.windowNumber] + (viewer.window.map { [$0.windowNumber] } ?? [])
+            return captureArea.windowNumbers + (viewer.window.map { [$0.windowNumber] } ?? [])
         }
         studio.viewerWindowNumber = { [weak self] in
             guard let window = self?.viewer.window, window.isVisible else { return nil }
@@ -131,6 +137,39 @@ final class WindowManager {
             return
         }
         captureArea.viewedPart = DisplayCoordinateConverter.viewedPart(of: zoomPan.state, in: geometry)?.rect
+    }
+
+    /// A drag of the viewport handle on the Capture Area, which pans the Viewer.
+    private struct ViewedPartDrag {
+        /// The view the drag pans from, and the pointer's move, in global points, when it was taken.
+        var start: ZoomPanState
+        var startDelta: CGVector
+        /// The view the drag last set, and the pointer's move then.
+        var last: ZoomPanState
+        var lastDelta: CGVector
+    }
+    private var viewedPartDrag: ViewedPartDrag?
+
+    /// Pans the Viewer so the outline follows the pointer, `delta` global points from where the drag
+    /// began: from the view the drag started with, so whole-pixel rounding doesn't add up step by
+    /// step. A view changed meanwhile by something else (a zoom, a resize) is taken as the new start.
+    /// Only while the outline shows, on the geometry it is placed with.
+    private func dragViewedPart(by delta: CGVector) {
+        guard var drag = viewedPartDrag, isViewerOpen, viewer.showsCapture, capture.frameStore.still == nil,
+            let geometry = capture.frameStore.shownFrame?.geometry
+        else { return }
+        if zoomPan.state != drag.last {
+            drag.start = zoomPan.state
+            drag.startDelta = drag.lastDelta
+        }
+        let next = DisplayCoordinateConverter.panned(
+            drag.start,
+            draggingViewedPartBy: CGVector(dx: delta.dx - drag.startDelta.dx, dy: delta.dy - drag.startDelta.dy),
+            in: geometry)
+        zoomPan.pan(by: CGPoint(x: next.offset.x - zoomPan.state.offset.x, y: next.offset.y - zoomPan.state.offset.y))
+        drag.last = zoomPan.state
+        drag.lastDelta = delta
+        viewedPartDrag = drag
     }
 
     /// Brings the Viewer forward. A Viewer that was closed comes back together with its Capture Area.

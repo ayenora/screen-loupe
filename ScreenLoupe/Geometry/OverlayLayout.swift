@@ -23,6 +23,10 @@ enum OverlayHitTarget: Equatable, Sendable {
     case raiseViewer
     /// The button after it that picks a window for the area to take.
     case pickWindow
+    /// The button after the pin's ▾ that turns the viewport handle on and off.
+    case viewportButton
+    /// The handle on the outline of the part the Viewer shows: dragging it pans the Viewer.
+    case viewportHandle
 }
 
 /// What keeps the Capture Area in place while the pin is on (docs/product.md, Capture Area). Moving
@@ -81,6 +85,8 @@ struct OverlayMetrics: Sendable {
     var pinGap: CGFloat = 4
     /// The ▾ attached to the pin's right, which opens the menu of locks.
     var pinMenuWidth: CGFloat = 13
+    /// The pill on the outline of the part the Viewer shows, while the viewport handle is on.
+    var viewportHandleSize = CGSize(width: 30, height: 18)
     /// The position box beside the frame, outside the band and handles.
     var positionGap: CGFloat = 12
     var screenMargin: CGFloat = 6
@@ -103,7 +109,9 @@ struct OverlayLayout: Equatable, Sendable {
     var pinRect: CGRect
     /// The pin's ▾, attached on its right.
     var pinMenuRect: CGRect
-    /// The button that brings the Viewer forward, beside the pin, away from the tab.
+    /// The button that turns the viewport handle on and off, beside the pin, away from the tab.
+    var viewportRect: CGRect
+    /// The button that brings the Viewer forward, after the viewport button.
     var raiseRect: CGRect
     /// The button that picks a window for the area, after the raise button.
     var pickRect: CGRect
@@ -139,28 +147,32 @@ struct OverlayLayout: Equatable, Sendable {
         let tabX = Self.clamp(
             r.midX - tabWidth / 2, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - tabWidth)
         tabRect = CGRect(x: tabX.rounded(), y: tabY.rounded(), width: tabWidth, height: m.tabHeight)
-        // The pin with its ▾, the raise and pick buttons: right of the tab, or left of it at the
-        // screen's right edge, the pin next to the tab either way. Without the lock buttons, the pick
-        // button alone.
+        // The pin with its ▾, the viewport, raise and pick buttons: right of the tab, or left of it at
+        // the screen's right edge, the pin next to the tab either way. Without the lock buttons, the
+        // pick button alone.
         let button = m.tabHeight + m.pinGap
         let split = lockButtons ? m.tabHeight + m.pinMenuWidth + m.pinGap : 0
-        let raise = lockButtons ? button : 0
+        let single = lockButtons ? button : 0
         var pinX = tabRect.maxX + m.pinGap
-        var raiseX = pinX + split
-        var pickX = raiseX + raise
+        var viewportX = pinX + split
+        var raiseX = viewportX + single
+        var pickX = raiseX + single
         if pickX + m.tabHeight > screen.maxX - m.screenMargin {
             pinX = tabRect.minX - split
-            raiseX = pinX - raise
+            viewportX = pinX - single
+            raiseX = viewportX - single
             pickX = raiseX - button
         }
         let buttonsOnRight = pickX > tabRect.maxX
         if lockButtons {
             pinRect = CGRect(x: pinX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
             pinMenuRect = CGRect(x: pinRect.maxX, y: tabRect.minY, width: m.pinMenuWidth, height: m.tabHeight)
+            viewportRect = CGRect(x: viewportX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
             raiseRect = CGRect(x: raiseX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
         } else {
             pinRect = .null
             pinMenuRect = .null
+            viewportRect = .null
             raiseRect = .null
         }
         pickRect = CGRect(x: pickX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
@@ -209,6 +221,7 @@ struct OverlayLayout: Equatable, Sendable {
             .union(positionRect.insetBy(dx: -8, dy: -8))
             .union(pinRect.insetBy(dx: -8, dy: -8))
             .union(pinMenuRect.insetBy(dx: -8, dy: -8))
+            .union(viewportRect.insetBy(dx: -8, dy: -8))
             .union(raiseRect.insetBy(dx: -8, dy: -8))
             .union(pickRect.insetBy(dx: -8, dy: -8))
         if noticeWidth > 0 {
@@ -227,14 +240,19 @@ struct OverlayLayout: Equatable, Sendable {
 
     /// What pressing at `point` does, or `nil` when the press belongs to the app underneath. A locked
     /// frame answers its buttons and, when `lock` allows resizing, its handles, but never moves:
-    /// picking a window is a command, not a drag.
+    /// picking a window is a command, not a drag. `viewportHandle` is the viewport handle's rect, `nil`
+    /// while it isn't shown: it moves the Viewer, not the area, so it takes a press on any lock, over
+    /// the handles and the tab; only the buttons keep theirs.
     func hitTarget(
-        at point: CGPoint, metrics m: OverlayMetrics = .standard, lock: CaptureAreaLock? = nil
+        at point: CGPoint, metrics m: OverlayMetrics = .standard, lock: CaptureAreaLock? = nil,
+        viewportHandle: CGRect? = nil
     ) -> OverlayHitTarget? {
         if pinRect.contains(point) { return .pin }
         if pinMenuRect.contains(point) { return .pinMenu }
+        if viewportRect.contains(point) { return .viewportButton }
         if raiseRect.contains(point) { return .raiseViewer }
         if pickRect.contains(point) { return .pickWindow }
+        if viewportHandle?.contains(point) == true { return .viewportHandle }
         if let lock, !lock.allowsResize { return nil }
         for handle in OverlayHandle.allCases where handleRect(handle, size: m.handleHitSize).contains(point) {
             return .resize(handle)
@@ -246,11 +264,22 @@ struct OverlayLayout: Equatable, Sendable {
         return nil
     }
 
+    /// The viewport handle for `viewedPart`, the part of the area the Viewer shows: centred on its top
+    /// edge, or just inside the captured rect's top where it would stick out above it, and kept
+    /// within the rect's sides.
+    func viewportHandleRect(for viewedPart: CGRect, metrics m: OverlayMetrics = .standard) -> CGRect {
+        let size = m.viewportHandleSize
+        let x = Self.clamp(
+            viewedPart.midX - size.width / 2, lower: captureRect.minX, upper: captureRect.maxX - size.width)
+        let y = min(viewedPart.maxY - size.height / 2, captureRect.maxY - size.height)
+        return CGRect(x: x, y: y, width: size.width, height: size.height)
+    }
+
     /// Whether the cursor is close enough to the frame to reveal the handles and the tab.
     func isInHoverZone(_ point: CGPoint, metrics m: OverlayMetrics = .standard) -> Bool {
         if tabRect.contains(point) || labelRect.contains(point) || positionRect.contains(point)
-            || pinRect.contains(point) || pinMenuRect.contains(point) || raiseRect.contains(point)
-            || pickRect.contains(point)
+            || pinRect.contains(point) || pinMenuRect.contains(point) || viewportRect.contains(point)
+            || raiseRect.contains(point) || pickRect.contains(point)
         {
             return true
         }
