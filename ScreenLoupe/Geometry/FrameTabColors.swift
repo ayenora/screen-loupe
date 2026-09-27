@@ -1,0 +1,37 @@
+import CoreGraphics
+import Foundation
+
+/// The frame tab's fill and whether its text and grip are white, from the frame's sRGB accent
+/// (docs/design.md §4, Capture Area frame). The tab is the accent at 78%. White goes on it when it
+/// reaches 4.5:1 there, or on a tab darkened in steps of 2% down to 70% of the accent: WCAG 2 rates
+/// black higher on mid oranges, where white reads better. Otherwise black goes on the 78% tab.
+struct FrameTabColors: Equatable {
+    /// The tab's sRGB components, 0...1.
+    var red: Double
+    var green: Double
+    var blue: Double
+    var textIsWhite: Bool
+
+    init(accentRed: Double, green accentGreen: Double, blue accentBlue: Double) {
+        // 78%, 76%, … 70%.
+        for step in 0...4 {
+            let factor = 0.78 - 0.02 * Double(step)
+            let tab = (accentRed * factor, accentGreen * factor, accentBlue * factor)
+            if Self.contrastWithWhite(tab) >= 4.5 {
+                (red, green, blue) = tab
+                textIsWhite = true
+                return
+            }
+        }
+        (red, green, blue) = (accentRed * 0.78, accentGreen * 0.78, accentBlue * 0.78)
+        textIsWhite = false
+    }
+
+    /// Rounded to 8-bit components, as drawn.
+    private static func contrastWithWhite(_ color: (Double, Double, Double)) -> Double {
+        let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+        func byte(_ value: Double) -> UInt8 { UInt8((min(max(value, 0), 1) * 255).rounded()) }
+        let sample = ColorSample(red: byte(color.0), green: byte(color.1), blue: byte(color.2), colorSpace: sRGB)
+        return ColorSample.contrastRatio(sample, ColorSample(red: 255, green: 255, blue: 255, colorSpace: sRGB))
+    }
+}

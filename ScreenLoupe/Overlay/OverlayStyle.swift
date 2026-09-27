@@ -32,9 +32,9 @@ struct FrameStyle {
         metrics.lineWidth = lineWidth
         return metrics
     }
-    /// Darker than the accent, so the tab reads as a solid pill.
+    /// Darker than the accent, so the tab reads as a solid pill (`FrameTabColors`).
     var tabFill: NSColor
-    /// White or black, whichever reaches 4.5:1 on the tab: its text and grip.
+    /// The tab's text and grip: white where it reaches 4.5:1, else black (`FrameTabColors`).
     var onTab: NSColor
     /// White, or black when the accent itself is too light to outline a white handle.
     var handleFill: NSColor
@@ -44,9 +44,9 @@ struct FrameStyle {
         accent = color.nsColor
         lineWidth = CGFloat(settings.lineWidth)
         showsLabelAtRest = settings.showsLabelAtRest
-        let dark = SettingsColor(red: color.red * 0.78, green: color.green * 0.78, blue: color.blue * 0.78)
-        tabFill = dark.nsColor
-        onTab = dark.contrastRatio(with: .white) >= 4.5 ? .white : .black
+        let tab = FrameTabColors(accentRed: color.red, green: color.green, blue: color.blue)
+        tabFill = SettingsColor(red: tab.red, green: tab.green, blue: tab.blue).nsColor
+        onTab = tab.textIsWhite ? .white : .black
         handleFill = color.contrastRatio(with: .white) >= 1.5 ? .white : .black
     }
 }
