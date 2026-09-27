@@ -101,13 +101,7 @@ final class StudioPalette: NSPanel {
     private let timerButton = PaletteButton()
     private let pointerButton = PaletteButton()
     private let saveButton = PaletteButton()
-    private let hoverLabel = HoverLabelWindow()
-    private var hoverTimer: Timer?
-    /// The button the pointer last entered, until it leaves it or clicks.
-    private var hoveredButton: PaletteButton?
-    /// When a shown name last went as the pointer left its button (`HoverLabelDelay`); `nil` after
-    /// a click and while hidden.
-    private var labelHiddenAt: TimeInterval?
+    private lazy var hoverLabel = ButtonNameLabel(parent: self)
     /// Set when the user starts dragging the palette, until the button is up after a move.
     private var isDragged = false
 
@@ -224,58 +218,26 @@ final class StudioPalette: NSPanel {
     // MARK: Hover label
 
     /// Names `button` beside the palette after a short rest, or at once while the pointer goes on
-    /// from a named button (`HoverLabelDelay`).
+    /// from a named button (`ButtonNameLabel`): on the palette's side away from the studio's frame
+    /// (`StudioPlacement.hoverLabelX`), level with the button.
     fileprivate func pointerEntered(_ button: PaletteButton) {
-        hideLabel()
-        hoveredButton = button
-        let delay = HoverLabelDelay.delay(at: ProcessInfo.processInfo.systemUptime, lastHidden: labelHiddenAt)
-        guard delay > 0 else {
-            showLabel(for: button)
-            return
-        }
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.showLabel(for: button) }
+        guard let name = button.name else { return }
+        hoverLabel.pointerEntered(ObjectIdentifier(button), name: name) { [weak self, weak button] size in
+            guard let self, let button else { return nil }
+            let buttonFrame = convertToScreen(button.convert(button.bounds, to: nil))
+            let visible = screen?.visibleFrame ?? frame
+            let x = StudioPlacement.hoverLabelX(width: size.width, beside: frame, frame: studioFrame?(), in: visible)
+            return CGRect(origin: CGPoint(x: x, y: (buttonFrame.midY - size.height / 2).rounded()), size: size)
         }
     }
 
-    /// Buttons in a group touch, so the next one's enter comes before this one's exit: an exit
-    /// from a button the pointer has already left for another changes nothing.
     fileprivate func pointerExited(_ button: PaletteButton) {
-        guard hoveredButton === button else { return }
-        hoveredButton = nil
-        hideLabel()
+        hoverLabel.pointerExited(ObjectIdentifier(button))
     }
 
     /// A click or hiding: the name goes, and the next button waits the full rest.
     fileprivate func endHover() {
-        hoveredButton = nil
-        hideLabel()
-        labelHiddenAt = nil
-    }
-
-    private func hideLabel() {
-        hoverTimer?.invalidate()
-        hoverTimer = nil
-        guard hoverLabel.isVisible else { return }
-        removeChildWindow(hoverLabel)
-        hoverLabel.orderOut(nil)
-        labelHiddenAt = ProcessInfo.processInfo.systemUptime
-    }
-
-    /// Beside the palette on its side away from the studio's frame (`StudioPlacement.hoverLabelX`),
-    /// level with the button.
-    private func showLabel(for button: PaletteButton) {
-        hoverTimer = nil
-        guard isVisible, hoveredButton === button, let name = button.name else { return }
-        let size = CGSize(width: OverlayStyle.labelWidth(for: name), height: OverlayMetrics.standard.labelHeight)
-        let buttonFrame = convertToScreen(button.convert(button.bounds, to: nil))
-        let visible = screen?.visibleFrame ?? frame
-        let x = StudioPlacement.hoverLabelX(width: size.width, beside: frame, frame: studioFrame?(), in: visible)
-        // At the palette's level, so it also shows above the window picker's panels.
-        hoverLabel.level = level
-        hoverLabel.show(
-            name, in: CGRect(origin: CGPoint(x: x, y: (buttonFrame.midY - size.height / 2).rounded()), size: size))
-        addChildWindow(hoverLabel, ordered: .above)
+        hoverLabel.end()
     }
 
     // MARK: Buttons
@@ -540,26 +502,5 @@ private final class PaletteButton: NSButton {
         guard isEnabled else { return }
         (window as? StudioPalette)?.endHover()
         super.mouseDown(with: event)
-    }
-}
-
-/// The name of the hovered button: a small label in the look of the frame's at-rest size label.
-private final class HoverLabelWindow: NSPanel {
-    private let label = SizeLabelView()
-
-    init() {
-        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        ignoresMouseEvents = true
-        isReleasedWhenClosed = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        contentView = label
-    }
-
-    func show(_ text: String, in rect: CGRect) {
-        label.text = text
-        setFrame(rect, display: true)
     }
 }

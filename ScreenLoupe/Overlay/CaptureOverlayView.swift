@@ -13,6 +13,8 @@ protocol CaptureOverlayViewDelegate: AnyObject {
     func overlayView(_ view: CaptureOverlayView, didChoose lock: CaptureAreaLock)
     /// Returns whether the key was handled.
     func overlayView(_ view: CaptureOverlayView, keyDown event: NSEvent) -> Bool
+    /// The pointer moved over the frame's window.
+    func overlayViewPointerMoved(_ view: CaptureOverlayView)
 }
 
 /// Draws the Capture Area frame and turns mouse and key events into delegate calls.
@@ -55,8 +57,6 @@ final class CaptureOverlayView: NSView {
     private let moreButton = TabButtonView(image: nil, onImage: nil)
     /// The side "»" was last drawn for.
     private var moreOnRight: Bool?
-    /// Where the "More" tooltip is, in the view; `nil` without one.
-    private var moreToolTipRect: CGRect?
     /// The pin with its ▾ and the raise button are shown.
     private let lockButtons: Bool
     private var isDragging = false
@@ -154,11 +154,31 @@ final class CaptureOverlayView: NSView {
         raiseButton.alphaValue = 0
         pickButton.alphaValue = 0
         moreButton.alphaValue = 0
-        moreButton.setAccessibilityRole(.button)
-        moreButton.setAccessibilityLabel(Self.moreLabel)
+        let named: [(TabButtonView, OverlayHitTarget)] = [
+            (moreButton, .moreButtons), (viewportButton, .viewportButton), (raiseButton, .raiseViewer),
+            (pickButton, .pickWindow),
+        ]
+        for (button, target) in named {
+            button.setAccessibilityRole(.button)
+            button.setAccessibilityLabel(name(of: target))
+        }
     }
 
     private static let moreLabel = "More"
+
+    /// The name a tab button shows on hover (`ButtonNameLabel`): the pin names the chosen lock, its
+    /// ▾ the menu of locks. The viewport handle, a pill to drag, has none.
+    func name(of button: OverlayHitTarget) -> String? {
+        switch button {
+        case .pin: lock.title
+        case .pinMenu: pinButton.menuLabel
+        case .viewportButton: "Viewport Handle"
+        case .raiseViewer: "Show Viewer"
+        case .pickWindow: "Fit to Window"
+        case .moreButtons: Self.moreLabel
+        case .move, .resize, .viewportHandle: nil
+        }
+    }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -196,12 +216,6 @@ final class CaptureOverlayView: NSView {
             }
         }
         place(pickButton, at: layout.pickRect)
-        let moreTip = layout.moreRect.isNull ? nil : local(layout.moreRect)
-        if moreTip != moreToolTipRect {
-            moreToolTipRect = moreTip
-            removeAllToolTips()
-            if let moreTip { addToolTip(moreTip, owner: Self.moreLabel as NSString, userData: nil) }
-        }
         tab.text = tabText
         tab.showsShadow = layout.tabPlacement == .inside
 
@@ -320,11 +334,15 @@ final class CaptureOverlayView: NSView {
         )
     }
 
-    override func mouseMoved(with event: NSEvent) { updateCursor() }
+    override func mouseMoved(with event: NSEvent) {
+        updateCursor()
+        delegate?.overlayViewPointerMoved(self)
+    }
     override func cursorUpdate(with event: NSEvent) { updateCursor() }
 
     override func mouseExited(with event: NSEvent) {
         if !isDragging { NSCursor.arrow.set() }
+        delegate?.overlayViewPointerMoved(self)
     }
 
     override func mouseDown(with event: NSEvent) {

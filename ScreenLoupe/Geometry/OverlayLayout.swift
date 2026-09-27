@@ -12,7 +12,7 @@ enum OverlayHandle: CaseIterable, Sendable {
 }
 
 /// What a mouse press on the frame does.
-enum OverlayHitTarget: Equatable, Sendable {
+enum OverlayHitTarget: Hashable, Sendable {
     case move
     case resize(OverlayHandle)
     /// The pin button beside the tab: turns the chosen lock on and off.
@@ -101,6 +101,8 @@ struct OverlayMetrics: Sendable {
     var viewportHandleSize = CGSize(width: 30, height: 18)
     /// Between the viewport handle and the outline it sits beside.
     var viewportHandleGap: CGFloat = 2
+    /// Between the row of tab buttons and the name of the one under the pointer.
+    var buttonNameGap: CGFloat = 4
     /// The position box beside the frame, outside the band and handles.
     var positionGap: CGFloat = 12
     var screenMargin: CGFloat = 6
@@ -297,12 +299,7 @@ struct OverlayLayout: Equatable, Sendable {
         at point: CGPoint, metrics m: OverlayMetrics = .standard, lock: CaptureAreaLock? = nil,
         viewportHandle: CGRect? = nil
     ) -> OverlayHitTarget? {
-        if pinRect.contains(point) { return .pin }
-        if pinMenuRect.contains(point) { return .pinMenu }
-        if viewportRect.contains(point) { return .viewportButton }
-        if raiseRect.contains(point) { return .raiseViewer }
-        if pickRect.contains(point) { return .pickWindow }
-        if moreRect.contains(point) { return .moreButtons }
+        if let button = button(at: point) { return button }
         if viewportHandle?.contains(point) == true { return .viewportHandle }
         if let lock, !lock.allowsResize { return nil }
         for handle in OverlayHandle.allCases where handleRect(handle, size: m.handleHitSize).contains(point) {
@@ -313,6 +310,41 @@ struct OverlayLayout: Equatable, Sendable {
         let outer = captureRect.insetBy(dx: -(m.lineWidth + m.bandWidth), dy: -(m.lineWidth + m.bandWidth))
         if outer.contains(point) && !captureRect.contains(point) { return .move }
         return nil
+    }
+
+    /// The tab's buttons, each half of the pin's split button on its own; the others are not buttons.
+    private var buttons: [(target: OverlayHitTarget, rect: CGRect)] {
+        [
+            (.pin, pinRect), (.pinMenu, pinMenuRect), (.viewportButton, viewportRect), (.raiseViewer, raiseRect),
+            (.pickWindow, pickRect), (.moreButtons, moreRect),
+        ]
+    }
+
+    /// The tab's button at `point`, shown, whatever the lock; `nil` over anything else.
+    func button(at point: CGPoint) -> OverlayHitTarget? {
+        buttons.first { $0.rect.contains(point) }?.target
+    }
+
+    /// Where the name of the tab's `button` shows, `size` large, or `nil` for a button not shown:
+    /// centred on the button, `buttonNameGap` off the row on its side away from the frame — above a
+    /// tab above the frame, below a tab below it or inside it — or on the other side when that leaves
+    /// `screenFrame`; kept `screenMargin` inside it sideways. So it covers no button, nor the tab, nor
+    /// the notice beside them, which sit level with the tab.
+    func buttonNameRect(
+        for button: OverlayHitTarget, size: CGSize, screenFrame screen: CGRect, metrics m: OverlayMetrics = .standard
+    ) -> CGRect? {
+        guard let rect = buttons.first(where: { $0.target == button })?.rect, !rect.isNull else { return nil }
+        let above = tabRect.maxY + m.buttonNameGap
+        let below = tabRect.minY - m.buttonNameGap - size.height
+        let fitsAbove = above + size.height <= screen.maxY - m.screenMargin
+        let fitsBelow = below >= screen.minY + m.screenMargin
+        let y =
+            tabPlacement == .above
+            ? (fitsAbove || !fitsBelow ? above : below) : (fitsBelow || !fitsAbove ? below : above)
+        let x = Self.clamp(
+            rect.midX - size.width / 2, lower: screen.minX + m.screenMargin,
+            upper: screen.maxX - m.screenMargin - size.width)
+        return CGRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
     }
 
     /// The viewport handle for `viewedPart`, the part of the area the Viewer shows, never over it:

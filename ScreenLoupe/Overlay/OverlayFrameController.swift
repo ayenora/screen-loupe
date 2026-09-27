@@ -141,6 +141,11 @@ final class OverlayFrameController {
     /// next reveal clears it.
     private var buttonsExpanded = false
     private var eventMonitors: [Any] = []
+    /// Names the tab's button under the pointer.
+    private lazy var buttonName = ButtonNameLabel(parent: window)
+    /// The tab's button under the pointer as last seen, named or not. A click on it leaves it, so its
+    /// name shows again only once the pointer has left it.
+    private var pointedButton: OverlayHitTarget?
     private var keyObservers: [NSObjectProtocol] = []
     private var picker: WindowPicker?
 
@@ -230,6 +235,8 @@ final class OverlayFrameController {
 
     /// A hidden area doesn't follow a window: the magnet turns off quietly, as at launch.
     func hide() {
+        buttonName.end()
+        pointedButton = nil
         window.orderOut(nil)
         outline?.orderOut(nil)
         stopMonitoringMouse()
@@ -345,6 +352,8 @@ final class OverlayFrameController {
             if let picked { onPicked(picked) }
         }
         self.picker = picker
+        // Started by a key or the menu with a name showing: it goes under the picker's panels.
+        updateButtonName()
         onPickerStarted?()
         picker.start()
     }
@@ -474,7 +483,7 @@ final class OverlayFrameController {
         let rect = snapped(rect, .move)
         captureRect = rect
         let display = converter?.owningDisplay(for: GlobalRect(rect: rect))
-        let screenFrame = display?.globalFrame ?? NSScreen.main?.frame ?? rect
+        let screenFrame = self.screenFrame(of: rect)
         let scale = display?.scale ?? 1
 
         let units = settings.settings.sizeUnits
@@ -505,7 +514,14 @@ final class OverlayFrameController {
         if persist {
             settings.update { $0[keyPath: kind.savedRect] = rect }
         }
+        // The row expanded or collapsed, or the frame moved under a still pointer.
+        updateButtonName()
         onChange?()
+    }
+
+    /// The frame of the display that owns `rect`.
+    private func screenFrame(of rect: CGRect) -> CGRect {
+        converter?.owningDisplay(for: GlobalRect(rect: rect))?.globalFrame ?? NSScreen.main?.frame ?? rect
     }
 
     private func applyEdited(_ rect: CGRect, snap: Snap, persist: Bool) {
@@ -549,7 +565,24 @@ final class OverlayFrameController {
         // The outline holds a moment after the cursor leaves, as the handles do.
         if wasNear, !isNear { flashViewedPart() }
         updateReveal()
+        updateButtonName()
         onMouseMoved?()
+    }
+
+    /// Names the tab's button under the pointer while the buttons show (`ButtonNameLabel`), beside
+    /// the row away from the frame (`OverlayLayout.buttonNameRect`); not during a drag nor while a
+    /// window is picked. Called on every move of the pointer and every layout.
+    private func updateButtonName() {
+        let shown = isRevealed && drag == nil && picker == nil && window.isVisible
+        let button = shown ? layout?.button(at: NSEvent.mouseLocation) : nil
+        guard button != pointedButton else { return }
+        if let pointedButton { buttonName.pointerExited(pointedButton) }
+        pointedButton = button
+        guard let button, let name = view.name(of: button) else { return }
+        buttonName.pointerEntered(button, name: name) { [weak self] size in
+            guard let self, let layout else { return nil }
+            return layout.buttonNameRect(for: button, size: size, screenFrame: screenFrame(of: captureRect))
+        }
     }
 
     /// The handles and tab show while the cursor is near the frame, while dragging, and while the
@@ -578,6 +611,7 @@ final class OverlayFrameController {
     private func setRevealed(_ revealed: Bool) {
         guard revealed != isRevealed else { return }
         isRevealed = revealed
+        if !revealed { updateButtonName() }
         // The row expanded before the buttons last hid collapses as they show again, before they fade
         // in: collapsing as they hide would drop the raise and pick buttons mid-fade.
         if revealed, buttonsExpanded {
@@ -634,6 +668,8 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
     }
 
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint) {
+        // A click hides the name; the button keeps it hidden until the pointer leaves it.
+        buttonName.end()
         let target = self.overlayView(view, hitTargetAt: point)
         if target == .viewportButton {
             settings.update { $0.showsViewportHandle.toggle() }
@@ -763,6 +799,10 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
             $0.captureAreaLock = lock
             $0.captureAreaLocked = true
         }
+    }
+
+    func overlayViewPointerMoved(_ view: CaptureOverlayView) {
+        updateButtonName()
     }
 
     func overlayView(_ view: CaptureOverlayView, keyDown event: NSEvent) -> Bool {

@@ -772,6 +772,216 @@ struct OverlayTabButtonsTests {
     }
 }
 
+/// Which tab button the pointer is on, and where its name shows: beside the row, away from the
+/// frame, over no button, nor the tab, nor the notice.
+struct OverlayButtonNameTests {
+    private static let display = CGRect(x: -2560, y: -180, width: 2560, height: 1440)
+    private static let name = CGSize(width: 80, height: 16)
+
+    private func layout(
+        _ capture: CGRect, on screenFrame: CGRect = screen, expanded: Bool = false, viewportHandleOn: Bool = false,
+        lockButtons: Bool = true, noticeWidth: CGFloat = 0
+    ) -> OverlayLayout {
+        OverlayLayout(
+            captureRect: capture, screenFrame: screenFrame, tabWidth: 180, labelWidth: 60,
+            positionSize: CGSize(width: 50, height: 60), noticeWidth: noticeWidth, lockButtons: lockButtons,
+            buttonsExpanded: expanded, viewportHandleOn: viewportHandleOn)
+    }
+
+    private func rect(_ target: OverlayHitTarget, in l: OverlayLayout) -> CGRect {
+        switch target {
+        case .pin: l.pinRect
+        case .pinMenu: l.pinMenuRect
+        case .viewportButton: l.viewportRect
+        case .raiseViewer: l.raiseRect
+        case .pickWindow: l.pickRect
+        case .moreButtons: l.moreRect
+        default: .null
+        }
+    }
+
+    private static let allButtons: [OverlayHitTarget] = [
+        .pin, .pinMenu, .viewportButton, .raiseViewer, .pickWindow, .moreButtons,
+    ]
+
+    /// Collapsed and expanded, with the viewport mode off and on, on the Capture Area and the studio's
+    /// frame: right of the tab, left of it at the screen's right edge, on a display left of and below
+    /// the main one, a half-point frame on a 2× display among them, and with the tab above, below and
+    /// inside the frame.
+    private func everyLayout() -> [(OverlayLayout, CGRect)] {
+        let places: [(CGRect, CGRect)] = [
+            (CGRect(x: 100, y: 100, width: 200, height: 100), screen),
+            (CGRect(x: 1300, y: 100, width: 134, height: 100), screen),
+            (CGRect(x: 100, y: 800, width: 200, height: 95), screen),
+            (CGRect(x: 100, y: 0, width: 200, height: 900), screen),
+            (CGRect(x: -2000.5, y: 100.5, width: 300, height: 200), Self.display),
+            (CGRect(x: -200, y: -100, width: 150, height: 100), Self.display),
+        ]
+        var layouts: [(OverlayLayout, CGRect)] = []
+        for (capture, screenFrame) in places {
+            for expanded in [false, true] {
+                for viewportHandleOn in [false, true] {
+                    for lockButtons in [true, false] {
+                        let l = layout(
+                            capture, on: screenFrame, expanded: expanded, viewportHandleOn: viewportHandleOn,
+                            lockButtons: lockButtons, noticeWidth: 120)
+                        layouts.append((l, screenFrame))
+                    }
+                }
+            }
+        }
+        return layouts
+    }
+
+    @Test func eachShownButtonIsFoundAndNothingElse() {
+        for (l, _) in everyLayout() {
+            for target in Self.allButtons {
+                let r = rect(target, in: l)
+                guard !r.isNull else { continue }
+                #expect(l.button(at: CGPoint(x: r.midX, y: r.midY)) == target)
+                // Its edges too: the pin's two halves meet without a gap.
+                #expect(l.button(at: CGPoint(x: r.minX, y: r.minY)) == target)
+            }
+            #expect(l.button(at: CGPoint(x: l.tabRect.midX, y: l.tabRect.midY)) == nil)
+            #expect(l.button(at: CGPoint(x: l.captureRect.minX - 3, y: l.captureRect.midY)) == nil)
+            #expect(l.button(at: CGPoint(x: l.captureRect.midX, y: l.captureRect.midY)) == nil)
+            #expect(l.button(at: CGPoint(x: l.noticeRect.midX, y: l.noticeRect.midY)) == nil)
+        }
+    }
+
+    @Test func aButtonIsFoundWhateverTheLockAndOverTheViewportHandle() {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100), expanded: true)
+        for target in Self.allButtons where target != .moreButtons {
+            let r = rect(target, in: l)
+            let mid = CGPoint(x: r.midX, y: r.midY)
+            #expect(l.button(at: mid) == target)
+            for lock in CaptureAreaLock.allCases {
+                #expect(l.hitTarget(at: mid, lock: lock, viewportHandle: r) == target)
+            }
+        }
+    }
+
+    @Test func theCollapsedButtonsPlacesAreNoButtons() {
+        let capture = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let collapsed = layout(capture)
+        let all = layout(capture, expanded: true)
+        for r in [all.raiseRect, all.pickRect] {
+            #expect(collapsed.button(at: CGPoint(x: r.midX, y: r.midY)) == nil)
+        }
+        // Where "»" was, the viewport button once expanded.
+        let chevron = CGPoint(x: collapsed.moreRect.midX, y: collapsed.moreRect.midY)
+        #expect(collapsed.button(at: chevron) == .moreButtons)
+        #expect(all.button(at: chevron) == .viewportButton)
+    }
+
+    @Test func theNameCoversNoButtonNorTheTabNorTheNoticeAndStaysOnScreen() {
+        for (l, screenFrame) in everyLayout() {
+            let row = Self.allButtons.map { rect($0, in: l) }.filter { !$0.isNull }
+            for target in Self.allButtons {
+                let r = rect(target, in: l)
+                let name = l.buttonNameRect(for: target, size: Self.name, screenFrame: screenFrame)
+                guard !r.isNull else {
+                    #expect(name == nil)
+                    continue
+                }
+                guard let name else {
+                    Issue.record("No name for \(target)")
+                    continue
+                }
+                #expect(name.size == Self.name)
+                #expect(!name.intersects(l.tabRect))
+                #expect(!name.intersects(l.noticeRect))
+                for button in row { #expect(!name.intersects(button)) }
+                #expect(name.minX >= screenFrame.minX + 6 && name.maxX <= screenFrame.maxX - 6)
+                #expect(name.minY >= screenFrame.minY + 6 && name.maxY <= screenFrame.maxY - 6)
+                // Whole points, also for a half-point frame on a 2× display.
+                #expect(name.origin.x == name.origin.x.rounded() && name.origin.y == name.origin.y.rounded())
+            }
+        }
+    }
+
+    @Test func aboveTheFrameTheNameShowsAboveTheRowCentredOnTheButton() {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100), expanded: true)
+        #expect(l.tabPlacement == .above)
+        for target in Self.allButtons where target != .moreButtons {
+            let r = rect(target, in: l)
+            let name = l.buttonNameRect(for: target, size: Self.name, screenFrame: screen)
+            #expect(name?.minY == l.tabRect.maxY + 4)
+            #expect(name?.midX == r.midX.rounded())
+        }
+    }
+
+    @Test func belowTheFrameTheNameShowsBelowTheRow() {
+        let l = layout(CGRect(x: 100, y: 800, width: 200, height: 95))
+        #expect(l.tabPlacement == .below)
+        let name = l.buttonNameRect(for: .pin, size: Self.name, screenFrame: screen)
+        #expect(name == CGRect(x: l.pinRect.midX - 40, y: l.tabRect.minY - 4 - 16, width: 80, height: 16))
+    }
+
+    @Test func insideTheFrameTheNameShowsBelowTheRowInsideTheArea() {
+        let l = layout(CGRect(x: 100, y: 0, width: 200, height: 900))
+        #expect(l.tabPlacement == .inside)
+        let name = l.buttonNameRect(for: .moreButtons, size: Self.name, screenFrame: screen)
+        #expect(name?.maxY == l.tabRect.minY - 4)
+        #expect(name.map { $0.minY >= l.captureRect.minY } == true)
+    }
+
+    @Test func aboveTheFrameWithoutRoomAboveTheNameShowsBelowTheRow() {
+        // The tab fits above (it ends at 882, 12 pt from the top); the name wouldn't.
+        let l = layout(CGRect(x: 100, y: 750, width: 200, height: 100))
+        #expect(l.tabPlacement == .above)
+        let name = l.buttonNameRect(for: .pin, size: Self.name, screenFrame: screen)
+        #expect(name?.maxY == l.tabRect.minY - 4)
+    }
+
+    @Test func belowTheFrameWithoutRoomBelowTheNameShowsAboveTheRow() {
+        // No room above the frame; the tab fits below it, 8 pt from the bottom; the name wouldn't.
+        let l = layout(CGRect(x: 100, y: 40, width: 200, height: 850))
+        #expect(l.tabPlacement == .below)
+        let name = l.buttonNameRect(for: .pin, size: Self.name, screenFrame: screen)
+        #expect(name?.minY == l.tabRect.maxY + 4)
+    }
+
+    @Test func atTheScreensRightEdgeTheNameStaysOnScreen() {
+        // The expanded row ends exactly at the margin (1434) on the right of the tab.
+        let l = layout(CGRect(x: 1177, y: 100, width: 100, height: 100), expanded: true)
+        #expect(l.buttonsOnRight)
+        #expect(l.pickRect.maxX == CGFloat(1434))
+        #expect(l.buttonNameRect(for: .pickWindow, size: Self.name, screenFrame: screen)?.maxX == CGFloat(1434))
+    }
+
+    @Test func onADisplayAtNegativeCoordinatesTheNameStaysOnIt() {
+        // At the display's left edge, a name wider than the room left of the pin's centre.
+        let l = layout(CGRect(x: -2558, y: -100, width: 100, height: 100), on: Self.display)
+        #expect(l.buttonsOnRight)
+        let wide = CGSize(width: 500, height: 16)
+        let name = l.buttonNameRect(for: .pin, size: wide, screenFrame: Self.display)
+        #expect(name == CGRect(x: -2554, y: l.tabRect.maxY + 4, width: 500, height: 16))
+        // Left of the tab at the display's right edge (x 0), the pick button's name centred on it.
+        let left = layout(CGRect(x: -200, y: -100, width: 150, height: 100), on: Self.display, expanded: true)
+        #expect(!left.buttonsOnRight)
+        #expect(
+            left.buttonNameRect(for: .pickWindow, size: Self.name, screenFrame: Self.display)
+                == CGRect(x: -361, y: 36, width: 80, height: 16))
+    }
+
+    @Test func theStudioFrameNamesOnlyItsPickButton() {
+        let l = layout(CGRect(x: 400, y: 100, width: 200, height: 100), lockButtons: false)
+        #expect(l.button(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY)) == .pickWindow)
+        #expect(l.buttonNameRect(for: .pickWindow, size: Self.name, screenFrame: screen) != nil)
+        for target in [OverlayHitTarget.pin, .pinMenu, .viewportButton, .raiseViewer, .moreButtons] {
+            #expect(l.buttonNameRect(for: target, size: Self.name, screenFrame: screen) == nil)
+        }
+    }
+
+    @Test func handlesTheTabAndTheViewportHandleHaveNoName() {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        for target in [OverlayHitTarget.move, .resize(.topLeft), .viewportHandle] {
+            #expect(l.buttonNameRect(for: target, size: Self.name, screenFrame: screen) == nil)
+        }
+    }
+}
+
 struct SavedPinTests {
     private func savedPin(_ json: String) throws -> Bool? {
         try JSONDecoder().decode(CaptureAreaLock.SavedPin.self, from: Data(json.utf8)).isOn
