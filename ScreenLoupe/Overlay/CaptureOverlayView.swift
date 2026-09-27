@@ -21,8 +21,9 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 /// the muted size label shows at rest. A frame whose lock stops resizing shows no band or handles.
 /// The viewport handle on the outline of the part the Viewer shows (the outline itself is in its own
 /// click-through panel, `ViewedPartOverlay`), and a notice beside the tab, fade in and out as the
-/// controller asks. Without `lockButtons` (the Screenshot studio's frame) there
-/// is no pin, no viewport button and no raise button, only the pick button beside the tab.
+/// controller asks. The buttons the layout leaves out (`.null`), collapsed behind "»" or in its place,
+/// are hidden. Without `lockButtons` (the Screenshot studio's frame) there is no pin, no viewport
+/// button, no raise button and no "»", only the pick button beside the tab.
 /// Subviews never take the mouse, so every event lands here.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
@@ -50,6 +51,12 @@ final class CaptureOverlayView: NSView {
     /// Picks a window for the area to take.
     private let pickButton = TabButtonView(
         image: TabButtonView.symbol("macwindow"), onImage: TabButtonView.symbol("macwindow"))
+    /// Shows the buttons collapsed behind it: "»", or "«" with the buttons left of the tab.
+    private let moreButton = TabButtonView(image: nil, onImage: nil)
+    /// The side "»" was last drawn for.
+    private var moreOnRight: Bool?
+    /// Where the "More" tooltip is, in the view; `nil` without one.
+    private var moreToolTipRect: CGRect?
     /// The pin with its ▾ and the raise button are shown.
     private let lockButtons: Bool
     private var isDragging = false
@@ -108,6 +115,7 @@ final class CaptureOverlayView: NSView {
             viewportHandle.style = style
             raiseButton.style = style
             pickButton.style = style
+            moreButton.style = style
             label.alphaValue = labelAlpha
             needsDisplay = true
         }
@@ -123,11 +131,12 @@ final class CaptureOverlayView: NSView {
         viewportHandle.style = style
         raiseButton.style = style
         pickButton.style = style
+        moreButton.style = style
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
         let buttons: [NSView] =
-            lockButtons ? [pinButton, viewportButton, raiseButton, pickButton] : [pickButton]
+            lockButtons ? [pinButton, viewportButton, moreButton, raiseButton, pickButton] : [pickButton]
         let parts: [NSView] = [decorations, label, positionBox, tab, viewportHandle]
         for subview in parts + buttons + [notice] {
             addSubview(subview)
@@ -144,7 +153,12 @@ final class CaptureOverlayView: NSView {
         viewportHandle.cornerRadius = OverlayMetrics.standard.viewportHandleSize.height / 2
         raiseButton.alphaValue = 0
         pickButton.alphaValue = 0
+        moreButton.alphaValue = 0
+        moreButton.setAccessibilityRole(.button)
+        moreButton.setAccessibilityLabel(Self.moreLabel)
     }
+
+    private static let moreLabel = "More"
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -171,10 +185,23 @@ final class CaptureOverlayView: NSView {
         notice.frame = local(layout.noticeRect)
         if lockButtons {
             pinButton.frame = local(layout.pinRect.union(layout.pinMenuRect))
-            viewportButton.frame = local(layout.viewportRect)
-            raiseButton.frame = local(layout.raiseRect)
+            place(viewportButton, at: layout.viewportRect)
+            place(raiseButton, at: layout.raiseRect)
+            place(moreButton, at: layout.moreRect)
+            if moreOnRight != layout.buttonsOnRight {
+                moreOnRight = layout.buttonsOnRight
+                let more = TabButtonView.symbol(layout.buttonsOnRight ? "chevron.right.2" : "chevron.left.2")
+                moreButton.image = more
+                moreButton.onImage = more
+            }
         }
-        pickButton.frame = local(layout.pickRect)
+        place(pickButton, at: layout.pickRect)
+        let moreTip = layout.moreRect.isNull ? nil : local(layout.moreRect)
+        if moreTip != moreToolTipRect {
+            moreToolTipRect = moreTip
+            removeAllToolTips()
+            if let moreTip { addToolTip(moreTip, owner: Self.moreLabel as NSString, userData: nil) }
+        }
         tab.text = tabText
         tab.showsShadow = layout.tabPlacement == .inside
 
@@ -203,6 +230,7 @@ final class CaptureOverlayView: NSView {
             viewportButton.animator().alphaValue = revealed ? 1 : 0
             raiseButton.animator().alphaValue = revealed ? 1 : 0
             pickButton.animator().alphaValue = revealed ? 1 : 0
+            moreButton.animator().alphaValue = revealed ? 1 : 0
             label.animator().alphaValue = labelAlpha
         }
     }
@@ -220,6 +248,22 @@ final class CaptureOverlayView: NSView {
                 context.duration = OverlayStyle.noticeFadeDuration
                 notice.animator().alphaValue = 0
             }
+        }
+    }
+
+    /// A button the layout leaves out goes at once, not drawn, so it takes no press; one it brings
+    /// back shows as the others do.
+    private func place(_ button: TabButtonView, at rect: CGRect) {
+        guard !rect.isNull else {
+            button.layer?.removeAllAnimations()
+            button.alphaValue = 0
+            button.isHidden = true
+            return
+        }
+        button.frame = local(rect)
+        if button.isHidden {
+            button.isHidden = false
+            button.alphaValue = isRevealed ? 1 : 0
         }
     }
 
@@ -286,6 +330,7 @@ final class CaptureOverlayView: NSView {
     override func mouseDown(with event: NSEvent) {
         let point = NSEvent.mouseLocation
         let target = delegate?.overlayView(self, hitTargetAt: point)
+        if let target, !target.takesPress(clickCount: event.clickCount) { return }
         // Also with `becomesKeyOnlyIfNeeded`, which a click from another app may not go through.
         let takesKey = needsPanelToBecomeKey
         if takesKey { window?.makeKey() }
@@ -422,7 +467,7 @@ private final class GripTabView: NSView {
     }
 }
 
-/// A square button beside the tab — the pin, the viewport, raise and pick buttons — or the viewport
+/// A square button beside the tab — the pin, the viewport, "»", raise and pick buttons — or the viewport
 /// handle's pill: the tab's colour with an outlined image, or the accent with the filled one while it
 /// is on. The images are templates, drawn in the tint. The pin carries a ▾ on its right, past a thin
 /// divider.

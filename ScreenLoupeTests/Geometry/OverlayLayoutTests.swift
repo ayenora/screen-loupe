@@ -8,6 +8,11 @@ private func layout(_ capture: CGRect, tabWidth: CGFloat = 180, labelWidth: CGFl
     OverlayLayout(captureRect: capture, screenFrame: screen, tabWidth: tabWidth, labelWidth: labelWidth)
 }
 
+/// With "»" clicked: every button shows.
+private func expanded(_ capture: CGRect) -> OverlayLayout {
+    OverlayLayout(captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, buttonsExpanded: true)
+}
+
 struct OverlayLayoutTests {
     @Test func tabSitsCentredAboveTheFrame() {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
@@ -378,7 +383,7 @@ struct OverlayPositionBoxTests {
     }
 
     @Test func pinnedFrameOnlyAnswersItsButtons() {
-        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        let l = expanded(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), lock: .pinned) == .pin)
         #expect(l.hitTarget(at: CGPoint(x: l.pinMenuRect.midX, y: l.pinMenuRect.midY), lock: .pinned) == .pinMenu)
         #expect(l.hitTarget(at: CGPoint(x: l.tabRect.minX + 5, y: l.tabRect.midY), lock: .pinned) == nil)
@@ -386,6 +391,10 @@ struct OverlayPositionBoxTests {
         #expect(l.hitTarget(at: CGPoint(x: 100, y: 100)) == .resize(.bottomLeft))
         #expect(l.hitTarget(at: CGPoint(x: l.raiseRect.midX, y: l.raiseRect.midY), lock: .pinned) == .raiseViewer)
         #expect(l.hitTarget(at: CGPoint(x: l.pickRect.midX, y: l.pickRect.midY), lock: .pinned) == .pickWindow)
+        let collapsed = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        #expect(
+            collapsed.hitTarget(at: CGPoint(x: collapsed.moreRect.midX, y: collapsed.moreRect.midY), lock: .pinned)
+                == .moreButtons)
     }
 
     @Test(arguments: [
@@ -408,7 +417,7 @@ struct OverlayPositionBoxTests {
     }
 
     @Test func fixedPositionFrameAnswersItsButtons() {
-        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        let l = expanded(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), lock: .fixedPosition) == .pin)
         #expect(
             l.hitTarget(at: CGPoint(x: l.pinMenuRect.midX, y: l.pinMenuRect.midY), lock: .fixedPosition) == .pinMenu)
@@ -432,7 +441,7 @@ struct OverlayPositionBoxTests {
     }
 
     @Test func theButtonsFollowThePinAwayFromTheTab() {
-        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        let l = expanded(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.pinRect.minX == l.tabRect.maxX + 4)
         #expect(l.pinMenuRect == CGRect(x: l.pinRect.maxX, y: l.pinRect.minY, width: 13, height: 22))
         #expect(l.viewportRect == CGRect(x: l.pinMenuRect.maxX + 4, y: l.pinRect.minY, width: 22, height: 22))
@@ -449,7 +458,7 @@ struct OverlayPositionBoxTests {
     @Test func atTheRightEdgeAllButtonsMoveLeftOfTheTab() {
         // The tab hugs the right margin: no room for the buttons on its right. The ▾ stays on the
         // pin's right, between it and the tab.
-        let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
+        let l = expanded(CGRect(x: 1300, y: 100, width: 134, height: 100))
         #expect(l.pinMenuRect.maxX == l.tabRect.minX - 4)
         #expect(l.pinMenuRect.minX == l.pinRect.maxX)
         #expect(l.viewportRect.maxX == l.pinRect.minX - 4)
@@ -460,8 +469,10 @@ struct OverlayPositionBoxTests {
 }
 
 struct OverlayNoticeTests {
-    private func layout(_ capture: CGRect) -> OverlayLayout {
-        OverlayLayout(captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, noticeWidth: 140)
+    private func layout(_ capture: CGRect, expanded: Bool = false, viewportHandleOn: Bool = false) -> OverlayLayout {
+        OverlayLayout(
+            captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, noticeWidth: 140,
+            buttonsExpanded: expanded, viewportHandleOn: viewportHandleOn)
     }
 
     @Test func noticeSitsLeftOfTheTabAwayFromTheButtons() {
@@ -470,17 +481,29 @@ struct OverlayNoticeTests {
         #expect(l.windowFrame.contains(l.noticeRect))
     }
 
-    @Test func atTheLeftEdgeTheNoticeGoesPastThePickButton() {
-        let l = layout(CGRect(x: 10, y: 100, width: 200, height: 100))
-        #expect(l.noticeRect.minX == l.pickRect.maxX + 4)
-        #expect(l.windowFrame.contains(l.noticeRect))
+    @Test func atTheLeftEdgeTheNoticeGoesPastTheLastButtonShown() {
+        let capture = CGRect(x: 10, y: 100, width: 200, height: 100)
+        let collapsed = layout(capture)
+        #expect(collapsed.noticeRect.minX == collapsed.moreRect.maxX + 4)
+        let withViewport = layout(capture, viewportHandleOn: true)
+        #expect(withViewport.noticeRect.minX == withViewport.moreRect.maxX + 4)
+        let all = layout(capture, expanded: true)
+        #expect(all.noticeRect.minX == all.pickRect.maxX + 4)
+        for l in [collapsed, withViewport, all] {
+            #expect(l.windowFrame.contains(l.noticeRect))
+        }
     }
 
-    @Test func atTheRightEdgeTheNoticeGoesPastThePickButtonOnTheLeft() {
-        let l = layout(CGRect(x: 1300, y: 100, width: 134, height: 100))
-        #expect(l.noticeRect.maxX == l.pickRect.minX - 4)
-        #expect(l.noticeRect.minX >= 6)
-        #expect(l.windowFrame.contains(l.noticeRect))
+    @Test func atTheRightEdgeTheNoticeGoesPastTheLastButtonShownOnTheLeft() {
+        let capture = CGRect(x: 1300, y: 100, width: 134, height: 100)
+        let collapsed = layout(capture)
+        #expect(collapsed.noticeRect.maxX == collapsed.moreRect.minX - 4)
+        let all = layout(capture, expanded: true)
+        #expect(all.noticeRect.maxX == all.pickRect.minX - 4)
+        for l in [collapsed, all] {
+            #expect(l.noticeRect.minX >= 6)
+            #expect(l.windowFrame.contains(l.noticeRect))
+        }
     }
 
     @Test func noNoticeTakesNoRoom() {
@@ -535,6 +558,217 @@ struct OverlayLayoutWithoutLockButtonsTests {
         #expect(l.hitTarget(at: CGPoint(x: 97, y: 120)) == .move)
         #expect(l.hitTarget(at: CGPoint(x: l.tabRect.midX, y: l.tabRect.midY)) == .move)
         #expect(l.hitTarget(at: CGPoint(x: 150, y: 150)) == nil)
+    }
+}
+
+/// The buttons after the pin's ▾: "»" collapses the raise and pick buttons, and the viewport button
+/// unless its mode is on; a click on "»" shows them in its place.
+struct OverlayTabButtonsTests {
+    private static let display = CGRect(x: -2560, y: -180, width: 2560, height: 1440)
+
+    private func layout(
+        _ capture: CGRect, on screenFrame: CGRect = screen, expanded: Bool = false, viewportHandleOn: Bool = false,
+        lockButtons: Bool = true
+    ) -> OverlayLayout {
+        OverlayLayout(
+            captureRect: capture, screenFrame: screenFrame, tabWidth: 180, labelWidth: 60,
+            positionSize: CGSize(width: 50, height: 60), lockButtons: lockButtons, buttonsExpanded: expanded,
+            viewportHandleOn: viewportHandleOn)
+    }
+
+    private func rect(_ target: OverlayHitTarget, in l: OverlayLayout) -> CGRect {
+        switch target {
+        case .viewportButton: l.viewportRect
+        case .raiseViewer: l.raiseRect
+        case .pickWindow: l.pickRect
+        case .moreButtons: l.moreRect
+        default: .null
+        }
+    }
+
+    private static let rowTargets: [OverlayHitTarget] = [.viewportButton, .moreButtons, .raiseViewer, .pickWindow]
+
+    @Test(arguments: [
+        // Collapsed, expanded, viewport mode off and on.
+        (false, false, [OverlayHitTarget.moreButtons]),
+        (false, true, [.viewportButton, .moreButtons]),
+        (true, false, [.viewportButton, .raiseViewer, .pickWindow]),
+        (true, true, [.viewportButton, .raiseViewer, .pickWindow]),
+    ])
+    func theRowShowsWhatIsNotCollapsed(expanded: Bool, viewportHandleOn: Bool, row: [OverlayHitTarget]) {
+        // Right of the tab, left of it at the screen's right edge, and on a display left of the main one.
+        let places: [(CGRect, CGRect)] = [
+            (CGRect(x: 100, y: 100, width: 200, height: 100), screen),
+            (CGRect(x: 1300, y: 100, width: 134, height: 100), screen),
+            (CGRect(x: -2000.5, y: 100.5, width: 300, height: 200), Self.display),
+            (CGRect(x: -200, y: -100, width: 150, height: 100), Self.display),
+        ]
+        for (capture, screenFrame) in places {
+            let l = layout(capture, on: screenFrame, expanded: expanded, viewportHandleOn: viewportHandleOn)
+            #expect(l.rowButtons == row)
+            for target in Self.rowTargets where !row.contains(target) {
+                #expect(rect(target, in: l).isNull)
+            }
+            // Each one a step further from the tab, the first beside the pin's ▾.
+            var previous = l.pinRect.union(l.pinMenuRect)
+            for target in row {
+                let r = rect(target, in: l)
+                #expect(r.size == CGSize(width: 22, height: 22))
+                #expect(r.minY == l.tabRect.minY)
+                if l.buttonsOnRight {
+                    #expect(r.minX == previous.maxX + 4)
+                } else {
+                    #expect(r.maxX == previous.minX - 4)
+                }
+                previous = r
+                // Takes its press, also on a pinned frame, reveals the frame and has room in the window.
+                let mid = CGPoint(x: r.midX, y: r.midY)
+                #expect(l.hitTarget(at: mid) == target)
+                #expect(l.hitTarget(at: mid, lock: .pinned) == target)
+                #expect(l.hitTarget(at: mid, lock: .fixedPosition) == target)
+                #expect(l.isInHoverZone(mid))
+                #expect(l.windowFrame.contains(r.insetBy(dx: -8, dy: -8)))
+            }
+            #expect(l.pinMenuRect.maxX <= l.tabRect.minX - 4 || l.pinRect.minX == l.tabRect.maxX + 4)
+        }
+    }
+
+    @Test func theStudioFrameHasOnlyThePickButton() {
+        let capture = CGRect(x: 400, y: 100, width: 200, height: 100)
+        let plain = layout(capture, lockButtons: false)
+        #expect(plain.rowButtons == [.pickWindow])
+        #expect(plain.moreRect.isNull)
+        #expect(plain.pickRect == CGRect(x: plain.tabRect.maxX + 4, y: plain.tabRect.minY, width: 22, height: 22))
+        for expanded in [false, true] {
+            for viewportHandleOn in [false, true] {
+                #expect(
+                    layout(capture, expanded: expanded, viewportHandleOn: viewportHandleOn, lockButtons: false) == plain
+                )
+            }
+        }
+    }
+
+    @Test func theChevronsPlaceTakesNoPressOnceExpandedNorTheCollapsedButtonsPlaces() {
+        let capture = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let collapsed = layout(capture)
+        let all = layout(capture, expanded: true)
+        // "»" stands where the viewport button goes; once expanded, the viewport button takes its press.
+        #expect(collapsed.moreRect == all.viewportRect)
+        let chevron = CGPoint(x: collapsed.moreRect.midX, y: collapsed.moreRect.midY)
+        #expect(all.hitTarget(at: chevron) == .viewportButton)
+        // Where the raise and pick buttons go: nothing while collapsed, not even hover.
+        for r in [all.raiseRect, all.pickRect] {
+            let mid = CGPoint(x: r.midX, y: r.midY)
+            #expect(collapsed.hitTarget(at: mid) == nil)
+            #expect(collapsed.hitTarget(at: mid, lock: .pinned) == nil)
+            #expect(!collapsed.isInHoverZone(mid))
+        }
+    }
+
+    @Test func withTheViewportModeOnTheChevronFollowsTheViewportButton() {
+        let capture = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let l = layout(capture, viewportHandleOn: true)
+        let all = layout(capture, expanded: true)
+        #expect(l.viewportRect == all.viewportRect)
+        #expect(l.moreRect == all.raiseRect)
+        #expect(l.hitTarget(at: CGPoint(x: l.viewportRect.midX, y: l.viewportRect.midY)) == .viewportButton)
+        #expect(l.hitTarget(at: CGPoint(x: l.moreRect.midX, y: l.moreRect.midY)) == .moreButtons)
+    }
+
+    @Test func theWindowMakesRoomOnlyForTheButtonsShown() {
+        // The row reaches past the frame's 40 pt padding on the right (the frame ends at 340); no
+        // position box here, which would reach 370.
+        let window = { (expanded: Bool, viewportHandleOn: Bool) in
+            OverlayLayout(
+                captureRect: CGRect(x: 100, y: 100, width: 200, height: 100), screenFrame: screen, tabWidth: 180,
+                labelWidth: 60, buttonsExpanded: expanded, viewportHandleOn: viewportHandleOn
+            ).windowFrame.maxX
+        }
+        #expect(window(false, false) == CGFloat(333 + 22 + 8))
+        #expect(window(false, true) == CGFloat(359 + 22 + 8))
+        #expect(window(true, false) == CGFloat(385 + 22 + 8))
+        #expect(window(true, true) == CGFloat(385 + 22 + 8))
+    }
+
+    @Test func expandingChangesNothingButTheRowAndWhatMakesRoomForIt() {
+        let capture = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let collapsed = layout(capture)
+        let all = layout(capture, expanded: true)
+        #expect(collapsed.tabRect == all.tabRect)
+        #expect(collapsed.pinRect == all.pinRect)
+        #expect(collapsed.pinMenuRect == all.pinMenuRect)
+        #expect(collapsed.labelRect == all.labelRect)
+        #expect(collapsed.positionRect == all.positionRect)
+        #expect(collapsed.buttonsOnRight == all.buttonsOnRight)
+    }
+
+    // The side is decided on the expanded row (pin with ▾, then three buttons: 117 pt past the tab),
+    // so expanding never flips it: the tab ending at 1317 leaves it exactly room on a 1440 pt screen
+    // with its 6 pt margin, at 1318 the row goes left, collapsed too, though "»" alone would fit.
+    @Test(arguments: [(CGFloat(1177), true), (1178, false), (1250, false)])
+    func theRowFlipsOnTheExpandedWidth(captureX: CGFloat, onRight: Bool) {
+        let capture = CGRect(x: captureX, y: 100, width: 100, height: 100)
+        for expanded in [false, true] {
+            for viewportHandleOn in [false, true] {
+                let l = layout(capture, expanded: expanded, viewportHandleOn: viewportHandleOn)
+                #expect(l.buttonsOnRight == onRight)
+                if onRight {
+                    #expect(l.pinRect.minX == l.tabRect.maxX + 4)
+                } else {
+                    #expect(l.pinMenuRect.maxX == l.tabRect.minX - 4)
+                }
+                let far = rect(l.rowButtons.last!, in: l)
+                #expect(far.minX >= 6 && far.maxX <= 1440 - 6)
+            }
+        }
+    }
+
+    // The second click of a double click on "»" lands on the button expanding put there.
+    @Test(arguments: [OverlayHitTarget.viewportButton, .moreButtons, .raiseViewer, .pickWindow])
+    func aRowButtonTakesOnlyASingleClick(target: OverlayHitTarget) {
+        #expect(target.takesPress(clickCount: 1))
+        #expect(!target.takesPress(clickCount: 2))
+        #expect(!target.takesPress(clickCount: 3))
+    }
+
+    @Test(arguments: [
+        OverlayHitTarget.pin, .pinMenu, .move, .resize(.topLeft), .resize(.bottom), .viewportHandle,
+    ])
+    func everythingElseTakesAnyClick(target: OverlayHitTarget) {
+        for count in 1...3 { #expect(target.takesPress(clickCount: count)) }
+    }
+
+    @Test func expandingPutsAButtonUnderTheSecondClick() {
+        // Why the row buttons ignore a double click: after "»" the button under the pointer changes.
+        let capture = CGRect(x: 100, y: 100, width: 200, height: 100)
+        for viewportHandleOn in [false, true] {
+            let collapsed = layout(capture, viewportHandleOn: viewportHandleOn)
+            let all = layout(capture, expanded: true, viewportHandleOn: viewportHandleOn)
+            let chevron = CGPoint(x: collapsed.moreRect.midX, y: collapsed.moreRect.midY)
+            let under = all.hitTarget(at: chevron)
+            #expect(under == (viewportHandleOn ? .raiseViewer : .viewportButton))
+            #expect(under?.takesPress(clickCount: 2) == false)
+        }
+    }
+
+    @Test func onADisplayAtNegativeCoordinatesTheRowFlipsAtItsRightEdge() {
+        // The display's right edge is x 0: the tab ends at -35, 117 pt short of room.
+        let capture = CGRect(x: -200, y: -100, width: 150, height: 100)
+        let collapsed = layout(capture, on: Self.display)
+        let all = layout(capture, on: Self.display, expanded: true)
+        #expect(!collapsed.buttonsOnRight)
+        #expect(collapsed.tabRect == CGRect(x: -215, y: 10, width: 180, height: 22))
+        #expect(collapsed.pinRect == CGRect(x: -254, y: 10, width: 22, height: 22))
+        #expect(collapsed.moreRect == CGRect(x: -280, y: 10, width: 22, height: 22))
+        #expect(all.viewportRect == collapsed.moreRect)
+        #expect(all.raiseRect == CGRect(x: -306, y: 10, width: 22, height: 22))
+        #expect(all.pickRect == CGRect(x: -332, y: 10, width: 22, height: 22))
+        #expect(collapsed.hitTarget(at: CGPoint(x: -269, y: 21)) == .moreButtons)
+        #expect(all.hitTarget(at: CGPoint(x: -269, y: 21)) == .viewportButton)
+        #expect(all.hitTarget(at: CGPoint(x: -321, y: 21), lock: .pinned) == .pickWindow)
+        #expect(collapsed.hitTarget(at: CGPoint(x: -321, y: 21)) == nil)
+        #expect(collapsed.windowFrame.minX == CGFloat(-288))
+        #expect(all.windowFrame.minX == CGFloat(-340))
     }
 }
 

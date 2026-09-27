@@ -25,8 +25,20 @@ enum OverlayHitTarget: Equatable, Sendable {
     case pickWindow
     /// The button after the pin's ▾ that turns the viewport handle on and off.
     case viewportButton
+    /// The "»" after the pin's ▾ that shows the buttons collapsed behind it.
+    case moreButtons
     /// The handle on the outline of the part the Viewer shows: dragging it pans the Viewer.
     case viewportHandle
+
+    /// Whether a press with this click count does anything. A button after the pin's ▾ takes only a
+    /// single click: expanding or collapsing the row puts another button where "»" was, which the
+    /// second click of a double click would otherwise press.
+    func takesPress(clickCount: Int) -> Bool {
+        switch self {
+        case .viewportButton, .moreButtons, .raiseViewer, .pickWindow: clickCount <= 1
+        default: true
+        }
+    }
 }
 
 /// What keeps the Capture Area in place while the pin is on (docs/product.md, Capture Area). Moving
@@ -100,9 +112,10 @@ struct OverlayMetrics: Sendable {
     static let standard = OverlayMetrics()
 }
 
-/// Where every part of the Capture Area frame goes, in AppKit global coordinates. The Screenshot
-/// studio's frame is laid out the same way without the lock buttons: its pin, ▾ and raise button are
-/// `.null`, so nothing hit-tests or hovers there, and the pick button sits beside the tab.
+/// Where every part of the Capture Area frame goes, in AppKit global coordinates. A button that isn't
+/// shown is `.null`, so nothing hit-tests or hovers there and the window doesn't make room for it. The
+/// Screenshot studio's frame is laid out the same way without the lock buttons: its pin, ▾, viewport,
+/// raise and "»" buttons are `.null`, and the pick button sits beside the tab.
 struct OverlayLayout: Equatable, Sendable {
     var captureRect: CGRect
     var tabRect: CGRect
@@ -111,12 +124,19 @@ struct OverlayLayout: Equatable, Sendable {
     var pinRect: CGRect
     /// The pin's ▾, attached on its right.
     var pinMenuRect: CGRect
+    /// The buttons after the pin's ▾, in order away from the tab: the viewport, raise and pick
+    /// buttons, or collapsed, "»" in place of those it collapses.
+    var rowButtons: [OverlayHitTarget]
+    /// The buttons sit right of the tab; left of it at the screen's right edge.
+    var buttonsOnRight: Bool
     /// The button that turns the viewport handle on and off, beside the pin, away from the tab.
     var viewportRect: CGRect
     /// The button that brings the Viewer forward, after the viewport button.
     var raiseRect: CGRect
     /// The button that picks a window for the area, after the raise button.
     var pickRect: CGRect
+    /// The "»" that stands in for the collapsed buttons, after the pin's ▾ or the viewport button.
+    var moreRect: CGRect
     /// The L T R B box: right of the frame, or left of it when there is no room on the right; never
     /// over the rect it avoids (the studio's palette) while there is room elsewhere beside it.
     var positionRect: CGRect
@@ -129,7 +149,8 @@ struct OverlayLayout: Equatable, Sendable {
     init(
         captureRect: CGRect, screenFrame: CGRect, tabWidth: CGFloat, labelWidth: CGFloat,
         positionSize: CGSize = .zero, positionAvoiding: CGRect = .null, noticeWidth: CGFloat = 0,
-        lockButtons: Bool = true, metrics m: OverlayMetrics = .standard
+        lockButtons: Bool = true, buttonsExpanded: Bool = false, viewportHandleOn: Bool = false,
+        metrics m: OverlayMetrics = .standard
     ) {
         self.captureRect = captureRect
         let r = captureRect
@@ -149,42 +170,50 @@ struct OverlayLayout: Equatable, Sendable {
         }
         let tabX = Self.clamp(
             r.midX - tabWidth / 2, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - tabWidth)
-        tabRect = CGRect(x: tabX.rounded(), y: tabY.rounded(), width: tabWidth, height: m.tabHeight)
-        // The pin with its ▾, the viewport, raise and pick buttons: right of the tab, or left of it at
-        // the screen's right edge, the pin next to the tab either way. Without the lock buttons, the
-        // pick button alone.
+        let tab = CGRect(x: tabX.rounded(), y: tabY.rounded(), width: tabWidth, height: m.tabHeight)
+        tabRect = tab
+        // The pin with its ▾, then the viewport, raise and pick buttons, away from the tab. Collapsed,
+        // "»" stands in for the raise and pick buttons, and for the viewport button unless its mode is
+        // on: the filled button is the only sign of the mode. Without the lock buttons, the pick button
+        // alone. Right of the tab, or left of it, the pin next to the tab, when the expanded row
+        // wouldn't fit on the right: decided on the expanded row, so expanding never flips sides.
         let button = m.tabHeight + m.pinGap
         let split = lockButtons ? m.tabHeight + m.pinMenuWidth + m.pinGap : 0
-        let single = lockButtons ? button : 0
-        var pinX = tabRect.maxX + m.pinGap
-        var viewportX = pinX + split
-        var raiseX = viewportX + single
-        var pickX = raiseX + single
-        if pickX + m.tabHeight > screen.maxX - m.screenMargin {
-            pinX = tabRect.minX - split
-            viewportX = pinX - single
-            raiseX = viewportX - single
-            pickX = raiseX - button
+        let expandedRow: [OverlayHitTarget] =
+            lockButtons ? [.viewportButton, .raiseViewer, .pickWindow] : [.pickWindow]
+        let onRight =
+            tab.maxX + m.pinGap + split + CGFloat(expandedRow.count - 1) * button + m.tabHeight
+            <= screen.maxX - m.screenMargin
+        buttonsOnRight = onRight
+        let pinX = onRight ? tab.maxX + m.pinGap : tab.minX - split
+        // The nth button after the pin's ▾, away from the tab.
+        let slot = { (n: Int) -> CGRect in
+            let x = onRight ? pinX + split + CGFloat(n) * button : pinX - CGFloat(n + 1) * button
+            return CGRect(x: x, y: tab.minY, width: m.tabHeight, height: m.tabHeight)
         }
-        let buttonsOnRight = pickX > tabRect.maxX
+        let row: [OverlayHitTarget] =
+            !lockButtons || buttonsExpanded
+            ? expandedRow : viewportHandleOn ? [.viewportButton, .moreButtons] : [.moreButtons]
+        rowButtons = row
+        let rect = { (target: OverlayHitTarget) in row.firstIndex(of: target).map(slot) ?? .null }
         if lockButtons {
-            pinRect = CGRect(x: pinX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
-            pinMenuRect = CGRect(x: pinRect.maxX, y: tabRect.minY, width: m.pinMenuWidth, height: m.tabHeight)
-            viewportRect = CGRect(x: viewportX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
-            raiseRect = CGRect(x: raiseX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
+            pinRect = CGRect(x: pinX, y: tab.minY, width: m.tabHeight, height: m.tabHeight)
+            pinMenuRect = CGRect(x: pinX + m.tabHeight, y: tab.minY, width: m.pinMenuWidth, height: m.tabHeight)
         } else {
             pinRect = .null
             pinMenuRect = .null
-            viewportRect = .null
-            raiseRect = .null
         }
-        pickRect = CGRect(x: pickX, y: tabRect.minY, width: m.tabHeight, height: m.tabHeight)
+        viewportRect = rect(.viewportButton)
+        raiseRect = rect(.raiseViewer)
+        pickRect = rect(.pickWindow)
+        moreRect = rect(.moreButtons)
 
-        // Notice: left of the tab, or past the pick button when the tab is at the screen's left edge.
-        // With the buttons left of the tab, past the pick button on that side.
-        var noticeX = (buttonsOnRight ? tabRect.minX : pickRect.minX) - m.pinGap - noticeWidth
-        if buttonsOnRight, noticeX < screen.minX + m.screenMargin {
-            noticeX = pickRect.maxX + m.pinGap
+        // Notice: left of the tab, or past the last button when the tab is at the screen's left edge.
+        // With the buttons left of the tab, past the last button on that side.
+        let last = slot(row.count - 1)
+        var noticeX = (onRight ? tab.minX : last.minX) - m.pinGap - noticeWidth
+        if onRight, noticeX < screen.minX + m.screenMargin {
+            noticeX = last.maxX + m.pinGap
         }
         noticeRect =
             noticeWidth > 0
@@ -244,6 +273,7 @@ struct OverlayLayout: Equatable, Sendable {
             .union(viewportRect.insetBy(dx: -8, dy: -8))
             .union(raiseRect.insetBy(dx: -8, dy: -8))
             .union(pickRect.insetBy(dx: -8, dy: -8))
+            .union(moreRect.insetBy(dx: -8, dy: -8))
         if noticeWidth > 0 {
             frame = frame.union(noticeRect.insetBy(dx: -8, dy: -8))
         }
@@ -272,6 +302,7 @@ struct OverlayLayout: Equatable, Sendable {
         if viewportRect.contains(point) { return .viewportButton }
         if raiseRect.contains(point) { return .raiseViewer }
         if pickRect.contains(point) { return .pickWindow }
+        if moreRect.contains(point) { return .moreButtons }
         if viewportHandle?.contains(point) == true { return .viewportHandle }
         if let lock, !lock.allowsResize { return nil }
         for handle in OverlayHandle.allCases where handleRect(handle, size: m.handleHitSize).contains(point) {
@@ -307,7 +338,7 @@ struct OverlayLayout: Equatable, Sendable {
     func isInHoverZone(_ point: CGPoint, metrics m: OverlayMetrics = .standard) -> Bool {
         if tabRect.contains(point) || labelRect.contains(point) || positionRect.contains(point)
             || pinRect.contains(point) || pinMenuRect.contains(point) || viewportRect.contains(point)
-            || raiseRect.contains(point) || pickRect.contains(point)
+            || raiseRect.contains(point) || pickRect.contains(point) || moreRect.contains(point)
         {
             return true
         }

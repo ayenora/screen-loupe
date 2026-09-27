@@ -130,8 +130,15 @@ final class OverlayFrameController {
     /// The viewport handle mode is on (`Settings.showsViewportHandle`): the outline stays and carries
     /// the handle.
     private var showsViewportHandle = false {
-        didSet { updateViewedPartShown() }
+        didSet {
+            updateViewedPartShown()
+            // Its button leaves the collapsed buttons while the mode is on.
+            if showsViewportHandle != oldValue { apply(captureRect, persist: false) }
+        }
     }
+    /// "»" was clicked: the buttons it collapses show in its place until the frame's buttons hide; the
+    /// next reveal clears it.
+    private var buttonsExpanded = false
     private var eventMonitors: [Any] = []
     private var keyObservers: [NSObjectProtocol] = []
     private var picker: WindowPicker?
@@ -485,7 +492,9 @@ final class OverlayFrameController {
             positionSize: positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines),
             positionAvoiding: positionAvoiding,
             noticeWidth: noticeText.map(OverlayStyle.labelWidth(for:)) ?? 0,
-            lockButtons: kind.hasLocks
+            lockButtons: kind.hasLocks,
+            buttonsExpanded: buttonsExpanded,
+            viewportHandleOn: showsViewportHandle
         )
         self.layout = layout
         window.setFrame(layout.windowFrame, display: false)
@@ -568,6 +577,12 @@ final class OverlayFrameController {
     private func setRevealed(_ revealed: Bool) {
         guard revealed != isRevealed else { return }
         isRevealed = revealed
+        // The row expanded before the buttons last hid collapses as they show again, before they fade
+        // in: collapsing as they hide would drop the raise and pick buttons mid-fade.
+        if revealed, buttonsExpanded {
+            buttonsExpanded = false
+            apply(captureRect, persist: false)
+        }
         view.setRevealed(revealed)
     }
 
@@ -642,6 +657,11 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
             view.showLockMenu()
             return
         }
+        if target == .moreButtons {
+            buttonsExpanded = true
+            apply(captureRect, persist: false)
+            return
+        }
         if target == .raiseViewer {
             onRaiseViewer?()
             return
@@ -696,7 +716,7 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
                     rect, handle: handle, ratio: ratio, scale: scale(of: fitted), minimumSize: minimum, lead: lead)
             }
             applyEdited(rect, snap: .edges, persist: false)
-        case .pin, .pinMenu, .viewportButton, .raiseViewer, .pickWindow, .viewportHandle:
+        case .pin, .pinMenu, .viewportButton, .moreButtons, .raiseViewer, .pickWindow, .viewportHandle:
             break
         }
     }
