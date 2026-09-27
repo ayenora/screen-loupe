@@ -1,6 +1,6 @@
 # Third-party notices
 
-Screen Loupe bundles the following third-party material. The app carries the same notices in its About panel (`ScreenLoupe/Resources/Credits.rtf`).
+Screen Loupe bundles the following third-party material. The app carries the same notices under Help › Acknowledgements (`ScreenLoupe/Resources/Acknowledgements.txt`).
 
 ## Lucide
 

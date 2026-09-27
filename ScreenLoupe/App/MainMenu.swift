@@ -317,6 +317,11 @@ enum MainMenu {
             withTitle: "Keyboard Shortcuts", action: #selector(AppController.showKeyboardShortcuts(_:)),
             keyEquivalent: "")
         shortcuts.target = target
+        menu.addItem(.separator())
+        let acknowledgements = menu.addItem(
+            withTitle: "Acknowledgements", action: #selector(AppController.showAcknowledgements(_:)),
+            keyEquivalent: "")
+        acknowledgements.target = target
         return menu
     }
 

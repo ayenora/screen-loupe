@@ -19,6 +19,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let shortcuts = GlobalShortcuts()
     /// Built the first time Settings opens, then kept.
     private var settingsWindow: SettingsWindowController?
+    /// Built the first time Help › Acknowledgements opens, then kept.
+    private var acknowledgementsWindow: AcknowledgementsWindowController?
     private var statusItem: StatusItemController?
     private var observers: [NSObjectProtocol] = []
 
@@ -42,6 +44,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         settings.observe(\.viewerAlwaysOnTop) { [weak self] _ in
             guard let self else { return }
             settingsWindow?.window?.level = settingsLevel
+            acknowledgementsWindow?.window?.level = settingsLevel
         }
         // Without Screen Recording access the Viewer explains why it is needed and asks from there,
         // even when Settings says to show nothing on launch.
@@ -284,6 +287,12 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc func showKeyboardShortcuts(_ sender: Any?) {
         NSWorkspace.shared.open(URL(string: Self.guide + "#keyboard-shortcuts")!)
+    }
+
+    @objc func showAcknowledgements(_ sender: Any?) {
+        let controller = acknowledgementsWindow ?? AcknowledgementsWindowController()
+        acknowledgementsWindow = controller
+        controller.show(above: settingsLevel)
     }
 
     @objc func showSettings(_ sender: Any?) {
