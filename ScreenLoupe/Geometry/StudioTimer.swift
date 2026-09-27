@@ -46,8 +46,8 @@ enum StudioCountdown: Equatable, Sendable {
         case tick(at: TimeInterval, frameOnDisplay: Bool)
         /// The studio was hidden.
         case hidden
-        /// A window picker started: One Window or Fit to Window. It takes the
-        /// mouse and the keyboard, which a countdown must not have to share.
+        /// A window picker started: the studio's One Window or Fit to Window, or one of the Capture
+        /// Area's. It takes the mouse and the keyboard, which a countdown must not have to share.
         case pickerStarted
     }
 
