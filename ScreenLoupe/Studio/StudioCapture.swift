@@ -5,9 +5,9 @@ import OSLog
 /// One screenshot of the Screenshot studio's frame with `SCScreenshotManager` (docs/design.md,
 /// Screenshot studio). Like the Viewer's stream it leaves out every window of the app — the studio's
 /// frame, palette and hover label, menus, alerts — except the ones the caller names: the Viewer and
-/// the Capture Area frame, which are captured like any other window on screen. It also leaves out
-/// the Dock, the desktop icons, the wallpaper and chosen windows of other apps, as asked, and lays
-/// a background under what is left. Or, for One Window, takes one window alone.
+/// the Capture Area frame, which are captured like any other window on screen. With a background
+/// other than the screen it also leaves out the wallpaper and the desktop icons, and lays the
+/// background under what is left. Or, for One Window, takes one window alone.
 @MainActor
 enum StudioCapture {
     struct NoDisplayError: LocalizedError {
@@ -19,10 +19,10 @@ enum StudioCapture {
 
     /// The pixels of `geometry` at the display's native resolution, with the pointer when `pointer`
     /// says so, in the display's colour space. `includedWindows` are window numbers of this app's
-    /// windows to keep; `leaveOut` names what else stays out of the picture, and `fill` is laid
-    /// under what is left.
+    /// windows to keep; `leavingOutDesktop` leaves out the wallpaper and the desktop icons, and
+    /// `fill` is laid under what is left.
     static func image(
-        of geometry: CaptureGeometry, including includedWindows: [Int], leavingOut leaveOut: StudioLeaveOut,
+        of geometry: CaptureGeometry, including includedWindows: [Int], leavingOutDesktop: Bool,
         pointer: Bool, over fill: StudioFill?
     ) async throws -> CGImage {
         let content = try await withTimeout(seconds: callTimeout) {
@@ -42,7 +42,8 @@ enum StudioCapture {
         // Where no window is left, nothing: a fill shows through there.
         configuration.backgroundColor = CGColor.clear
         let filter = filter(
-            for: display, in: content, including: Set(includedWindows.map { CGWindowID($0) }), leavingOut: leaveOut)
+            for: display, in: content, including: Set(includedWindows.map { CGWindowID($0) }),
+            leavingOutDesktop: leavingOutDesktop)
         let image = try await withTimeout(seconds: callTimeout) {
             try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
         }
@@ -165,12 +166,13 @@ enum StudioCapture {
     private static let log = Logger(category: "studio")
     private static var hasLoggedMissingAlpha = false
 
-    /// The display minus every window of this app but `included`, and minus what `leaveOut` names
-    /// (`StudioFilter`). With nothing else to leave out, the app is excluded as a whole; otherwise,
-    /// or when the app isn't listed (docs/design.md §6, risk 4), the windows are named one by one.
+    /// The display minus every window of this app but `included`, and minus the wallpaper and the
+    /// desktop icons when `leavingOutDesktop` (`StudioFilter`). With nothing else to leave out, the
+    /// app is excluded as a whole; otherwise, or when the app isn't listed (docs/design.md §6, risk
+    /// 4), the windows are named one by one.
     private static func filter(
         for display: SCDisplay, in content: SCShareableContent, including included: Set<CGWindowID>,
-        leavingOut leaveOut: StudioLeaveOut
+        leavingOutDesktop: Bool
     ) -> SCContentFilter {
         let pid = ProcessInfo.processInfo.processIdentifier
         let listed = content.windows.map {
@@ -179,7 +181,8 @@ enum StudioCapture {
                 ownerBundleID: $0.owningApplication?.bundleIdentifier)
         }
         let app = content.applications.first { $0.processID == pid }
-        let path = StudioFilter.path(listed, ownPID: pid, appIsListed: app != nil, kept: included, leaveOut)
+        let path = StudioFilter.path(
+            listed, ownPID: pid, appIsListed: app != nil, kept: included, leavingOutDesktop: leavingOutDesktop)
         if case .excludingWindows(let ids) = path {
             let excluded = Set(ids)
             return SCContentFilter(

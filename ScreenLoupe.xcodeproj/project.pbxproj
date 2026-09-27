@@ -36,7 +36,7 @@
 				Geometry/SizeText.swift,
 				Geometry/StudioBackground.swift,
 				Geometry/StudioComposite.swift,
-				Geometry/StudioLeaveOut.swift,
+				Geometry/StudioFilter.swift,
 				Geometry/StudioOneWindow.swift,
 				Geometry/StudioOutput.swift,
 				Geometry/StudioPlacement.swift,

@@ -220,9 +220,6 @@ final class OverlayFrameController {
 
     var isVisible: Bool { window.isVisible }
 
-    /// The overlay window's number, to leave it out of a screenshot.
-    var windowNumber: Int { window.windowNumber }
-
     /// The numbers of the frame's windows: its overlay and the outline's panel.
     var windowNumbers: [Int] { [window.windowNumber] + (outline.map { [$0.windowNumber] } ?? []) }
 

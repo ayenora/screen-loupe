@@ -182,28 +182,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.chooseBackgroundImage()
     }
 
-    @objc func toggleStudioLeaveOutWindows(_ sender: Any?) {
-        windows.studio.toggleLeavingOutWindows()
-    }
-
-    @objc func bringBackStudioWindows(_ sender: Any?) {
-        windows.studio.bringBackAllWindows()
-    }
-
     @objc func toggleStudioOneWindow(_ sender: Any?) {
         windows.studio.toggleOneWindow()
     }
 
     @objc func toggleStudioWindowShadow(_ sender: Any?) {
         windows.studio.toggleWindowShadow()
-    }
-
-    @objc func toggleStudioLeaveOutDock(_ sender: Any?) {
-        windows.studio.toggleLeaveOutDock()
-    }
-
-    @objc func toggleStudioLeaveOutDesktopIcons(_ sender: Any?) {
-        windows.studio.toggleLeaveOutDesktopIcons()
     }
 
     @objc func resetZoom(_ sender: Any?) {
@@ -408,11 +392,6 @@ extension AppController: NSMenuItemValidation {
                 menuItem.title = "Image…"
             }
             return true
-        case #selector(toggleStudioLeaveOutWindows(_:)):
-            menuItem.state = builtWindows?.studio.isLeavingOutWindows == true ? .on : .off
-            return builtWindows?.studio.isVisible == true && !studioHasOneWindow
-        case #selector(bringBackStudioWindows(_:)):
-            return builtWindows?.studio.hasLeftOutWindows == true && !studioHasOneWindow
         case #selector(toggleStudioOneWindow(_:)):
             // Checked while the window is picked; a chosen window can be let go also while the
             // studio is hidden.
@@ -423,18 +402,6 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleStudioWindowShadow(_:)):
             menuItem.state = settings.settings.studioWindowShadow ? .on : .off
             return true
-        case #selector(toggleStudioLeaveOutDock(_:)):
-            menuItem.state = settings.settings.studioLeavesOutDock ? .on : .off
-            return !studioHasOneWindow
-        case #selector(toggleStudioLeaveOutDesktopIcons(_:)):
-            // A background other than the screen leaves them out anyway; a chosen window is taken
-            // alone.
-            let current = settings.settings
-            let leaveOut = StudioLeaveOut(
-                dock: current.studioLeavesOutDock, desktopIcons: current.studioLeavesOutDesktopIcons,
-                background: current.studioBackground, windows: [])
-            menuItem.state = leaveOut.desktopIcons ? .on : .off
-            return !leaveOut.wallpaper && !studioHasOneWindow
         case #selector(toggleMeasuringRuler(_:)):
             menuItem.state = builtWindows?.viewer.isRulerOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true

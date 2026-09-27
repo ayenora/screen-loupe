@@ -2,8 +2,7 @@ import AppKit
 
 /// Picks a window for the Capture Area to take or to attach to, like Space in ⇧⌘4: the window under
 /// the pointer is tinted, a click takes it, Escape or a click on no window cancels (docs/product.md,
-/// Capture Area). Or keeps picking, for the Screenshot studio's windows to leave out: each click
-/// on a window is handed on, until Escape or `stop()`.
+/// Capture Area).
 ///
 /// A transparent panel over each display takes every click, so none reaches the app underneath and
 /// no Accessibility permission is needed.
@@ -13,38 +12,21 @@ import AppKit
 final class WindowPicker {
     /// The picker running, if any.
     private static weak var running: WindowPicker?
-    /// The windows that can be picked, front to back, as of now.
-    private let windows: () -> [ScreenWindow]
+    /// The windows that can be picked, front to back.
+    private let windows: [ScreenWindow]
     private let tint: NSColor
     /// What a click does on the tinted window, shown on it.
-    private let hint: (ScreenWindow) -> String
-    /// Keeps picking: a click on a window goes here, and picking goes on.
-    private let onClick: ((ScreenWindow) -> Void)?
+    private let hint: String
     private let onFinish: (ScreenWindow?) -> Void
     private var panels: [PickerPanel] = []
     private var observer: NSObjectProtocol?
 
     /// `onFinish` gets the picked window, or `nil` when picking was cancelled.
     init(windows: [ScreenWindow], tint: NSColor, hint: String, onFinish: @escaping (ScreenWindow?) -> Void) {
-        self.windows = { windows }
-        self.tint = tint
-        self.hint = { _ in hint }
-        onClick = nil
-        self.onFinish = onFinish
-    }
-
-    /// Keeps picking: a click on a window calls `onClick`, a click on no window does nothing, and
-    /// Escape, a right click, another app becoming active or `stop()` ends it with `onFinish`. `windows` is
-    /// read again on every move and click, since windows move while picking goes on.
-    init(
-        windows: @escaping () -> [ScreenWindow], tint: NSColor, hint: @escaping (ScreenWindow) -> String,
-        onClick: @escaping (ScreenWindow) -> Void, onFinish: @escaping () -> Void
-    ) {
         self.windows = windows
         self.tint = tint
         self.hint = hint
-        self.onClick = onClick
-        self.onFinish = { _ in onFinish() }
+        self.onFinish = onFinish
     }
 
     func start() {
@@ -78,22 +60,16 @@ final class WindowPicker {
     }
 
     fileprivate func mouseMoved() {
-        let hovered = WindowMagnet.window(at: NSEvent.mouseLocation, in: windows())
+        let hovered = WindowMagnet.window(at: NSEvent.mouseLocation, in: windows)
         for panel in panels {
             (panel.contentView as? PickerView)?.show(
                 hovered.map { $0.frame.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY) },
-                hint: hovered.map(hint) ?? "")
+                hint: hovered == nil ? "" : hint)
         }
     }
 
     fileprivate func click() {
-        let picked = WindowMagnet.window(at: NSEvent.mouseLocation, in: windows())
-        guard let onClick else { return finish(picked) }
-        if let picked {
-            onClick(picked)
-            // The hint says what the next click does.
-            mouseMoved()
-        }
+        finish(WindowMagnet.window(at: NSEvent.mouseLocation, in: windows))
     }
 
     /// Ends picking, as Escape does.

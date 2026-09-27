@@ -5,8 +5,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The Screenshot studio (docs/product.md, Screenshot studio): its frame, its palette, Capture,
-/// Copy and Save, the frame's sizes and Aspect Lock, the timer, what pictures leave out and lay
-/// under, the pointer, and One Window.
+/// Copy and Save, the frame's sizes and Aspect Lock, the timer, what pictures lay under, the
+/// pointer, and One Window.
 /// Shown and hidden on its own, apart from the Viewer and the Capture Area.
 ///
 /// The frame is an `OverlayFrameController` of kind `.studio`: the Capture Area's window, drawing,
@@ -19,8 +19,6 @@ final class StudioController {
     /// The numbers of the app's windows a picture keeps — the Viewer and the Capture Area frame;
     /// every other window of the app is left out.
     var capturedAppWindows: (() -> [Int])?
-    /// The Viewer's window number, while it has a window: a left-out window behind it isn't dimmed.
-    var viewerWindowNumber: (() -> Int?)?
 
     private let frame: OverlayFrameController
     private let palette = StudioPalette()
@@ -36,16 +34,6 @@ final class StudioController {
     private let listPanel = StudioListPanel()
     /// Built the first time Custom Size… is chosen, then kept.
     private var customSizesWindow: NSPanel?
-    /// Windows of other apps left out by pointing: for this session only, never saved.
-    private var leftOutWindows: Set<CGWindowID> = [] {
-        didSet { if leftOutWindows != oldValue { updateDimmed() } }
-    }
-    /// Picks windows to leave out while it runs.
-    private var windowPicker: WindowPicker?
-    private let dimOverlay = StudioDimOverlay()
-    /// Follows the left-out windows while any are left out and the studio shows.
-    private var dimTimer: Timer?
-    private var dimTicks = 0
     private let colorTarget = ColorPanelTarget()
     private var paletteMoveObserver: NSObjectProtocol?
     /// The decoded background image, by its file name.
@@ -73,9 +61,7 @@ final class StudioController {
         palette.onToggleAspectLock = { [weak self] in self?.toggleAspectLock() }
         palette.onTimer = { [weak self] in self?.showDelays(beside: $0) }
         palette.onBackground = { [weak self] in self?.showBackgrounds(beside: $0) }
-        palette.onToggleLeaveOutWindows = { [weak self] in self?.toggleLeavingOutWindows() }
         palette.onToggleOneWindow = { [weak self] in self?.toggleOneWindow() }
-        palette.onToggleLeaveOutDock = { [weak self] in self?.toggleLeaveOutDock() }
         palette.onTogglePointer = { [weak self] in self?.togglePointer() }
         palette.onHide = { [weak self] in self?.hide() }
         palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
@@ -93,7 +79,6 @@ final class StudioController {
         }
         settings.observe(\.studioAspectLocked) { [weak self] in self?.palette.aspectLocked = $0 }
         settings.observe(\.activeStudioAspectRatio) { [weak self] in self?.frame.aspectRatio = $0.map { CGFloat($0) } }
-        settings.observe(\.studioLeavesOutDock) { [weak self] in self?.palette.leavesOutDock = $0 }
         settings.observe(\.studioBackground) { [weak self] in
             self?.palette.hasBackground = $0 != .screen
             // The decoded image isn't kept for a background that no longer is one.
@@ -101,11 +86,8 @@ final class StudioController {
         }
         settings.observe(\.studioDelay) { [weak self] in self?.palette.hasDelay = $0 != .off }
         settings.observe(\.studioIncludesPointer) { [weak self] in self?.palette.includesPointer = $0 }
-        // The dimmed windows and the countdown move with the frame.
-        frame.onChange = { [weak self] in
-            self?.updateDimmed()
-            self?.updateCountdownPanel()
-        }
+        // The countdown moves with the frame.
+        frame.onChange = { [weak self] in self?.updateCountdownPanel() }
         colorTarget.onChange = { [weak self] color in
             let srgb = color.usingColorSpace(.sRGB) ?? .white
             let chosen = BackgroundColor(
@@ -125,19 +107,15 @@ final class StudioController {
         if !palette.isVisible { placePalette() }
         palette.orderFrontRegardless()
         updatePositionAvoiding()
-        dropClosedWindows()
-        updateDimmed()
         checkOneWindow()
         updateOneWindowTimer()
     }
 
     func hide() {
         listPanel.dismiss()
-        windowPicker?.stop()
         frame.hide()
         palette.orderOut(nil)
         updatePositionAvoiding()
-        updateDimmed()
         advance(.hidden)
         send(.hidden)
         updateOneWindowTimer()
@@ -267,7 +245,7 @@ final class StudioController {
         }
     }
 
-    // MARK: Clean background
+    // MARK: Background
 
     var background: StudioBackground { settings.settings.studioBackground }
 
@@ -441,14 +419,6 @@ final class StudioController {
         }
     }
 
-    func toggleLeaveOutDock() {
-        settings.update { $0.studioLeavesOutDock.toggle() }
-    }
-
-    func toggleLeaveOutDesktopIcons() {
-        settings.update { $0.studioLeavesOutDesktopIcons.toggle() }
-    }
-
     func togglePointer() {
         settings.update { $0.studioIncludesPointer.toggle() }
     }
@@ -456,85 +426,6 @@ final class StudioController {
     /// Another window picker of the app opened, which ended any of the studio's: a countdown stops.
     func windowPickerStarted() {
         advance(.pickerStarted)
-    }
-
-    // MARK: Leaving out windows
-
-    var isLeavingOutWindows: Bool { windowPicker != nil }
-    /// Whether a window that still exists is left out; the closed ones are forgotten first, also
-    /// while the studio is hidden and nothing else looks.
-    var hasLeftOutWindows: Bool {
-        dropClosedWindows()
-        return !leftOutWindows.isEmpty
-    }
-
-    /// Starts pointing at windows to leave out, or ends it. While it runs, the window under the
-    /// pointer is tinted, a click leaves it out or brings it back, and the palette's button, above
-    /// the picker, ends it; Escape ends it too.
-    func toggleLeavingOutWindows() {
-        if let windowPicker { return windowPicker.stop() }
-        guard isVisible, let converter else { return }
-        listPanel.dismiss()
-        oneWindowPicker?.stop()
-        advance(.pickerStarted)
-        let picker = WindowPicker(
-            windows: { ScreenWindows.windows(converter: converter) }, tint: SettingsColor.studio.nsColor,
-            hint: { [weak self] window in
-                self?.leftOutWindows.contains(window.id) == true
-                    ? "Click to bring back · Esc to finish" : "Click to leave out · Esc to finish"
-            },
-            onClick: { [weak self] window in
-                guard let self else { return }
-                leftOutWindows = LeftOutWindows.toggled(window.id, in: leftOutWindows)
-            },
-            onFinish: { [weak self] in
-                self?.windowPicker = nil
-                self?.palette.isPickingWindows = false
-            })
-        windowPicker = picker
-        palette.isPickingWindows = true
-        picker.start()
-    }
-
-    func bringBackAllWindows() {
-        leftOutWindows = []
-    }
-
-    /// Forgets the left-out windows that closed; a minimised or hidden one stays left out.
-    private func dropClosedWindows() {
-        guard !leftOutWindows.isEmpty, let existing = ScreenWindows.existingIDs() else { return }
-        leftOutWindows = LeftOutWindows.keeping(leftOutWindows, existing: existing)
-    }
-
-    /// Dims the left-out windows inside the frame while the studio shows, and follows them ten
-    /// times a second, forgetting closed ones once a second. Nothing runs while none is left out,
-    /// nor while One Window has a window: its pictures leave nothing out.
-    private func updateDimmed() {
-        guard isVisible, !leftOutWindows.isEmpty, oneWindowMode.chosen == nil, let converter else {
-            dimOverlay.orderOut(nil)
-            dimTimer?.invalidate()
-            dimTimer = nil
-            return
-        }
-        let rect = frame.captureRect
-        let scale = converter.owningDisplay(for: GlobalRect(rect: rect))?.scale ?? 1
-        // The Viewer and the palette cover what is behind them; the frames and overlays don't.
-        let own = Set([palette.windowNumber] + (viewerWindowNumber?().map { [$0] } ?? []))
-        let rects = LeftOutWindows.dimmedRects(
-            leftOutWindows, stack: ScreenWindows.stack(converter: converter, own: own), frame: rect, scale: scale)
-        dimOverlay.show(rects, in: rect, below: frame.windowNumber)
-        guard dimTimer == nil else { return }
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.dimTicks += 1
-                if self.dimTicks % 10 == 0 { self.dropClosedWindows() }
-                self.updateDimmed()
-            }
-        }
-        // Also while a menu is open or a window is dragged.
-        RunLoop.main.add(timer, forMode: .common)
-        dimTimer = timer
     }
 
     // MARK: One window
@@ -570,13 +461,11 @@ final class StudioController {
         palette.hasOneWindow = new.chosen != nil
         frame.tabNote = new.tabNote
         updateOneWindowTimer()
-        updateDimmed()
     }
 
     /// As Fit to Window does: the window under the pointer is tinted, a click chooses it, Escape
     /// or a click on no window cancels. The palette's button, above the picker, cancels too.
     private func startOneWindowPicker() {
-        windowPicker?.stop()
         advance(.pickerStarted)
         listPanel.dismiss()
         let picker = WindowPicker(
@@ -673,7 +562,7 @@ final class StudioController {
     private func press(_ shot: StudioShot) {
         listPanel.dismiss()
         pressedOutput = settings.settings.studioOutput
-        let pickerRunning = windowPicker != nil || oneWindowPicker != nil || frame.isPickingWindow
+        let pickerRunning = oneWindowPicker != nil || frame.isPickingWindow
         advance(
             .press(
                 shot, delay: delay, check: check, pickerRunning: pickerRunning,
@@ -689,7 +578,6 @@ final class StudioController {
         case .shootNow(let shot), .refusedNow(let shot): take(shot)
         case .started(let stopsPicker):
             if stopsPicker {
-                windowPicker?.stop()
                 oneWindowPicker?.stop()
                 frame.stopPickingWindow()
             }
@@ -803,9 +691,6 @@ final class StudioController {
         isCapturing = true
         let included = capturedAppWindows?() ?? []
         let current = settings.settings
-        let leaveOut = StudioLeaveOut(
-            dock: current.studioLeavesOutDock, desktopIcons: current.studioLeavesOutDesktopIcons,
-            background: current.studioBackground, windows: leftOutWindows)
         let chosen = oneWindowMode.chosen
         Task {
             defer { isCapturing = false }
@@ -819,7 +704,8 @@ final class StudioController {
                             shadow: current.studioWindowShadow, over: fill)
                     } else {
                         try await StudioCapture.image(
-                            of: geometry, including: included, leavingOut: leaveOut,
+                            of: geometry, including: included,
+                            leavingOutDesktop: current.studioBackground.leavesOutWallpaper,
                             pointer: current.studioIncludesPointer, over: fill)
                     }
                 if isVisible { await then(image, geometry.display.scale) }

@@ -107,10 +107,6 @@ final class WindowManager {
             guard let self else { return [] }
             return captureArea.windowNumbers + (viewer.window.map { [$0.windowNumber] } ?? [])
         }
-        studio.viewerWindowNumber = { [weak self] in
-            guard let window = self?.viewer.window, window.isVisible else { return nil }
-            return window.windowNumber
-        }
         studio.onNeedsPermission = { [weak self] deniedByCapture in
             if deniedByCapture { self?.viewer.setCaptureProblem(.permissionDenied) }
             self?.showViewer()

@@ -172,27 +172,11 @@ enum MainMenu {
         let backgroundItem = submenuItem(background)
         backgroundItem.title = background.title
         menu.addItem(backgroundItem)
-        let leaveOutWindows = menu.addItem(
-            withTitle: "Leave Out Windows…", action: #selector(AppController.toggleStudioLeaveOutWindows(_:)),
-            keyEquivalent: "")
-        leaveOutWindows.target = target
-        let bringBack = menu.addItem(
-            withTitle: "Bring Back All Windows", action: #selector(AppController.bringBackStudioWindows(_:)),
-            keyEquivalent: "")
-        bringBack.target = target
         // Retitled Stop One Window while a window is chosen.
         let oneWindow = menu.addItem(
             withTitle: "Capture One Window…", action: #selector(AppController.toggleStudioOneWindow(_:)),
             keyEquivalent: "")
         oneWindow.target = target
-        let dock = menu.addItem(
-            withTitle: "Leave Out the Dock", action: #selector(AppController.toggleStudioLeaveOutDock(_:)),
-            keyEquivalent: "")
-        dock.target = target
-        let icons = menu.addItem(
-            withTitle: "Leave Out Desktop Icons", action: #selector(AppController.toggleStudioLeaveOutDesktopIcons(_:)),
-            keyEquivalent: "")
-        icons.target = target
         let pointer = menu.addItem(
             withTitle: "Include the Pointer", action: #selector(AppController.toggleStudioPointer(_:)),
             keyEquivalent: "")

@@ -23,9 +23,7 @@ struct Settings: Codable, Equatable {
     /// applied while it is on.
     var studioAspectLocked = false
     var studioAspectRatio: Double = 16.0 / 10
-    /// What studio pictures leave out besides the chosen windows, and what is laid under them.
-    var studioLeavesOutDock = false
-    var studioLeavesOutDesktopIcons = false
+    /// What is laid under studio pictures.
     var studioBackground = StudioBackground.screen
     /// Whether a One Window picture keeps the window's shadow.
     var studioWindowShadow = true
@@ -101,8 +99,6 @@ struct Settings: Codable, Equatable {
         studioAspectLocked = c.value(.studioAspectLocked, or: d.studioAspectLocked)
         let ratio = c.value(.studioAspectRatio, or: d.studioAspectRatio)
         studioAspectRatio = ratio.isFinite && ratio > 0 ? ratio : d.studioAspectRatio
-        studioLeavesOutDock = c.value(.studioLeavesOutDock, or: d.studioLeavesOutDock)
-        studioLeavesOutDesktopIcons = c.value(.studioLeavesOutDesktopIcons, or: d.studioLeavesOutDesktopIcons)
         studioBackground = c.studioBackground(.studioBackground)
         studioWindowShadow = c.value(.studioWindowShadow, or: d.studioWindowShadow)
         studioDelay = c.value(.studioDelay, or: d.studioDelay)

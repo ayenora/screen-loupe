@@ -25,9 +25,7 @@ final class StudioPalette: NSPanel {
     var onTimer: ((NSView) -> Void)?
     /// Called with the Background button, to open the backgrounds beside it.
     var onBackground: ((NSView) -> Void)?
-    var onToggleLeaveOutWindows: (() -> Void)?
     var onToggleOneWindow: (() -> Void)?
-    var onToggleLeaveOutDock: (() -> Void)?
     var onTogglePointer: (() -> Void)?
     /// Called by the close button: the studio hides; the palette is only ordered out.
     var onHide: (() -> Void)?
@@ -39,24 +37,18 @@ final class StudioPalette: NSPanel {
     /// from it.
     var studioFrame: (() -> CGRect?)?
 
-    /// While windows are picked to leave out, the Leave Out Windows button is filled; being above
-    /// the picker's panels, it can end the picking.
-    var isPickingWindows = false {
-        didSet { leaveOutWindowsButton.state = isPickingWindows ? .on : .off }
-    }
-
     /// While the window for One Window is picked; the One Window button, above the picker's panels,
     /// can cancel it.
     var isPickingOneWindow = false {
         didSet { updateOneWindowButton() }
     }
 
-    /// Whether One Window has a window. Its pictures take the window alone, so the buttons for what
-    /// else a picture holds are off meanwhile, showing their settings.
+    /// Whether One Window has a window. Its pictures take the window alone, without the pointer, so
+    /// Include the Pointer is off meanwhile, showing its setting.
     var hasOneWindow = false {
         didSet {
             updateOneWindowButton()
-            for button in [leaveOutWindowsButton, dockButton, pointerButton] { button.isEnabled = !hasOneWindow }
+            pointerButton.isEnabled = !hasOneWindow
         }
     }
 
@@ -68,11 +60,6 @@ final class StudioPalette: NSPanel {
     /// Filled while a background other than the screen is chosen.
     var hasBackground = false {
         didSet { backgroundButton.state = hasBackground ? .on : .off }
-    }
-
-    /// Filled while the Dock is left out.
-    var leavesOutDock = false {
-        didSet { dockButton.state = leavesOutDock ? .on : .off }
     }
 
     /// Filled while a delay is set.
@@ -102,9 +89,7 @@ final class StudioPalette: NSPanel {
 
     private let aspectLockButton = PaletteButton()
     private let backgroundButton = PaletteButton()
-    private let leaveOutWindowsButton = PaletteButton()
     private let oneWindowButton = PaletteButton()
-    private let dockButton = PaletteButton()
     private let timerButton = PaletteButton()
     private let pointerButton = PaletteButton()
     private let saveButton = PaletteButton()
@@ -146,16 +131,8 @@ final class StudioPalette: NSPanel {
         Self.configure(
             backgroundButton, "square.3.layers.3d.bottom.filled", "Background", #selector(backgroundClicked))
         backgroundButton.makeToggle()
-        Self.configure(
-            leaveOutWindowsButton, "rectangle.on.rectangle.slash", "Leave Out Windows",
-            #selector(leaveOutWindowsClicked))
-        leaveOutWindowsButton.makeToggle()
-        leaveOutWindowsButton.alternateImage = NSImage(
-            systemSymbolName: "rectangle.on.rectangle.slash.fill", accessibilityDescription: "Leave Out Windows")
         Self.configure(oneWindowButton, "macwindow", "One Window", #selector(oneWindowClicked))
         oneWindowButton.makeToggle()
-        Self.configure(dockButton, "dock.rectangle", "Leave Out the Dock", #selector(dockClicked))
-        dockButton.makeToggle()
         Self.configure(timerButton, "timer", "Timer", #selector(timerClicked))
         timerButton.makeToggle()
         Self.configure(pointerButton, "cursorarrow", "Include the Pointer", #selector(pointerClicked))
@@ -173,7 +150,7 @@ final class StudioPalette: NSPanel {
                 aspectLockButton,
                 timerButton,
             ],
-            [backgroundButton, leaveOutWindowsButton, oneWindowButton, dockButton, pointerButton],
+            [backgroundButton, oneWindowButton, pointerButton],
         ]
         for case let button as NSButton in groups.joined() {
             button.target = self
@@ -212,8 +189,8 @@ final class StudioPalette: NSPanel {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 for button in [
-                    self.aspectLockButton, self.timerButton, self.backgroundButton, self.leaveOutWindowsButton,
-                    self.oneWindowButton, self.dockButton, self.pointerButton,
+                    self.aspectLockButton, self.timerButton, self.backgroundButton, self.oneWindowButton,
+                    self.pointerButton,
                 ] {
                     button.needsDisplay = true
                 }
@@ -331,22 +308,10 @@ final class StudioPalette: NSPanel {
         onBackground?(sender)
     }
 
-    /// Shows whether windows are being picked, not the click.
-    @objc private func leaveOutWindowsClicked(_ sender: NSButton) {
-        sender.state = isPickingWindows ? .on : .off
-        onToggleLeaveOutWindows?()
-    }
-
     /// Shows the mode, not the click.
     @objc private func oneWindowClicked(_ sender: NSButton) {
         updateOneWindowButton()
         onToggleOneWindow?()
-    }
-
-    /// Shows the setting, not the click.
-    @objc private func dockClicked(_ sender: NSButton) {
-        sender.state = leavesOutDock ? .on : .off
-        onToggleLeaveOutDock?()
     }
 
     /// Shows whether a delay is set, not the click.

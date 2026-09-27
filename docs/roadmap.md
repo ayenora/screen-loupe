@@ -30,7 +30,7 @@ Decided to build; the details settle when each moves into product.md.
 
 A screenshot tool on the same capture, apart from the Capture Area and the Viewer: its own frame and a panel of buttons, shown and hidden on their own, with their own section in the menu. It can capture anything on screen, the Viewer included, and leaves its own windows out of the picture without hiding them. Exact pixel sizes and clean backgrounds for App Store and website screenshots, docs and bug reports.
 
-Sizes and custom sizes with Aspect Lock; a timer; a clean background of a colour, a gradient or an image, with the Dock, the desktop icons and chosen windows left out; one window alone, with or without its shadow; the pointer if wanted; and the output's format, colours and scale, with no personal metadata.
+Sizes and custom sizes with Aspect Lock; a timer; a clean background of a colour, a gradient or an image; one window alone, with or without its shadow; the pointer if wanted; and the output's format, colours and scale, with no personal metadata.
 
 ## The version after: colour
 

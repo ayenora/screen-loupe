@@ -1,7 +1,7 @@
 import AppKit
 
 /// The windows of other apps on screen, for snapping the Capture Area, picking a window, the magnet
-/// and the studio's left-out windows.
+/// and the studio's One Window.
 @MainActor
 enum ScreenWindows {
     /// The ordinary windows of other apps on screen, front to back. Menus, the Dock, the menu bar and
@@ -38,24 +38,6 @@ enum ScreenWindows {
     static func owner(_ id: CGWindowID) -> (name: String?, pid: pid_t?) {
         let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]])?.first
         return (info?[kCGWindowOwnerName as String] as? String, info?[kCGWindowOwnerPID as String] as? pid_t)
-    }
-
-    /// The windows on screen front to back as `LeftOutWindows.dimmedRects` takes them
-    /// (`LeftOutWindows.isInStack`): other apps' ordinary and floating windows, and of this app's
-    /// only those numbered in `own`.
-    static func stack(converter: DisplayCoordinateConverter, own: Set<Int>) -> [ScreenWindow] {
-        guard let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] else {
-            return []
-        }
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        return list.compactMap { info in
-            guard let window = window(info, converter: converter) else { return nil }
-            let isOwn = (info[kCGWindowOwnerPID as String] as? pid_t) == ownPID
-            let inStack = LeftOutWindows.isInStack(
-                layer: window.layer, alpha: window.alpha, isEmpty: window.frame.isEmpty, isOwn: isOwn,
-                ownInStack: own.contains(Int(window.id)))
-            return inStack ? window : nil
-        }
     }
 
     /// The numbers of every window that exists, on screen or not: a window minimised, hidden with
