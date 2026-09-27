@@ -206,6 +206,19 @@ final class StudioPalette: NSPanel {
                 self.onMoved?()
             }
         }
+        // A new accent colour shows on the toggles that are on.
+        _ = center.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) {
+            [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for button in [
+                    self.aspectLockButton, self.timerButton, self.backgroundButton, self.leaveOutWindowsButton,
+                    self.oneWindowButton, self.dockButton, self.pointerButton,
+                ] {
+                    button.needsDisplay = true
+                }
+            }
+        }
     }
 
     /// A click on a button goes to its action without first making the panel key.
@@ -363,9 +376,10 @@ final class StudioPalette: NSPanel {
 }
 
 /// The Viewer toolbar's look as `NSToolbar` draws it on this macOS. From macOS 26 its items sit
-/// flush in Liquid Glass capsules as tall as the bar, 36 pt, 8 pt apart around a space, and a toggle
-/// that is on shows a `systemFill` capsule inset 4 to 5 pt. Before, the items sit on the titlebar's
-/// material, and a toggle that is on shows a rounded `systemFill` rect.
+/// flush in Liquid Glass capsules as tall as the bar, 36 pt, 8 pt apart around a space, and a pressed
+/// button shows a grey 30 × 28 pt capsule. Before, the items sit on the titlebar's material, and
+/// a pressed button shows a rounded grey rect. A toggle that is on, in an active app, fills the same
+/// shape with the accent colour under a near-white symbol (docs/design.md).
 private struct ToolbarLook {
     let isGlass: Bool
     let buttonSize: CGSize
@@ -378,7 +392,7 @@ private struct ToolbarLook {
     static let current: ToolbarLook =
         if #available(macOS 26.0, *) {
             ToolbarLook(
-                isGlass: true, buttonSize: CGSize(width: 36, height: 36), fillInset: CGSize(width: 5, height: 4),
+                isGlass: true, buttonSize: CGSize(width: 36, height: 36), fillInset: CGSize(width: 3, height: 4),
                 fillRadius: nil, groupRadius: 18)
         } else {
             ToolbarLook(
@@ -425,10 +439,10 @@ private struct ToolbarLook {
     }
 
     /// The on or pressed fill of a button whose slot is `slot`.
-    @MainActor func drawFill(in slot: CGRect) {
+    @MainActor func drawFill(_ color: NSColor, in slot: CGRect) {
         let rect = slot.insetBy(dx: fillInset.width, dy: fillInset.height)
         let radius = fillRadius ?? min(rect.width, rect.height) / 2
-        NSColor.systemFill.setFill()
+        color.setFill()
         NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
     }
 }
@@ -472,13 +486,26 @@ private final class PaletteButton: NSButton {
         return super.hitTest(point)
     }
 
-    /// The toolbar's on and pressed look, under the symbol, in the button's slot: the bounds are
-    /// taller by the symbol's alignment insets. A momentary button's `state` flips on every click
-    /// too, though AppKit doesn't show it: only a toggle's is drawn.
+    /// The toolbar's on and pressed look, in the button's slot: the bounds are taller by the
+    /// symbol's alignment insets. Pressed, or with its list open, a grey fill under the label-coloured
+    /// symbol; a toggle that is on, the accent colour under a near-white symbol, both faded while the
+    /// button is off, as the toolbar's are. A momentary button's `state` flips on every click too,
+    /// though AppKit doesn't show it: only a toggle's is drawn. The colours resolve here, so an
+    /// appearance or accent change shows at the next draw.
     override func draw(_ dirtyRect: NSRect) {
-        if isHighlighted || isListOpen || (isToggle && state == .on) {
-            ToolbarLook.current.drawFill(in: convert(alignmentRect(forFrame: frame), from: superview))
+        let slot = convert(alignmentRect(forFrame: frame), from: superview)
+        let tint: NSColor
+        if isHighlighted || isListOpen {
+            ToolbarLook.current.drawFill(.systemFill, in: slot)
+            tint = isEnabled ? .labelColor : .tertiaryLabelColor
+        } else if isToggle && state == .on {
+            ToolbarLook.current.drawFill(.controlAccentColor.withAlphaComponent(isEnabled ? 1 : 0.5), in: slot)
+            tint = NSColor(white: 0.9375, alpha: isEnabled ? 1 : 0.55)
+        } else {
+            tint = isEnabled ? .labelColor : .tertiaryLabelColor
         }
+        // Unchanged, setting it would ask for another draw.
+        if contentTintColor != tint { contentTintColor = tint }
         super.draw(dirtyRect)
     }
 
@@ -517,13 +544,13 @@ private final class PaletteButton: NSButton {
         }
     }
 
-    /// Off, the toolbar's disabled look: the symbol in the tertiary label colour, a toggle's on fill
-    /// kept, as a disabled menu item keeps its check mark.
+    /// Off, the toolbar's disabled look (`draw(_:)`): the symbol in the tertiary label colour, a
+    /// toggle's on fill kept but faded, as a disabled menu item keeps its check mark.
     override var isEnabled: Bool {
         didSet {
-            // Else the cell halves the tinted symbol's alpha again, well below the tertiary colour.
+            // Else the cell halves the tinted symbol's alpha again, below the toolbar's.
             (cell as? NSButtonCell)?.imageDimsWhenDisabled = false
-            contentTintColor = isEnabled ? .labelColor : .tertiaryLabelColor
+            needsDisplay = true
         }
     }
 
