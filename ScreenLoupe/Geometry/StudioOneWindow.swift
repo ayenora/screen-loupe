@@ -62,28 +62,50 @@ struct PixelRect: Equatable, Sendable {
     var size: PixelSize { PixelSize(width: width, height: height) }
 }
 
-/// How a lone window's capture becomes a picture of the frame's size (docs/design.md, Screenshot
-/// studio): captured with room to spare, cut to its visible pixels, and centred in the frame on
-/// whole pixels, never scaled.
+/// How a lone window's capture becomes a picture (docs/design.md, Screenshot studio): captured with
+/// room to spare, cut to its visible pixels, and centred on whole pixels in a picture of the frame's
+/// size, grown where the window with its shadow needs more, never scaled.
 enum OneWindowPicture {
-    /// Pixels added on every side of the frame's size for the capture's output, so a window that
-    /// fits the frame is never scaled down, and one larger than it shows as larger even where
-    /// ScreenCaptureKit scales it down to the output.
-    static let margin = 64
+    /// Points of room on every side of the window for the capture's output: more than the largest
+    /// shadow macOS draws (the active window's), so the window with its shadow is never scaled
+    /// down to the output.
+    static let room: CGFloat = 128
 
-    /// The capture's output size for a frame of `frame` pixels.
-    static func captureSize(frame: PixelSize) -> PixelSize {
-        PixelSize(width: frame.width + 2 * margin, height: frame.height + 2 * margin)
+    /// Points on each side of an axis a capture may leave empty and still count as filling it: a
+    /// capture scaled down fills the output on at least one axis, but the faintest pixels of its
+    /// shadow may round to nothing. Well under `room` minus the largest shadow, so a capture at its
+    /// own size never counts.
+    static let fillTolerance: CGFloat = 16
+
+    /// The capture's output size for a window of `window` pixels at `scale` pixels per point.
+    static func captureSize(window: PixelSize, scale: CGFloat) -> PixelSize {
+        let pixels = Int((room * scale).rounded(.up))
+        return PixelSize(width: window.width + 2 * pixels, height: window.height + 2 * pixels)
     }
 
-    /// Whether a picture of `size` pixels fits a frame of `frame` pixels: equal fits, one pixel over
+    /// Whether a capture of `capture` pixels at `scale` whose visible pixels are `visible` came
+    /// scaled down: they fill an axis of the output, where a window at its own size leaves room.
+    static func isScaledDown(visible: PixelSize, capture: PixelSize, scale: CGFloat) -> Bool {
+        let slack = 2 * Int((fillTolerance * scale).rounded(.up))
+        return visible.width > capture.width - slack || visible.height > capture.height - slack
+    }
+
+    /// Whether a window of `size` pixels fits a frame of `frame` pixels: equal fits, one pixel over
     /// in either axis doesn't.
     static func fits(_ size: PixelSize, in frame: PixelSize) -> Bool {
         size.width <= frame.width && size.height <= frame.height
     }
 
+    /// The picture's size for a frame of `frame` pixels and a window whose visible pixels, its
+    /// shadow's among them, are `visible`: the frame's, grown on each axis only as far as `visible`
+    /// needs. The frame on screen stays as it is.
+    static func pictureSize(frame: PixelSize, visible: PixelSize) -> PixelSize {
+        PixelSize(width: max(frame.width, visible.width), height: max(frame.height, visible.height))
+    }
+
     /// The top-left corner, in whole pixels from the frame's top-left, of a picture of `size`
-    /// centred in `frame`. An odd pixel left over goes right of it and below it.
+    /// centred in `frame`. An odd pixel left over goes right of it and below it; in a picture
+    /// grown to `size` (`pictureSize`), that axis starts at 0.
     static func centredOrigin(of size: PixelSize, in frame: PixelSize) -> (x: Int, y: Int) {
         ((frame.width - size.width) / 2, (frame.height - size.height) / 2)
     }

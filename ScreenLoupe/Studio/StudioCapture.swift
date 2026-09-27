@@ -74,7 +74,7 @@ enum StudioCapture {
         case notListed
         /// Its pixels aren't the frame display's: it would have to be scaled.
         case otherScale
-        /// The window, or the window with its shadow, is larger than the frame.
+        /// The window itself is larger than the frame; its shadow never is too large.
         case largerThanFrame
     }
 
@@ -83,10 +83,11 @@ enum StudioCapture {
     }
 
     /// One Window's picture: the window numbered `id` alone with `SCContentFilter(desktopIndependentWindow:)`,
-    /// with or without its `shadow`, at its native pixels, centred in a picture of `frame` pixels
-    /// in `display`'s colour space, over `fill` or transparent without one (docs/design.md,
-    /// Screenshot studio). Never scaled: a window on a display of another scale, or larger than
-    /// the frame, gives a `WindowProblem`.
+    /// with or without its `shadow`, at its native pixels, centred in a picture of `frame` pixels,
+    /// grown where the window with its shadow needs more (`OneWindowPicture.pictureSize`), in
+    /// `display`'s colour space, over `fill` or transparent without one (docs/design.md, Screenshot
+    /// studio). Never scaled: a window on a display of another scale, or itself larger than the
+    /// frame, gives a `WindowProblem`.
     static func window(
         _ id: CGWindowID, frame: PixelSize, display: DisplayInfo, shadow: Bool, over fill: StudioFill?
     ) async throws -> CGImage {
@@ -96,14 +97,14 @@ enum StudioCapture {
         guard let window = content.windows.first(where: { $0.windowID == id }) else { throw WindowProblem.notListed }
         let filter = SCContentFilter(desktopIndependentWindow: window)
         guard CGFloat(filter.pointPixelScale) == display.scale else { throw WindowProblem.otherScale }
-        // The window alone first: if it doesn't fit, it doesn't with its shadow either.
+        // The window alone must fit the frame; its shadow may grow the picture.
         let windowPixels = PixelSize(
             width: Int((window.frame.width * display.scale).rounded()),
             height: Int((window.frame.height * display.scale).rounded()))
         guard OneWindowPicture.fits(windowPixels, in: frame) else { throw WindowProblem.largerThanFrame }
-        // Room to spare around the frame's size: ScreenCaptureKit scales a window down to fit the
-        // output but never up, so one that fits the frame comes at its own size.
-        let output = OneWindowPicture.captureSize(frame: frame)
+        // Room to spare around the window for its shadow: ScreenCaptureKit scales a window down to
+        // fit the output but never up, so the window with its shadow comes at its own size.
+        let output = OneWindowPicture.captureSize(window: windowPixels, scale: display.scale)
         let configuration = SCStreamConfiguration()
         configuration.width = output.width
         configuration.height = output.height
@@ -126,14 +127,16 @@ enum StudioCapture {
             image \(image.width) × \(image.height) px in \(String(describing: image.colorSpace?.name), privacy: .public)
             """)
         return try await picture(
-            ofWindow: image, frame: frame, space: NSScreen.colorSpace(forDisplay: display.id), over: fill)
+            ofWindow: image, frame: frame, scale: display.scale, space: NSScreen.colorSpace(forDisplay: display.id),
+            over: fill)
     }
 
-    /// A lone window's capture cut to its visible pixels and centred in a picture of `frame` pixels,
-    /// off the main actor: reading every pixel's alpha and drawing take a while for a large frame.
+    /// A lone window's capture, taken at `scale`, cut to its visible pixels and centred in a picture
+    /// of `frame` pixels grown to hold them, off the main actor: reading every pixel's alpha and
+    /// drawing take a while for a large frame.
     @concurrent
     private nonisolated static func picture(
-        ofWindow image: CGImage, frame: PixelSize, space: CGColorSpace, over fill: StudioFill?
+        ofWindow image: CGImage, frame: PixelSize, scale: CGFloat, space: CGColorSpace, over fill: StudioFill?
     ) async throws -> CGImage {
         // Where the window and its shadow are is told by alpha alone.
         guard StudioComposite.hasAlpha(image) else {
@@ -142,11 +145,19 @@ enum StudioCapture {
         guard let bounds = OneWindowPicture.visibleBounds(of: image) else {
             throw WindowCaptureError(errorDescription: "The window's capture is empty.")
         }
-        guard OneWindowPicture.fits(bounds.size, in: frame) else { throw WindowProblem.largerThanFrame }
+        // A shadow larger than the room would have the whole capture scaled down: not a picture.
+        guard
+            !OneWindowPicture.isScaledDown(
+                visible: bounds.size, capture: PixelSize(width: image.width, height: image.height), scale: scale)
+        else {
+            throw WindowCaptureError(
+                errorDescription: "The window's capture \(image.width) × \(image.height) px came scaled down.")
+        }
+        let size = OneWindowPicture.pictureSize(frame: frame, visible: bounds.size)
         guard
             let cut = image.cropping(
                 to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height)),
-            let picture = StudioComposite.centred(cut, in: frame, space: space, over: fill)
+            let picture = StudioComposite.centred(cut, in: size, space: space, over: fill)
         else { throw WindowCaptureError(errorDescription: "The window's picture couldn't be made.") }
         return picture
     }

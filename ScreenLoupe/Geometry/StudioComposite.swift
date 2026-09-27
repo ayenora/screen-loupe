@@ -72,7 +72,7 @@ enum StudioComposite {
     }
 
     /// A lone window's picture: `window` (already cut to its visible pixels) centred in a picture of
-    /// `frame` pixels in `space` (`OneWindowPicture.centredOrigin`), drawn at its own size without
+    /// `frame` pixels (`OneWindowPicture.pictureSize`) in `space` (`OneWindowPicture.centredOrigin`), drawn at its own size without
     /// interpolation, colour-matched into `space` as `composited` does. Over `fill`, the result is
     /// opaque; without one, the rest is transparent and the window's pixels, its shadow's alpha
     /// among them, are copied unchanged. `nil` when no context can be made or the window is larger

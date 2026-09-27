@@ -131,10 +131,136 @@ struct OneWindowPictureTests {
         #expect(!OneWindowPicture.fits(PixelSize(width: 100, height: 1801), in: frame))
     }
 
-    @Test func theCaptureHasRoomOnEverySide() {
+    @Test func theWindowAloneDecidesTheFitNotItsShadow() {
+        // Fit to Window: the frame is exactly the window, 400 × 600 pt at 2×.
+        let frame = PixelSize(width: 800, height: 1200)
+        #expect(OneWindowPicture.fits(PixelSize(width: 800, height: 1200), in: frame))
+        // The window one pixel over is still refused, whatever the shadow.
+        #expect(!OneWindowPicture.fits(PixelSize(width: 801, height: 1200), in: frame))
+        #expect(!OneWindowPicture.fits(PixelSize(width: 800, height: 1201), in: frame))
+    }
+
+    // MARK: Capture room
+
+    @Test func theCaptureHasRoomAroundTheWindowOnEverySide() {
+        // 128 pt of room: 256 px at 2×, 128 px at 1×.
         #expect(
-            OneWindowPicture.captureSize(frame: PixelSize(width: 1440, height: 900))
-                == PixelSize(width: 1440 + 128, height: 900 + 128))
+            OneWindowPicture.captureSize(window: PixelSize(width: 800, height: 1200), scale: 2)
+                == PixelSize(width: 800 + 512, height: 1200 + 512))
+        #expect(
+            OneWindowPicture.captureSize(window: PixelSize(width: 400, height: 600), scale: 1)
+                == PixelSize(width: 400 + 256, height: 600 + 256))
+        // A fractional scale rounds the room up: 128 × 1.5 = 192.
+        #expect(
+            OneWindowPicture.captureSize(window: PixelSize(width: 3, height: 5), scale: 1.5)
+                == PixelSize(width: 3 + 384, height: 5 + 384))
+        #expect(
+            OneWindowPicture.captureSize(window: PixelSize(width: 0, height: 0), scale: 2)
+                == PixelSize(width: 512, height: 512))
+    }
+
+    @Test func theRoomHoldsTheLargestShadowWithTheToleranceToSpare() {
+        // The window with a shadow of `room − fillTolerance` points on every side, at its own size,
+        // doesn't count as scaled down; one pixel more does.
+        for scale: CGFloat in [1, 2, 3] {
+            let window = PixelSize(width: 1000, height: 700)
+            let capture = OneWindowPicture.captureSize(window: window, scale: scale)
+            let shadow = Int((OneWindowPicture.room - OneWindowPicture.fillTolerance) * scale)
+            let visible = PixelSize(width: window.width + 2 * shadow, height: window.height + 2 * shadow)
+            #expect(!OneWindowPicture.isScaledDown(visible: visible, capture: capture, scale: scale))
+            #expect(
+                OneWindowPicture.isScaledDown(
+                    visible: PixelSize(width: visible.width + 1, height: visible.height), capture: capture, scale: scale
+                ))
+            #expect(
+                OneWindowPicture.isScaledDown(
+                    visible: PixelSize(width: visible.width, height: visible.height + 1), capture: capture, scale: scale
+                ))
+        }
+    }
+
+    @Test func aCaptureFillingAnAxisIsScaledDown() {
+        let capture = PixelSize(width: 1312, height: 1712)
+        // Filling the width exactly, the height with room left: a wide window scaled to fit.
+        #expect(OneWindowPicture.isScaledDown(visible: PixelSize(width: 1312, height: 900), capture: capture, scale: 2))
+        // The faintest shadow pixels rounded away: a few pixels short still counts.
+        #expect(OneWindowPicture.isScaledDown(visible: PixelSize(width: 800, height: 1708), capture: capture, scale: 2))
+        // A window without a shadow, however it sits in the output, doesn't.
+        #expect(
+            !OneWindowPicture.isScaledDown(visible: PixelSize(width: 800, height: 1200), capture: capture, scale: 2))
+        #expect(!OneWindowPicture.isScaledDown(visible: PixelSize(width: 1, height: 1), capture: capture, scale: 2))
+    }
+
+    // MARK: Picture size
+
+    @Test func aWindowWithItsShadowInsideTheFrameKeepsTheFramesSize() {
+        // A 1920 × 1080 preset with a background: the picture is exactly the preset.
+        let frame = PixelSize(width: 1920, height: 1080)
+        #expect(OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1200, height: 800)) == frame)
+        #expect(OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1, height: 1)) == frame)
+    }
+
+    @Test func aWindowWithItsShadowAsLargeAsTheFrameKeepsTheFramesSize() {
+        let frame = PixelSize(width: 1920, height: 1080)
+        #expect(OneWindowPicture.pictureSize(frame: frame, visible: frame) == frame)
+    }
+
+    @Test func theShadowGrowsOnlyTheAxisItOverflows() {
+        let frame = PixelSize(width: 800, height: 1200)
+        #expect(
+            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1000, height: 1100))
+                == PixelSize(width: 1000, height: 1200))
+        #expect(
+            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 700, height: 1500))
+                == PixelSize(width: 800, height: 1500))
+    }
+
+    @Test func theShadowGrowsBothAxes() {
+        // Fit to Window on a 400 × 600 pt window at 2×, then One Window with its shadow.
+        let frame = PixelSize(width: 800, height: 1200)
+        #expect(
+            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1025, height: 1463))
+                == PixelSize(width: 1025, height: 1463))
+    }
+
+    @Test func pictureSizesAgreeAt1xAnd2x() {
+        // A 400 × 300 pt frame holding the window exactly, its shadow 56 pt at the sides, 36 above,
+        // 76 below.
+        for scale in [1, 2] {
+            let frame = PixelSize(width: 400 * scale, height: 300 * scale)
+            let visible = PixelSize(width: (400 + 112) * scale, height: (300 + 112) * scale)
+            #expect(OneWindowPicture.pictureSize(frame: frame, visible: visible) == visible)
+        }
+    }
+
+    @Test func aDegenerateFrameTakesTheVisibleSize() {
+        #expect(
+            OneWindowPicture.pictureSize(frame: PixelSize(width: 0, height: 0), visible: PixelSize(width: 3, height: 2))
+                == PixelSize(width: 3, height: 2))
+        #expect(
+            OneWindowPicture.pictureSize(frame: PixelSize(width: 5, height: 0), visible: PixelSize(width: 3, height: 2))
+                == PixelSize(width: 5, height: 2))
+        #expect(
+            OneWindowPicture.pictureSize(frame: PixelSize(width: 0, height: 0), visible: PixelSize(width: 0, height: 0))
+                == PixelSize(width: 0, height: 0))
+    }
+
+    @Test func aGrownAxisIsFilledAndTheOtherStillCentresWithTheOddPixelRightAndBelow() {
+        // Grown in width: the cut fills it. The height has 1200 − 1101 = 99 left: 49 above, 50 below.
+        let frame = PixelSize(width: 800, height: 1200)
+        let visible = PixelSize(width: 1001, height: 1101)
+        let picture = OneWindowPicture.pictureSize(frame: frame, visible: visible)
+        #expect(OneWindowPicture.centredOrigin(of: visible, in: picture) == (0, 49))
+        // Grown in height, an odd width left over: 800 − 701 = 99, 49 left, 50 right.
+        let tall = PixelSize(width: 701, height: 1301)
+        #expect(
+            OneWindowPicture.centredOrigin(of: tall, in: OneWindowPicture.pictureSize(frame: frame, visible: tall))
+                == (49, 0))
+        // Grown in both: the cut is the picture.
+        let large = PixelSize(width: 1001, height: 1301)
+        #expect(
+            OneWindowPicture.centredOrigin(of: large, in: OneWindowPicture.pictureSize(frame: frame, visible: large))
+                == (0, 0))
     }
 
     // MARK: Centring
@@ -273,6 +399,36 @@ struct OneWindowPictureTests {
             for x in 0..<width {
                 #expect(out[(y + 9) * frame.width + x + 18] == board[y * width + x])
             }
+        }
+    }
+
+    @Test func aShadowLargerAtTheBottomGrowsThePictureAndTheFillCoversAllOfIt() {
+        // Fit to Window: a 2 × 2 frame exactly the window. Captured with a shadow one pixel at the
+        // sides, none above, two below, in a 10 × 10 capture: visible 4 × 4.
+        var pixelsByPlace: [Pixel: [UInt8]] = [:]
+        for y in 3...6 {
+            for x in 3...6 { pixelsByPlace[Pixel(x: x, y: y)] = [0, 0, 0, 64] }
+        }
+        for y in 3...4 {
+            for x in 4...5 { pixelsByPlace[Pixel(x: x, y: y)] = [9, 9, 9, 255] }
+        }
+        let captured = capture(width: 10, height: 10, pixelsByPlace)
+        let bounds = OneWindowPicture.visibleBounds(of: captured)!
+        #expect(bounds == PixelRect(x: 3, y: 3, width: 4, height: 4))
+        let frame = PixelSize(width: 2, height: 2)
+        #expect(OneWindowPicture.fits(PixelSize(width: 2, height: 2), in: frame))
+        let size = OneWindowPicture.pictureSize(frame: frame, visible: bounds.size)
+        #expect(size == PixelSize(width: 4, height: 4))
+        let cut = captured.cropping(to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height))!
+        let result = StudioComposite.centred(cut, in: size, space: displayP3, over: .color(.white))!
+        #expect(result.width == 4 && result.height == 4)
+        let out = pixels(result)
+        #expect(out.allSatisfy { $0[3] == 255 })
+        // The window's pixels unchanged at the top middle, the shadow over white everywhere else.
+        #expect(out[1] == [9, 9, 9, 255] && out[2] == [9, 9, 9, 255])
+        #expect(out[4 + 1] == [9, 9, 9, 255] && out[4 + 2] == [9, 9, 9, 255])
+        for index in [0, 3, 4, 7, 8, 11, 12, 15] {
+            #expect(out[index][0...2].allSatisfy { abs(Int($0) - 191) <= 1 }, "pixel \(index)")
         }
     }
 
