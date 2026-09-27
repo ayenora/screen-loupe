@@ -102,6 +102,8 @@ final class WindowManager {
         captureArea.onPickWindow = { [weak self] in self?.pickWindow() }
         // Its picker ends the studio's (`WindowPicker`) and a studio countdown, as the studio's own do.
         captureArea.onPickerStarted = { [weak self] in self?.studio.windowPickerStarted() }
+        // The Viewer shows the studio's backdrop, as it shows the desktop it covers.
+        studio.onBackdropChange = { [weak self] in self?.capture.keptWindow = $0 }
         // The studio has no permission flow of its own: the Viewer explains and asks.
         studio.capturedAppWindows = { [weak self] in
             guard let self else { return [] }

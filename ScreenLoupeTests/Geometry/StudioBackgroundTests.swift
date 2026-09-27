@@ -23,15 +23,6 @@ private func saved(_ background: StudioBackground) throws -> String {
 }
 
 struct StudioBackgroundTests {
-    // MARK: What it leaves out
-
-    @Test func onlyTheScreenKeepsTheWallpaper() {
-        #expect(!StudioBackground.screen.leavesOutWallpaper)
-        #expect(StudioBackground.color(.white).leavesOutWallpaper)
-        #expect(StudioBackground.gradient(StudioBackground.gradients[0].gradient).leavesOutWallpaper)
-        #expect(StudioBackground.image(BackgroundImage(fileName: "a.png", name: "a.png")).leavesOutWallpaper)
-    }
-
     @Test func aColourOfTheListIsNotCustom() {
         for entry in StudioBackground.colors {
             #expect(!StudioBackground.color(entry.color).isCustomColor)

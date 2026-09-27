@@ -51,18 +51,15 @@ struct BackgroundImage: Codable, Hashable, Sendable {
     var name: String
 }
 
-/// What the Screenshot studio lays under the captured windows (docs/product.md, Screenshot studio).
-/// Anything but `screen` leaves the wallpaper and the desktop icons out of the picture and lays its
-/// fill where they were.
+/// What the Screenshot studio shows under the windows (docs/product.md, Screenshot studio). Anything
+/// but `screen` is shown by the backdrop over the whole display the frame is on (`StudioBackdrop`),
+/// above the wallpaper and the desktop icons, and laid under One Window's lone window.
 enum StudioBackground: Codable, Hashable, Sendable {
-    /// The real desktop: nothing is laid under.
+    /// The real desktop: no backdrop.
     case screen
     case color(BackgroundColor)
     case gradient(BackgroundGradient)
     case image(BackgroundImage)
-
-    /// The wallpaper, and with it the desktop icons, are left out of the picture.
-    var leavesOutWallpaper: Bool { self != .screen }
 
     /// The colours offered in the lists, with their names.
     static let colors: [(name: String, color: BackgroundColor)] = [

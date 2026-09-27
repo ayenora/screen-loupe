@@ -37,116 +37,148 @@ private func near(_ a: UInt8, _ b: Int, within tolerance: Int = 1) -> Bool {
 }
 
 struct StudioCompositeTests {
-    // A 3 × 2 picture: opaque pixels of all kinds, one transparent, one half-transparent black
-    // (a shadow), premultiplied.
+    // A 3 × 2 picture: opaque pixels of all kinds, one transparent, one half-transparent black,
+    // premultiplied.
     private let picture: [[UInt8]] = [
         [10, 20, 30, 255], [0, 0, 255, 255], [0, 0, 0, 0],
         [255, 255, 255, 255], [0, 0, 0, 128], [7, 200, 99, 255],
     ]
 
-    @Test func withoutAFillAnImageInTheDisplaysSpaceIsKeptAsItIs() {
+    @Test func anImageInTheDisplaysSpaceIsKeptAsItIs() {
         let image = capture(width: 3, height: 2, space: displayP3, picture)
-        let result = StudioComposite.composited(image, in: displayP3, over: nil)
+        let result = StudioComposite.composited(image, in: displayP3)
         #expect(result === image)
+    }
+
+    @Test func anUntaggedImageIsTaggedWithTheDisplaysSpaceUnchanged() {
+        let image = capture(width: 3, height: 2, space: displayP3, picture).copy(colorSpace: sRGB)!
+        let result = StudioComposite.composited(image, in: sRGB)!
+        #expect(result.colorSpace == sRGB)
+        #expect(pixels(result, in: sRGB)[0] == picture[0])
     }
 
     @Test func anImageInAnotherSpaceIsConvertedIntoTheDisplays() {
         let image = capture(width: 1, height: 1, space: sRGB, [[0, 0, 255, 255]])
-        let result = StudioComposite.composited(image, in: displayP3, over: nil)!
+        let result = StudioComposite.composited(image, in: displayP3)!
         #expect(result.colorSpace == displayP3)
         // sRGB red in Display P3 is about (234, 51, 35).
         let pixel = pixels(result, in: displayP3)[0]
         #expect(near(pixel[2], 234, within: 2) && near(pixel[1], 51, within: 3) && near(pixel[0], 35, within: 3))
     }
 
-    @Test func capturedPixelsAreCopiedOneToOneAtTheirSize() {
-        let image = capture(width: 3, height: 2, space: displayP3, picture)
-        let result = StudioComposite.composited(image, in: displayP3, over: .color(.white))!
-        #expect(result.width == 3 && result.height == 2)
-        #expect(result.colorSpace == displayP3)
-        let out = pixels(result, in: displayP3)
-        // Every opaque pixel exactly as captured.
-        for index in [0, 1, 3, 5] {
-            #expect(out[index] == picture[index])
-        }
-    }
-
-    @Test func aLargerPictureIsCopiedWithoutInterpolation() {
-        // A checkerboard of single pixels would blur under any resampling.
+    @Test func aConvertedPictureIsCopiedWithoutInterpolation() {
+        // A checkerboard of single pixels would blur under any resampling; black and white stay
+        // themselves in any space.
         let width = 64
         let height = 40
         let board = (0..<(width * height)).map { index -> [UInt8] in
             (index % width + index / width) % 2 == 0 ? [0, 0, 0, 255] : [255, 255, 255, 255]
         }
-        let image = capture(width: width, height: height, space: displayP3, board)
-        let result = StudioComposite.composited(
-            image, in: displayP3, over: .gradient(StudioBackground.gradients[1].gradient))!
+        let image = capture(width: width, height: height, space: sRGB, board)
+        let result = StudioComposite.composited(image, in: displayP3)!
+        #expect(result.width == width && result.height == height)
         #expect(pixels(result, in: displayP3) == board)
     }
 
-    @Test func transparentPixelsShowTheFill() {
-        let image = capture(width: 3, height: 2, space: sRGB, picture)
-        let result = StudioComposite.composited(image, in: sRGB, over: .color(BackgroundColor(0, 128, 255)))!
-        let out = pixels(result, in: sRGB)
-        #expect(out[2] == [255, 128, 0, 255])
+    // MARK: The backdrop's picture
+
+    @Test func aColourFillsTheWholeBackdrop() {
+        let size = PixelSize(width: 7, height: 5)
+        let result = StudioComposite.filled(.color(BackgroundColor(0, 128, 255)), size: size, space: sRGB)!
+        #expect(result.width == 7 && result.height == 5)
+        #expect(result.colorSpace == sRGB)
+        #expect(pixels(result, in: sRGB).allSatisfy { $0 == [255, 128, 0, 255] })
     }
 
-    @Test func aHalfTransparentShadowBlendsWithTheFill() {
-        let image = capture(width: 3, height: 2, space: sRGB, picture)
-        let result = StudioComposite.composited(image, in: sRGB, over: .color(.white))!
-        let shadow = pixels(result, in: sRGB)[4]
-        // Black at 128/255 over white: 255 × (1 − 128/255) = 127.
-        #expect(shadow[0...2].allSatisfy { near($0, 127) })
-        #expect(shadow[3] == 255)
-    }
-
-    @Test func theResultIsOpaque() {
-        let image = capture(width: 3, height: 2, space: sRGB, picture)
-        let result = StudioComposite.composited(image, in: sRGB, over: .color(.black))!
+    @Test func theBackdropIsOpaque() {
+        let result = StudioComposite.filled(.color(.black), size: PixelSize(width: 3, height: 2), space: sRGB)!
         #expect(!StudioComposite.hasAlpha(result))
-        #expect(pixels(result, in: sRGB).allSatisfy { $0[3] == 255 })
+        #expect(pixels(result, in: sRGB).allSatisfy { $0 == [0, 0, 0, 255] })
     }
 
-    @Test func anSRGBFillIsColourMatchedIntoAP3Picture() {
-        let image = capture(width: 1, height: 1, space: displayP3, [[0, 0, 0, 0]])
+    @Test func anEmptyBackdropIsNone() {
+        #expect(StudioComposite.filled(.color(.white), size: PixelSize(width: 0, height: 10), space: sRGB) == nil)
+        #expect(StudioComposite.filled(.color(.white), size: PixelSize(width: 10, height: 0), space: sRGB) == nil)
+    }
+
+    /// White is 255, 255, 255 in the display's space whichever it is, so the picture of a white
+    /// backdrop is exactly white.
+    @Test func whiteStaysExactlyWhiteInAnyDisplaysSpace() {
+        let spaces = [
+            sRGB, displayP3, CGColorSpace(name: CGColorSpace.adobeRGB1998)!,
+            CGColorSpace(name: CGColorSpace.genericRGBLinear)!,
+        ]
+        for space in spaces {
+            let result = StudioComposite.filled(.color(.white), size: PixelSize(width: 2, height: 2), space: space)!
+            #expect(
+                pixels(result, in: space).allSatisfy { $0 == [255, 255, 255, 255] }, "\(String(describing: space.name))"
+            )
+            let black = StudioComposite.filled(.color(.black), size: PixelSize(width: 2, height: 2), space: space)!
+            #expect(pixels(black, in: space).allSatisfy { $0 == [0, 0, 0, 255] }, "\(String(describing: space.name))")
+        }
+    }
+
+    @Test func anSRGBColourIsColourMatchedIntoAP3Display() {
         let red = BackgroundColor(255, 0, 0)
-        let result = StudioComposite.composited(image, in: displayP3, over: .color(red))!
+        let result = StudioComposite.filled(.color(red), size: PixelSize(width: 1, height: 1), space: displayP3)!
         let pixel = pixels(result, in: displayP3)[0]
         #expect(near(pixel[2], 234, within: 2) && near(pixel[1], 51, within: 3) && near(pixel[0], 35, within: 3))
-        // White stays white in any space.
-        let white = StudioComposite.composited(image, in: displayP3, over: .color(.white))!
-        #expect(pixels(white, in: displayP3)[0] == [255, 255, 255, 255])
+    }
+
+    /// The backdrop's colour is the same pixels One Window lays under its window: both draw with
+    /// `StudioFill.draw`.
+    @Test func theBackdropsColourMatchesOneWindowsBackground() {
+        let colour = BackgroundColor(70, 82, 140)
+        let window = capture(width: 1, height: 1, space: displayP3, [[0, 0, 0, 0]])
+        let lone = StudioComposite.centred(
+            window, in: PixelSize(width: 3, height: 3), space: displayP3, over: .color(colour))!
+        let backdrop = StudioComposite.filled(.color(colour), size: PixelSize(width: 3, height: 3), space: displayP3)!
+        #expect(pixels(lone, in: displayP3)[0] == pixels(backdrop, in: displayP3)[0])
     }
 
     @Test func aGradientRunsFromTheTopColourToTheBottomOne() {
         let height = 101
-        let image = capture(
-            width: 1, height: height, space: sRGB, Array(repeating: [0, 0, 0, 0], count: height))
         let gradient = BackgroundGradient(top: .black, bottom: .white)
-        let out = pixels(StudioComposite.composited(image, in: sRGB, over: .gradient(gradient))!, in: sRGB)
+        let out = pixels(
+            StudioComposite.filled(.gradient(gradient), size: PixelSize(width: 3, height: height), space: sRGB)!,
+            in: sRGB)
         #expect(out[0][0] <= 3)
-        #expect(out[height - 1][0] >= 252)
-        #expect(near(out[height / 2][0], 128, within: 4))
-        // Getting lighter all the way down.
-        #expect(zip(out, out.dropFirst()).allSatisfy { $0[0] <= $1[0] })
+        #expect(out[out.count - 1][0] >= 252)
+        #expect(near(out[(height / 2) * 3][0], 128, within: 4))
+        // Getting lighter all the way down. CoreGraphics dithers a gradient, so a row may vary by a
+        // step across.
+        let column = stride(from: 0, to: out.count, by: 3).map { out[$0] }
+        #expect(zip(column, column.dropFirst()).allSatisfy { $0[0] <= $1[0] + 1 })
+        #expect((0..<height).allSatisfy { row in near(out[row * 3][0], Int(out[row * 3 + 2][0])) })
     }
 
     @Test func aBackgroundImageWithAlphaIsLaidOnWhite() {
         let clear = capture(width: 2, height: 2, space: sRGB, Array(repeating: [0, 0, 0, 0], count: 4))
-        let picture = capture(width: 1, height: 1, space: sRGB, [[0, 0, 0, 0]])
-        let out = pixels(StudioComposite.composited(picture, in: sRGB, over: .image(clear))!, in: sRGB)
-        #expect(out[0] == [255, 255, 255, 255])
+        let out = pixels(
+            StudioComposite.filled(.image(clear), size: PixelSize(width: 3, height: 3), space: sRGB)!, in: sRGB)
+        #expect(out.allSatisfy { $0 == [255, 255, 255, 255] })
     }
 
-    @Test func aBackgroundImageCoversThePicture() {
-        // A 1 × 2 image, red over blue, under a 4 × 8 picture: scaled by 4 to cover it exactly,
+    @Test func aBackgroundImageCoversTheBackdrop() {
+        // A 1 × 2 image, red over blue, under a 4 × 8 backdrop: scaled by 4 to cover it exactly,
         // red in the top rows and blue in the bottom rows, blended only around the middle.
         let image = capture(width: 1, height: 2, space: sRGB, [[0, 0, 255, 255], [255, 0, 0, 255]])
-        let clear = capture(width: 4, height: 8, space: sRGB, Array(repeating: [0, 0, 0, 0], count: 32))
-        let out = pixels(StudioComposite.composited(clear, in: sRGB, over: .image(image))!, in: sRGB)
+        let out = pixels(
+            StudioComposite.filled(.image(image), size: PixelSize(width: 4, height: 8), space: sRGB)!, in: sRGB)
         #expect(out.allSatisfy { $0[3] == 255 })
         #expect(out[0][2] > 200 && out[0][0] < 60)
         #expect(out[31][0] > 200 && out[31][2] < 60)
+    }
+
+    @Test func aWiderImageIsCutAtTheBackdropsSides() {
+        // 5 × 1: red, three greens, blue, under a 2 × 2 backdrop: scaled by 2 to 10 × 2, 4 cut on
+        // each side, so only the green middle shows.
+        let green: [UInt8] = [0, 255, 0, 255]
+        let image = capture(
+            width: 5, height: 1, space: sRGB, [[0, 0, 255, 255], green, green, green, [255, 0, 0, 255]])
+        let out = pixels(
+            StudioComposite.filled(.image(image), size: PixelSize(width: 2, height: 2), space: sRGB)!, in: sRGB)
+        #expect(out.allSatisfy { $0[1] > 200 && $0[0] < 60 && $0[2] < 60 })
     }
 
     // MARK: Alpha

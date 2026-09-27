@@ -4,8 +4,12 @@ import CoreGraphics
 /// takes them as its raw value): the frames and overlays at the status window's level, the window
 /// picker's panels above them, and the Screenshot studio's palette above everything, so its buttons
 /// stay reachable over the frames, the picker, a Viewer kept on top and other apps' windows, also
-/// in a full-screen app's Space. Menus stay above it.
+/// in a full-screen app's Space. Menus stay above it. The studio's backdrop is the one window low
+/// down: just above the desktop icons.
 enum WindowLevels {
+    /// The studio's backdrop: above the wallpaper and the desktop icons, below every ordinary
+    /// window, the Dock and the menu bar.
+    static let studioBackdrop = Int(CGWindowLevelForKey(.desktopIconWindow)) + 1
     /// The Capture Area's and the studio's frames and their overlays (`NSWindow.Level.statusBar`).
     static let frames = Int(CGWindowLevelForKey(.statusWindow))
     /// The window picker's panels: above the frames, so a click on a frame picks the window under it.

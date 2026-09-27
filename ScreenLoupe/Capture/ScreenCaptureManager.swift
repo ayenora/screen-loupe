@@ -17,7 +17,8 @@ enum CaptureProblem: Equatable {
 
 /// Streams the Capture Area with ScreenCaptureKit into a `FrameStore` (docs/design.md §2.1).
 ///
-/// One stream captures one display, excluding every window of this app. Moving or resizing the area
+/// One stream captures one display, excluding every window of this app but the Screenshot studio's
+/// backdrop, which the Viewer shows like the desktop it covers. Moving or resizing the area
 /// reconfigures the running stream; moving it to another display replaces the stream. Updates are
 /// coalesced: at most one is in flight, and the newest geometry wins.
 @MainActor
@@ -80,6 +81,20 @@ final class ScreenCaptureManager: NSObject {
         didSet { if showsCursor != oldValue { processUpdates() } }
     }
 
+    /// The window of this app the stream keeps: the studio's backdrop while it shows (docs/design.md
+    /// §2.1). A running stream takes it with a filter update.
+    var keptWindow: CGWindowID? {
+        didSet {
+            guard keptWindow != oldValue else { return }
+            // Re-read, so the window is listed for the filter.
+            content = nil
+            filterIsStale = true
+            processUpdates()
+        }
+    }
+    /// The running stream's filter was made for another `keptWindow`.
+    private var filterIsStale = false
+
     /// Displays were added, removed or rearranged: re-read them before the next update.
     func displaysChanged() {
         invalidate()
@@ -108,7 +123,8 @@ final class ScreenCaptureManager: NSObject {
 
     private func processUpdates() {
         let cursorChanged = wanted != nil && showsCursor != appliedShowsCursor
-        guard !isUpdating, wanted != applied || cursorChanged else { return }
+        let filterChanged = wanted != nil && filterIsStale
+        guard !isUpdating, wanted != applied || cursorChanged || filterChanged else { return }
         isUpdating = true
         let target = wanted
         let cursor = showsCursor
@@ -125,6 +141,9 @@ final class ScreenCaptureManager: NSObject {
 
     private func apply(_ geometry: CaptureGeometry?, showsCursor: Bool) async {
         retryTask?.cancel()
+        // Whichever path this takes, the filter is made anew or updated for the current kept window.
+        let refilter = filterIsStale
+        filterIsStale = false
         guard let geometry else {
             await stop()
             applied = nil
@@ -154,6 +173,10 @@ final class ScreenCaptureManager: NSObject {
             }
             let configuration = Self.configuration(for: geometry, showsCursor: showsCursor)
             if let stream, streamDisplayID == display.displayID {
+                if refilter {
+                    let filter = filter(for: display, in: content)
+                    try await withTimeout(seconds: Self.callTimeout) { try await stream.updateContentFilter(filter) }
+                }
                 frameStore.setGeometry(geometry)
                 let tookEffect = try await withTimeout(seconds: Self.callTimeout) {
                     try await stream.updateConfiguration(configuration)
@@ -268,15 +291,17 @@ final class ScreenCaptureManager: NSObject {
         return fresh
     }
 
-    /// The whole display minus every window of this app: the Capture Area frame and the Viewer never
-    /// show up in the capture, wherever they are (docs/design.md §2.1).
+    /// The whole display minus every window of this app but `keptWindow`: the Capture Area frame and
+    /// the Viewer never show up in the capture, wherever they are; the studio's backdrop does, as it
+    /// is on screen (docs/design.md §2.1).
     private func filter(for display: SCDisplay, in content: SCShareableContent) -> SCContentFilter {
         let pid = ProcessInfo.processInfo.processIdentifier
+        let kept = content.windows.filter { $0.windowID == keptWindow }
         if let app = content.applications.first(where: { $0.processID == pid }) {
-            return SCContentFilter(display: display, excludingApplications: [app], exceptingWindows: [])
+            return SCContentFilter(display: display, excludingApplications: [app], exceptingWindows: kept)
         }
         // Fallback (docs/design.md §6, risk 4): exclude our windows one by one.
-        let ours = content.windows.filter { $0.owningApplication?.processID == pid }
+        let ours = content.windows.filter { $0.owningApplication?.processID == pid && $0.windowID != keptWindow }
         log.info("App not in shareable content; excluding \(ours.count) windows instead")
         return SCContentFilter(display: display, excludingWindows: ours)
     }

@@ -34,6 +34,7 @@
 				Geometry/ScreenshotName.swift,
 				Geometry/ShortcutRules.swift,
 				Geometry/SizeText.swift,
+				Geometry/StudioBackdrop.swift,
 				Geometry/StudioBackground.swift,
 				Geometry/StudioComposite.swift,
 				Geometry/StudioFilter.swift,

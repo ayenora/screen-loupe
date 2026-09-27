@@ -5,8 +5,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The Screenshot studio (docs/product.md, Screenshot studio): its frame, its palette, Capture,
-/// Copy and Save, the frame's sizes and Aspect Lock, the timer, what pictures lay under, the
-/// pointer, and One Window.
+/// Copy and Save, the frame's sizes and Aspect Lock, the timer, the background and its backdrop,
+/// the pointer, and One Window.
 /// Shown and hidden on its own, apart from the Viewer and the Capture Area.
 ///
 /// The frame is an `OverlayFrameController` of kind `.studio`: the Capture Area's window, drawing,
@@ -16,9 +16,12 @@ final class StudioController {
     /// Called when a capture needs Screen Recording access: the Viewer explains and asks for it.
     /// `deniedByCapture`: ScreenCaptureKit refused although the preflight check said yes.
     var onNeedsPermission: ((_ deniedByCapture: Bool) -> Void)?
-    /// The numbers of the app's windows a picture keeps — the Viewer and the Capture Area frame;
-    /// every other window of the app is left out.
+    /// The numbers of the app's windows a picture keeps — the Viewer and the Capture Area frame —
+    /// besides the backdrop; every other window of the app is left out.
     var capturedAppWindows: (() -> [Int])?
+    /// Called with the backdrop's window number when it shows, and with `nil` when it hides: the
+    /// Viewer's stream keeps it.
+    var onBackdropChange: ((CGWindowID?) -> Void)?
 
     private let frame: OverlayFrameController
     private let palette = StudioPalette()
@@ -36,6 +39,8 @@ final class StudioController {
     private var customSizesWindow: NSPanel?
     private let colorTarget = ColorPanelTarget()
     private var paletteMoveObserver: NSObjectProtocol?
+    private var colorSpaceObserver: NSObjectProtocol?
+    private let backdrop = StudioBackdropWindow()
     /// The decoded background image, by its file name.
     private var backgroundImage: (fileName: String, maxPixelSize: PixelSize, image: CGImage)?
     /// Where the chosen background image is copied, in the app's container.
@@ -83,11 +88,21 @@ final class StudioController {
             self?.palette.hasBackground = $0 != .screen
             // The decoded image isn't kept for a background that no longer is one.
             if case .image = $0 {} else { self?.backgroundImage = nil }
+            self?.updateBackdrop()
+        }
+        // The backdrop is drawn in its display's colour space.
+        colorSpaceObserver = NotificationCenter.default.addObserver(
+            forName: NSScreen.colorSpaceDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateBackdrop() }
         }
         settings.observe(\.studioDelay) { [weak self] in self?.palette.hasDelay = $0 != .off }
         settings.observe(\.studioIncludesPointer) { [weak self] in self?.palette.includesPointer = $0 }
-        // The countdown moves with the frame.
-        frame.onChange = { [weak self] in self?.updateCountdownPanel() }
+        // The countdown moves with the frame, and the backdrop goes with it to another display.
+        frame.onChange = { [weak self] in
+            self?.updateCountdownPanel()
+            self?.updateBackdrop()
+        }
         colorTarget.onChange = { [weak self] color in
             let srgb = color.usingColorSpace(.sRGB) ?? .white
             let chosen = BackgroundColor(
@@ -109,6 +124,7 @@ final class StudioController {
         updatePositionAvoiding()
         checkOneWindow()
         updateOneWindowTimer()
+        updateBackdrop()
     }
 
     func hide() {
@@ -119,6 +135,7 @@ final class StudioController {
         advance(.hidden)
         send(.hidden)
         updateOneWindowTimer()
+        updateBackdrop()
     }
 
     func toggle() {
@@ -297,7 +314,7 @@ final class StudioController {
     func chooseBackgroundImage() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = ImageFileLoader.openableTypes
-        panel.message = "Choose an image to lay under the studio's pictures."
+        panel.message = "Choose an image to show behind your windows."
         NSApp.activate()
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
@@ -419,6 +436,109 @@ final class StudioController {
         }
     }
 
+    // MARK: Backdrop
+
+    /// What the backdrop shows, in which colour space; `nil` while it is hidden.
+    private var backdropShown: (placement: StudioBackdrop.Placement, space: CGColorSpace)?
+    /// What the latest backdrop picture was asked for: while it is drawn, and after it failed, so a
+    /// failure isn't tried again, and beeped about, on every move of the frame.
+    private var backdropAsked: (placement: StudioBackdrop.Placement, space: CGColorSpace)?
+    /// Counts the pictures asked for: only the latest is shown.
+    private var backdropRequest = 0
+    /// The latest backdrop drawing, until a picture has waited for it (`backdropOnScreen`).
+    private var backdropRender: Task<Void, Never>?
+
+    /// Shows the backdrop on the frame's display while the studio shows and a background other
+    /// than the screen is chosen (`StudioBackdrop.placement`), hides it otherwise. Its picture is
+    /// drawn only when the background, the display, its scale or its colour space change; moving
+    /// the frame within its display does nothing. For another display the old picture goes at once
+    /// rather than showing stretched there; for another background it stays until the new one is
+    /// drawn.
+    private func updateBackdrop() {
+        guard
+            let wanted = StudioBackdrop.placement(
+                studioVisible: isVisible, background: background, frame: GlobalRect(rect: frame.captureRect),
+                converter: converter)
+        else {
+            backdropRequest += 1
+            backdropAsked = nil
+            hideBackdrop()
+            return
+        }
+        let space = NSScreen.colorSpace(forDisplay: wanted.display.id)
+        if let shown = backdropShown, shown.placement == wanted, shown.space == space {
+            // Back to what shows: a picture still drawn for another background must not replace it.
+            if backdropAsked != nil {
+                backdropRequest += 1
+                backdropAsked = nil
+            }
+            return
+        }
+        if let asked = backdropAsked, asked.placement == wanted, asked.space == space { return }
+        if let shown = backdropShown, shown.placement.display.globalFrame != wanted.display.globalFrame {
+            hideBackdrop()
+        }
+        backdropRequest += 1
+        let request = backdropRequest
+        backdropAsked = (wanted, space)
+        backdropRender = Task {
+            var image: CGImage?
+            do {
+                if let fill = try await fill(for: wanted.background) {
+                    image = await Self.drawBackdrop(fill, size: wanted.pixelSize, space: space)
+                }
+            } catch {
+                guard request == backdropRequest else { return }
+                hideBackdrop()
+                NSSound.beep()
+                return frame.showNotice("Background image can't be read")
+            }
+            guard request == backdropRequest else { return }
+            guard let image else {
+                log.error("The backdrop couldn't be drawn.")
+                return hideBackdrop()
+            }
+            backdrop.show(image, over: wanted.display.globalFrame)
+            let wasShown = backdropShown != nil
+            backdropShown = (wanted, space)
+            if !wasShown { onBackdropChange?(CGWindowID(backdrop.windowNumber)) }
+        }
+    }
+
+    private func hideBackdrop() {
+        guard backdropShown != nil else { return }
+        backdrop.hide()
+        backdropShown = nil
+        onBackdropChange?(nil)
+    }
+
+    /// Waits until the backdrop the studio last asked for is on screen, so a picture taken right
+    /// after a background is chosen, or the frame moved to another display, doesn't catch the
+    /// wallpaper or the old background while the new one is drawn (about 0.1 s). After any drawing
+    /// since the last picture: waits for it to finish, commits the window's layer at once, and lets
+    /// the display refresh twice, so the window server has composited it. With no drawing since,
+    /// returns at once.
+    private func backdropOnScreen() async {
+        var drew = false
+        while let render = backdropRender {
+            await render.value
+            drew = true
+            // A newer drawing may have started meanwhile: the loop waits for that one too.
+            if backdropRender == render { backdropRender = nil }
+        }
+        guard drew else { return }
+        CATransaction.flush()
+        if let screen = backdrop.screen ?? NSScreen.main { await ScreenRefresh.wait(2, on: screen) }
+    }
+
+    /// `StudioComposite.filled`, off the main actor: a whole display over an image takes a while.
+    @concurrent
+    private nonisolated static func drawBackdrop(
+        _ fill: StudioFill, size: PixelSize, space: CGColorSpace
+    ) async -> CGImage? {
+        StudioComposite.filled(fill, size: size, space: space)
+    }
+
     func togglePointer() {
         settings.update { $0.studioIncludesPointer.toggle() }
     }
@@ -513,12 +633,14 @@ final class StudioController {
 
     // MARK: Displays
 
-    /// Keeps the frame and the palette on a connected display.
+    /// Keeps the frame and the palette on a connected display, and the backdrop over the frame's
+    /// display as it now is.
     func screenParametersChanged() {
         frame.screenParametersChanged()
         if palette.isVisible, converter?.owningDisplay(for: GlobalRect(rect: palette.frame)) == nil {
             placePalette(besideFrame: true)
         }
+        updateBackdrop()
     }
 
     private var converter: DisplayCoordinateConverter? {
@@ -689,25 +811,25 @@ final class StudioController {
         }
         guard let geometry = frame.captureGeometry else { return NSSound.beep() }
         isCapturing = true
-        let included = capturedAppWindows?() ?? []
+        let included = (capturedAppWindows?() ?? []) + [backdrop.windowNumber]
         let current = settings.settings
         let chosen = oneWindowMode.chosen
         Task {
             defer { isCapturing = false }
             do {
-                // With the screen as the background, a lone window has none: it stays transparent.
-                let fill = try await fill(for: current.studioBackground)
-                let image =
-                    if let chosen {
-                        try await StudioCapture.window(
-                            chosen.id, frame: geometry.areaSize, display: geometry.display,
-                            shadow: current.studioWindowShadow, over: fill)
-                    } else {
-                        try await StudioCapture.image(
-                            of: geometry, including: included,
-                            leavingOutDesktop: current.studioBackground.leavesOutWallpaper,
-                            pointer: current.studioIncludesPointer, over: fill)
-                    }
+                let image: CGImage
+                if let chosen {
+                    // With the screen as the background, a lone window has none: it stays transparent.
+                    let fill = try await fill(for: current.studioBackground)
+                    image = try await StudioCapture.window(
+                        chosen.id, frame: geometry.areaSize, display: geometry.display,
+                        shadow: current.studioWindowShadow, over: fill)
+                } else {
+                    // The backdrop is on screen: the picture is what the frame shows.
+                    await backdropOnScreen()
+                    image = try await StudioCapture.image(
+                        of: geometry, including: included, pointer: current.studioIncludesPointer)
+                }
                 if isVisible { await then(image, geometry.display.scale) }
             } catch  where ScreenCaptureManager.isPermissionError(error) {
                 onNeedsPermission?(true)

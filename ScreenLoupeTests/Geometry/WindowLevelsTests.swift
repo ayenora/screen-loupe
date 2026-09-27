@@ -24,6 +24,16 @@ struct WindowLevelsTests {
         }
     }
 
+    /// Above the wallpaper and the desktop icons; below ordinary windows, the Dock and the menu bar.
+    @Test func theBackdropIsJustAboveTheDesktopIcons() {
+        #expect(WindowLevels.studioBackdrop == level(.desktopIconWindow) + 1)
+        #expect(WindowLevels.studioBackdrop > level(.desktopWindow))
+        for key in [CGWindowLevelKey.normalWindow, .floatingWindow, .dockWindow, .mainMenuWindow] {
+            #expect(WindowLevels.studioBackdrop < level(key), "\(key)")
+        }
+        #expect(WindowLevels.studioBackdrop < WindowLevels.frames)
+    }
+
     /// Menus, the pointer and the screen saver stay above it.
     @Test func menusStayAboveThePalette() {
         #expect(WindowLevels.studioPalette < level(.popUpMenuWindow))

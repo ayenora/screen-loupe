@@ -4,10 +4,10 @@ import OSLog
 
 /// One screenshot of the Screenshot studio's frame with `SCScreenshotManager` (docs/design.md,
 /// Screenshot studio). Like the Viewer's stream it leaves out every window of the app — the studio's
-/// frame, palette and hover label, menus, alerts — except the ones the caller names: the Viewer and
-/// the Capture Area frame, which are captured like any other window on screen. With a background
-/// other than the screen it also leaves out the wallpaper and the desktop icons, and lays the
-/// background under what is left. Or, for One Window, takes one window alone.
+/// frame, palette and hover label, menus, alerts — except the ones the caller names: the Viewer, the
+/// Capture Area frame and the studio's backdrop, which are captured like any other window on screen.
+/// So the picture is what the frame shows, the backdrop's background among it. Or, for One Window,
+/// takes one window alone and lays the background under it.
 @MainActor
 enum StudioCapture {
     struct NoDisplayError: LocalizedError {
@@ -19,12 +19,12 @@ enum StudioCapture {
 
     /// The pixels of `geometry` at the display's native resolution, with the pointer when `pointer`
     /// says so, in the display's colour space. `includedWindows` are window numbers of this app's
-    /// windows to keep; `leavingOutDesktop` leaves out the wallpaper and the desktop icons, and
-    /// `fill` is laid under what is left.
+    /// windows to keep.
     static func image(
-        of geometry: CaptureGeometry, including includedWindows: [Int], leavingOutDesktop: Bool,
-        pointer: Bool, over fill: StudioFill?
-    ) async throws -> CGImage {
+        of geometry: CaptureGeometry, including includedWindows: [Int], pointer: Bool
+    ) async throws
+        -> CGImage
+    {
         let content = try await withTimeout(seconds: callTimeout) {
             try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         }
@@ -39,34 +39,18 @@ enum StudioCapture {
         configuration.scalesToFit = false
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.showsCursor = pointer
-        // Where no window is left, nothing: a fill shows through there.
-        configuration.backgroundColor = CGColor.clear
         let filter = filter(
-            for: display, in: content, including: Set(includedWindows.map { CGWindowID($0) }),
-            leavingOutDesktop: leavingOutDesktop)
+            for: display, in: content, including: Set(includedWindows.map { CGWindowID($0) }))
         let image = try await withTimeout(seconds: callTimeout) {
             try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
         }
-        // Without alpha a fill can't show through: the picture is kept as captured rather than
-        // pretending there is a background under it.
-        var fill = fill
-        if fill != nil, !StudioComposite.hasAlpha(image) {
-            if !hasLoggedMissingAlpha {
-                hasLoggedMissingAlpha = true
-                log.error("The capture has no alpha; the background isn't laid under it.")
-            }
-            fill = nil
-        }
-        return await composited(image, in: NSScreen.colorSpace(forDisplay: display.displayID), over: fill) ?? image
+        return await composited(image, in: NSScreen.colorSpace(forDisplay: display.displayID)) ?? image
     }
 
-    /// `StudioComposite.composited`, off the main actor: a large picture over an image takes a while
-    /// to draw.
+    /// `StudioComposite.composited`, off the main actor: converting a large picture takes a while.
     @concurrent
-    private nonisolated static func composited(
-        _ image: CGImage, in space: CGColorSpace, over fill: StudioFill?
-    ) async -> CGImage? {
-        StudioComposite.composited(image, in: space, over: fill)
+    private nonisolated static func composited(_ image: CGImage, in space: CGColorSpace) async -> CGImage? {
+        StudioComposite.composited(image, in: space)
     }
 
     /// Why One Window captured nothing; each is said beside the tab.
@@ -164,25 +148,17 @@ enum StudioCapture {
     }
 
     private static let log = Logger(category: "studio")
-    private static var hasLoggedMissingAlpha = false
 
-    /// The display minus every window of this app but `included`, and minus the wallpaper and the
-    /// desktop icons when `leavingOutDesktop` (`StudioFilter`). With nothing else to leave out, the
-    /// app is excluded as a whole; otherwise, or when the app isn't listed (docs/design.md §6, risk
-    /// 4), the windows are named one by one.
+    /// The display minus every window of this app but `included` (`StudioFilter`): the app is
+    /// excluded as a whole, or, when it isn't listed (docs/design.md §6, risk 4), its windows are
+    /// named one by one.
     private static func filter(
-        for display: SCDisplay, in content: SCShareableContent, including included: Set<CGWindowID>,
-        leavingOutDesktop: Bool
+        for display: SCDisplay, in content: SCShareableContent, including included: Set<CGWindowID>
     ) -> SCContentFilter {
         let pid = ProcessInfo.processInfo.processIdentifier
-        let listed = content.windows.map {
-            ListedWindow(
-                id: $0.windowID, layer: $0.windowLayer, ownerPID: $0.owningApplication?.processID,
-                ownerBundleID: $0.owningApplication?.bundleIdentifier)
-        }
+        let listed = content.windows.map { ListedWindow(id: $0.windowID, ownerPID: $0.owningApplication?.processID) }
         let app = content.applications.first { $0.processID == pid }
-        let path = StudioFilter.path(
-            listed, ownPID: pid, appIsListed: app != nil, kept: included, leavingOutDesktop: leavingOutDesktop)
+        let path = StudioFilter.path(listed, ownPID: pid, appIsListed: app != nil, kept: included)
         if case .excludingWindows(let ids) = path {
             let excluded = Set(ids)
             return SCContentFilter(
