@@ -125,26 +125,26 @@ final class StudioPalette: NSPanel {
 
         Self.configure(saveButton, "square.and.arrow.down", "Save…", #selector(saveClicked))
         Self.configure(aspectLockButton, "aspectratio", "Aspect Lock", #selector(aspectLockClicked))
-        aspectLockButton.setButtonType(.pushOnPushOff)
+        aspectLockButton.makeToggle()
         aspectLockButton.alternateImage = NSImage(
             systemSymbolName: "aspectratio.fill", accessibilityDescription: "Aspect Lock")
         Self.configure(
             backgroundButton, "square.3.layers.3d.bottom.filled", "Background", #selector(backgroundClicked))
-        backgroundButton.setButtonType(.pushOnPushOff)
+        backgroundButton.makeToggle()
         Self.configure(
             leaveOutWindowsButton, "rectangle.on.rectangle.slash", "Leave Out Windows",
             #selector(leaveOutWindowsClicked))
-        leaveOutWindowsButton.setButtonType(.pushOnPushOff)
+        leaveOutWindowsButton.makeToggle()
         leaveOutWindowsButton.alternateImage = NSImage(
             systemSymbolName: "rectangle.on.rectangle.slash.fill", accessibilityDescription: "Leave Out Windows")
         Self.configure(oneWindowButton, "macwindow", "One Window", #selector(oneWindowClicked))
-        oneWindowButton.setButtonType(.pushOnPushOff)
+        oneWindowButton.makeToggle()
         Self.configure(dockButton, "dock.rectangle", "Leave Out the Dock", #selector(dockClicked))
-        dockButton.setButtonType(.pushOnPushOff)
+        dockButton.makeToggle()
         Self.configure(timerButton, "timer", "Timer", #selector(timerClicked))
-        timerButton.setButtonType(.pushOnPushOff)
+        timerButton.makeToggle()
         Self.configure(pointerButton, "cursorarrow", "Include the Pointer", #selector(pointerClicked))
-        pointerButton.setButtonType(.pushOnPushOff)
+        pointerButton.makeToggle()
 
         // The toolbar's groups, apart as its items around a space are.
         let groups: [[NSView]] = [
@@ -424,11 +424,21 @@ private final class PaletteButton: NSButton {
     /// Shown in the hover label.
     var name: String?
 
+    /// Whether the button shows a setting, filled while it is on; the palette sets `state` from the
+    /// setting. Any other button just acts, or opens a list, and is filled only while pressed.
+    private(set) var isToggle = false
+
+    func makeToggle() {
+        setButtonType(.pushOnPushOff)
+        isToggle = true
+    }
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// The toolbar's on and pressed look, under the symbol.
+    /// The toolbar's on and pressed look, under the symbol. A momentary button's `state` flips on
+    /// every click too, though AppKit doesn't show it: only a toggle's is drawn.
     override func draw(_ dirtyRect: NSRect) {
-        if state == .on || isHighlighted { ToolbarLook.current.drawFill(in: bounds) }
+        if isHighlighted || (isToggle && state == .on) { ToolbarLook.current.drawFill(in: bounds) }
         super.draw(dirtyRect)
     }
 
