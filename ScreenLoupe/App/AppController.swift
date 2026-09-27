@@ -116,10 +116,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.toggle()
     }
 
-    @objc func toggleStudioOnTop(_ sender: Any?) {
-        windows.studio.toggleKeepOnTop()
-    }
-
     @objc func captureStudio(_ sender: Any?) {
         windows.studio.capture()
     }
@@ -361,9 +357,6 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleScreenshotStudio(_:)):
             let isVisible = builtWindows?.studio.isVisible == true
             menuItem.title = isVisible ? "Hide Screenshot Studio" : "Show Screenshot Studio"
-            return true
-        case #selector(toggleStudioOnTop(_:)):
-            menuItem.state = settings.settings.studioOnTop ? .on : .off
             return true
         case #selector(captureStudio(_:)), #selector(copyStudio(_:)), #selector(saveStudio(_:)):
             return builtWindows?.studio.isVisible == true

@@ -12,6 +12,13 @@ enum StudioPlacement {
     static let screenMargin: CGFloat = 8
     /// Kept free above and below the frame, for its tab and size label.
     static let verticalRoom: CGFloat = 40
+    /// Around the palette's buttons, inside its window: the same on all four sides.
+    static let paletteMargin: CGFloat = 8
+
+    /// The palette window's width for buttons `buttonWidth` wide: its title bar adds no width.
+    static func paletteWidth(buttonWidth: CGFloat) -> CGFloat {
+        buttonWidth + 2 * paletteMargin
+    }
 
     /// The frame the first time: `defaultFrameSize` centred on `visibleFrame`, shrunk so its tab and
     /// label and a palette `paletteWidth` wide beside it still fit on the display. Whole points.

@@ -112,7 +112,7 @@ private final class PickerPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         // Above the Capture Area frame, so a click on the frame picks the window under it too.
-        level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        level = NSWindow.Level(rawValue: WindowLevels.picker)
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         isReleasedWhenClosed = false
         hidesOnDeactivate = false

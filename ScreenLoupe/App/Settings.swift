@@ -17,8 +17,6 @@ struct Settings: Codable, Equatable {
     /// The Screenshot studio's frame in AppKit global coordinates, and its palette's origin.
     var studioFrame: CGRect?
     var studioPaletteOrigin: CGPoint?
-    /// Keep the studio's palette above the windows of other apps.
-    var studioOnTop = false
     /// The studio's sizes of the user's own, in slot order: at most four, all valid.
     var studioCustomSizes: [CustomSize] = []
     /// Aspect Lock, and the width-to-height ratio it keeps, taken when it is turned on or a size is
@@ -99,7 +97,6 @@ struct Settings: Codable, Equatable {
         viewerAlwaysOnTop = c.value(.viewerAlwaysOnTop, or: d.viewerAlwaysOnTop)
         studioFrame = c.value(.studioFrame, or: d.studioFrame)
         studioPaletteOrigin = c.value(.studioPaletteOrigin, or: d.studioPaletteOrigin)
-        studioOnTop = c.value(.studioOnTop, or: d.studioOnTop)
         studioCustomSizes = c.customSizes(.studioCustomSizes)
         studioAspectLocked = c.value(.studioAspectLocked, or: d.studioAspectLocked)
         let ratio = c.value(.studioAspectRatio, or: d.studioAspectRatio)

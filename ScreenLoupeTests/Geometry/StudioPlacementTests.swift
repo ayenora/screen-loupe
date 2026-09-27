@@ -129,6 +129,74 @@ struct StudioPlacementTests {
         #expect(!points(of: paletteRect).contains { layout.isInHoverZone($0) })
     }
 
+    // MARK: The palette window
+
+    /// The palette as a titled window on macOS 26: 36 pt buttons with 8 pt margins, eleven buttons in
+    /// three groups 8 pt apart, and a 24 pt title bar on top.
+    private let window = CGSize(width: 52, height: 24 + 8 + 11 * 36 + 2 * 8 + 8)
+
+    @Test func paletteWidthAddsTheMarginOnBothSides() {
+        #expect(StudioPlacement.paletteMargin > 0)
+        #expect(StudioPlacement.paletteWidth(buttonWidth: 36) == 36 + 2 * StudioPlacement.paletteMargin)
+        #expect(StudioPlacement.paletteWidth(buttonWidth: 32) == CGFloat(48))
+        #expect(StudioPlacement.paletteWidth(buttonWidth: 0) == 2 * StudioPlacement.paletteMargin)
+    }
+
+    @Test func defaultFrameLeavesRoomForThePaletteWindowOnA1440PointDisplay() {
+        let visible = CGRect(x: 0, y: 70, width: 1440, height: 800)
+        let frame = StudioPlacement.defaultFrame(
+            in: visible, paletteWidth: StudioPlacement.paletteWidth(buttonWidth: 36))
+        #expect(frame.width == CGFloat(1440 - 2 * (52 + 64 + 8)))
+        let origin = StudioPlacement.paletteOrigin(size: window, beside: frame, in: visible)
+        #expect(origin.x == frame.minX - 32 - 52)
+        #expect(visible.contains(CGRect(origin: origin, size: window)))
+    }
+
+    @Test func paletteWindowsTitleBarIsLevelWithTheFramesTop() {
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let frame = CGRect(x: 300, y: 200, width: 600, height: 500)
+        let origin = StudioPlacement.paletteOrigin(size: window, beside: frame, in: visible)
+        // The window's top, its title bar's, not the buttons' top.
+        #expect(origin.y + window.height == frame.maxY)
+        #expect(origin.x + window.width + StudioPlacement.paletteGap == frame.minX)
+    }
+
+    @Test func paletteWindowTallerThanTheRoomUnderTheFramesTopIsKeptOnTheDisplay() {
+        // A frame low on a short display: the window's bottom would leave the display.
+        let visible = CGRect(x: 0, y: 0, width: 1280, height: 600)
+        let frame = CGRect(x: 400, y: 20, width: 400, height: 300)
+        let origin = StudioPlacement.paletteOrigin(size: window, beside: frame, in: visible)
+        #expect(origin.y == CGFloat(8))
+        // Taller than the display: its title bar stays on it, the bottom goes off.
+        let short = CGRect(x: 0, y: 0, width: 1280, height: 400)
+        let top = StudioPlacement.paletteOrigin(size: window, beside: frame, in: short)
+        #expect(top.y + window.height == CGFloat(400 - 8))
+    }
+
+    @Test(arguments: [
+        (CGRect(x: 0, y: 0, width: 1440, height: 900), CGRect(x: 300, y: 200, width: 600, height: 400)),
+        (CGRect(x: 0, y: 0, width: 1440, height: 900), CGRect(x: 40, y: 200, width: 600, height: 600)),
+        (CGRect(x: -1920, y: -300, width: 1920, height: 1080), CGRect(x: -1500, y: -100, width: 800, height: 500)),
+    ])
+    func pointerOnThePaletteWindowNeverRevealsTheFrameNorItsBox(display: CGRect, frame: CGRect) {
+        let origin = StudioPlacement.paletteOrigin(size: window, beside: frame, in: display)
+        let paletteRect = CGRect(origin: origin, size: window)
+        let layout = frameLayout(frame, on: display, avoiding: paletteRect)
+        #expect(!layout.positionRect.intersects(paletteRect))
+        #expect(!points(of: paletteRect).contains { layout.isInHoverZone($0) })
+    }
+
+    @Test func listsAndLabelsGoBesideThePaletteWindow() {
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let paletteRect = CGRect(origin: CGPoint(x: 600, y: 300), size: window)
+        let list = StudioPlacement.popoverOrigin(
+            size: CGSize(width: 240, height: 320), beside: paletteRect, anchorTop: 700, in: visible)
+        #expect(list.x == paletteRect.maxX + StudioPlacement.popoverGap)
+        let frame = CGRect(x: 700, y: 200, width: 600, height: 600)
+        let label = StudioPlacement.hoverLabelX(width: 90, beside: paletteRect, frame: frame, in: visible)
+        #expect(label + 90 + StudioPlacement.hoverLabelGap == paletteRect.minX)
+    }
+
     // MARK: The Size list
 
     @Test func sizeListSitsRightOfThePaletteLevelWithTheButton() {

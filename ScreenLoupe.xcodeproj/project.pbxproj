@@ -41,6 +41,7 @@
 				Geometry/StudioTimer.swift,
 				Geometry/ViewerSelection.swift,
 				Geometry/ViewerWindowFit.swift,
+				Geometry/WindowLevels.swift,
 				Geometry/WindowMagnet.swift,
 				Geometry/ZoomPanMath.swift,
 			);

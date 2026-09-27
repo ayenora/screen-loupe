@@ -1,18 +1,20 @@
 import AppKit
 
 /// The Screenshot studio's palette (docs/product.md, Screenshot studio): the Viewer's toolbar turned
-/// upright — its buttons in floating groups, dragged by the grab bar at the top of the first group
-/// and parked anywhere, apart from the frame.
+/// upright — its buttons in groups on a thin utility window that can't be resized, dragged by its
+/// title bar and parked anywhere, apart from the frame. Its close button hides the studio.
 ///
-/// A non-activating panel, so a click on it leaves the app the user works in active. AppKit shows
-/// tooltips only while the app is active, so the palette names the hovered button itself, in a small
-/// label beside it. Its buttons call the studio controller directly.
+/// A non-activating panel, so a click on it leaves the app the user works in active, and above every
+/// other window (`WindowLevels.studioPalette`). AppKit shows tooltips only while the app is active,
+/// so the palette names the hovered button itself, in a small label beside it. Its buttons call the
+/// studio controller directly.
 ///
 /// `NSToolbar` draws its own look: a `.toolbar`-bezel button outside a toolbar is bordered and shows
 /// its on state in the accent colour. So the palette draws the toolbar's look itself (`ToolbarLook`).
 @MainActor
 final class StudioPalette: NSPanel {
-    static var width: CGFloat { ToolbarLook.current.buttonSize.width }
+    /// The window's width.
+    static var width: CGFloat { StudioPlacement.paletteWidth(buttonWidth: ToolbarLook.current.buttonSize.width) }
     /// How long the pointer rests on a button before its name shows.
     private static let hoverDelay: TimeInterval = 0.5
 
@@ -30,9 +32,9 @@ final class StudioPalette: NSPanel {
     var onToggleOneWindow: (() -> Void)?
     var onToggleLeaveOutDock: (() -> Void)?
     var onTogglePointer: (() -> Void)?
-    var onToggleOnTop: (() -> Void)?
+    /// Called by the close button: the studio hides; the palette is only ordered out.
     var onHide: (() -> Void)?
-    /// Called when a drag of the palette begins.
+    /// Called when a drag of the palette by its title bar begins.
     var onDragStarted: (() -> Void)?
     /// Called when the user has dragged the palette to a new place.
     var onMoved: (() -> Void)?
@@ -40,30 +42,16 @@ final class StudioPalette: NSPanel {
     /// from it.
     var studioFrame: (() -> CGRect?)?
 
-    /// Floats above other apps' windows, below the studio's frame (`.statusBar`).
-    var keepsOnTop = false {
-        didSet {
-            updateLevel()
-            onTopButton.state = keepsOnTop ? .on : .off
-        }
-    }
-
-    /// While windows are picked to leave out, the palette floats above the picker's panels, so its
-    /// Leave Out Windows button can end the picking; the button is filled meanwhile.
+    /// While windows are picked to leave out, the Leave Out Windows button is filled; being above
+    /// the picker's panels, it can end the picking.
     var isPickingWindows = false {
-        didSet {
-            updateLevel()
-            leaveOutWindowsButton.state = isPickingWindows ? .on : .off
-        }
+        didSet { leaveOutWindowsButton.state = isPickingWindows ? .on : .off }
     }
 
-    /// While the window for One Window is picked, the palette floats above the picker's panels as
-    /// well, so its One Window button can cancel it.
+    /// While the window for One Window is picked; the One Window button, above the picker's panels,
+    /// can cancel it.
     var isPickingOneWindow = false {
-        didSet {
-            updateLevel()
-            updateOneWindowButton()
-        }
+        didSet { updateOneWindowButton() }
     }
 
     /// Whether One Window has a window.
@@ -96,20 +84,11 @@ final class StudioPalette: NSPanel {
         didSet { pointerButton.state = includesPointer ? .on : .off }
     }
 
-    private func updateLevel() {
-        if isPickingWindows || isPickingOneWindow {
-            level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
-        } else {
-            level = keepsOnTop ? .floating : .normal
-        }
-    }
-
     /// Filled while Aspect Lock is on.
     var aspectLocked = false {
         didSet { aspectLockButton.state = aspectLocked ? .on : .off }
     }
 
-    private let onTopButton = PaletteButton()
     private let aspectLockButton = PaletteButton()
     private let backgroundButton = PaletteButton()
     private let leaveOutWindowsButton = PaletteButton()
@@ -120,19 +99,26 @@ final class StudioPalette: NSPanel {
     private let saveButton = PaletteButton()
     private let hoverLabel = HoverLabelWindow()
     private var hoverTimer: Timer?
+    /// Set when the user starts dragging the title bar, until the button is up after a move.
+    private var isDragged = false
 
     init() {
-        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        isOpaque = false
-        backgroundColor = .clear
+        super.init(
+            contentRect: .zero, styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel],
+            backing: .buffered, defer: false)
+        title = ""
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
+        hasShadow = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
+        tabbingMode = .disallowed
+        // After the style: a utility panel sets itself floating.
+        level = NSWindow.Level(rawValue: WindowLevels.studioPalette)
+        // Over a full-screen app's Space too.
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
         Self.configure(saveButton, "square.and.arrow.down", "Save…", #selector(saveClicked))
-        Self.configure(onTopButton, "pin", "Keep on Top", #selector(onTopClicked))
-        onTopButton.setButtonType(.pushOnPushOff)
-        onTopButton.alternateImage = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Keep on Top")
         Self.configure(aspectLockButton, "aspectratio", "Aspect Lock", #selector(aspectLockClicked))
         aspectLockButton.setButtonType(.pushOnPushOff)
         aspectLockButton.alternateImage = NSImage(
@@ -155,13 +141,9 @@ final class StudioPalette: NSPanel {
         Self.configure(pointerButton, "cursorarrow", "Include the Pointer", #selector(pointerClicked))
         pointerButton.setButtonType(.pushOnPushOff)
 
-        let grabBar = GrabBar()
-        grabBar.onMoved = { [weak self] in self?.onMoved?() }
-        grabBar.onDragStarted = { [weak self] in self?.onDragStarted?() }
         // The toolbar's groups, apart as its items around a space are.
         let groups: [[NSView]] = [
             [
-                grabBar,
                 Self.button("camera", "Capture — Copy and Save", #selector(captureClicked)),
                 Self.button("doc.on.doc", "Copy", #selector(copyClicked)),
                 saveButton,
@@ -172,7 +154,6 @@ final class StudioPalette: NSPanel {
                 timerButton,
             ],
             [backgroundButton, leaveOutWindowsButton, oneWindowButton, dockButton, pointerButton],
-            [onTopButton, Self.button("eye.slash", "Hide Screenshot Studio", #selector(hideClicked))],
         ]
         for case let button as NSButton in groups.joined() {
             button.target = self
@@ -181,18 +162,42 @@ final class StudioPalette: NSPanel {
         let stack = NSStackView(views: groups.map(look.group))
         stack.orientation = .vertical
         stack.spacing = look.groupSpacing
-        // The glass draws its own edge and shadow; the older groups get the window's.
-        hasShadow = !look.isGlass
+        let margin = StudioPlacement.paletteMargin
+        stack.edgeInsets = NSEdgeInsets(top: margin, left: margin, bottom: margin, right: margin)
+        // Else a vertical stack's fitting width leaves out its side insets.
+        stack.setHuggingPriority(.defaultHigh, for: .horizontal)
         let content = look.container(stack)
         contentView = content
         setContentSize(content.fittingSize)
+
+        // The title bar's drag is the window server's: it starts with `willMove` (a move by code
+        // posts none), and `didMove` follows while or once it ends.
+        let center = NotificationCenter.default
+        _ = center.addObserver(forName: NSWindow.willMoveNotification, object: self, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.isDragged = true
+                self?.onDragStarted?()
+            }
+        }
+        _ = center.addObserver(forName: NSWindow.didMoveNotification, object: self, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isDragged else { return }
+                if NSEvent.pressedMouseButtons & 1 == 0 { self.isDragged = false }
+                self.onMoved?()
+            }
+        }
     }
 
     /// A click on a button goes to its action without first making the panel key.
     override var canBecomeKey: Bool { false }
 
+    /// The close button hides the studio; the palette stays, to be shown again. The button's action
+    /// calls `close()` directly, not `performClose(_:)`.
+    override func close() { onHide?() }
+
     override func orderOut(_ sender: Any?) {
         hover(nil)
+        isDragged = false
         super.orderOut(sender)
     }
 
@@ -240,7 +245,8 @@ final class StudioPalette: NSPanel {
         button.isBordered = false
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
         button.imagePosition = .imageOnly
-        // At the symbol's own size, as the toolbar shows it.
+        // At the symbol scale `NSToolbar` gives a `.toolbar`-bezel button's image (docs/design.md).
+        button.symbolConfiguration = NSImage.SymbolConfiguration(scale: .large)
         button.imageScaling = .scaleNone
         button.contentTintColor = .labelColor
         button.name = title
@@ -253,10 +259,9 @@ final class StudioPalette: NSPanel {
     @objc private func captureClicked() { onCapture?() }
     @objc private func copyClicked() { onCopy?() }
     @objc private func saveClicked() { onSave?() }
-    @objc private func hideClicked() { onHide?() }
     @objc private func sizeClicked(_ sender: NSButton) { onSize?(sender) }
 
-    /// Shows the setting, not the click, as Keep on Top does.
+    /// Shows the setting, not the click: the setting sets it back.
     @objc private func aspectLockClicked(_ sender: NSButton) {
         sender.state = aspectLocked ? .on : .off
         onToggleAspectLock?()
@@ -296,12 +301,6 @@ final class StudioPalette: NSPanel {
     @objc private func pointerClicked(_ sender: NSButton) {
         sender.state = includesPointer ? .on : .off
         onTogglePointer?()
-    }
-
-    /// Shows the setting, not the click: the setting sets it back.
-    @objc private func onTopClicked(_ sender: NSButton) {
-        sender.state = keepsOnTop ? .on : .off
-        onToggleOnTop?()
     }
 
     /// A stretchable mask with rounded corners for the background.
@@ -437,55 +436,5 @@ private final class HoverLabelWindow: NSPanel {
     func show(_ text: String, in rect: CGRect) {
         label.text = text
         setFrame(rect, display: true)
-    }
-}
-
-/// The handle at the top of the palette's first group: dragging it moves the palette.
-private final class GrabBar: NSView {
-    /// Called on the first move of a drag.
-    var onDragStarted: (() -> Void)?
-    /// Called when a drag that moved the palette ends.
-    var onMoved: (() -> Void)?
-    private var dragStart: (mouse: CGPoint, origin: CGPoint)?
-    private var hasDragged = false
-
-    override var intrinsicContentSize: NSSize { NSSize(width: StudioPalette.width, height: 16) }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .openHand)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard let window else { return }
-        dragStart = (NSEvent.mouseLocation, window.frame.origin)
-        hasDragged = false
-        NSCursor.closedHand.push()
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let dragStart, let window else { return }
-        if !hasDragged {
-            hasDragged = true
-            onDragStarted?()
-        }
-        let mouse = NSEvent.mouseLocation
-        window.setFrameOrigin(
-            CGPoint(
-                x: dragStart.origin.x + mouse.x - dragStart.mouse.x, y: dragStart.origin.y + mouse.y - dragStart.mouse.y
-            ))
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        NSCursor.pop()
-        let moved = dragStart.map { $0.origin != window?.frame.origin } ?? false
-        dragStart = nil
-        if moved { onMoved?() }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let bar = CGRect(x: (bounds.width - 16) / 2, y: (bounds.height - 4) / 2, width: 16, height: 4)
-        NSColor.tertiaryLabelColor.setFill()
-        NSBezierPath(roundedRect: bar, xRadius: 2, yRadius: 2).fill()
     }
 }

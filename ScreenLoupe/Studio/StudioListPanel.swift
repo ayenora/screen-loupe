@@ -75,6 +75,8 @@ final class StudioListPanel: NSPanel {
         contentView = background
         let size = host.fittingSize
         setFrame(CGRect(origin: origin(size), size: size), display: true)
+        // At the palette's level, above every other window as it is.
+        level = palette.level
         palette.addChildWindow(self, ordered: .above)
         orderFront(nil)
         startMonitoring(besides: palette)

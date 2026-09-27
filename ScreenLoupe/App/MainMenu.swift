@@ -133,9 +133,6 @@ enum MainMenu {
             withTitle: "Show Screenshot Studio", action: #selector(AppController.toggleScreenshotStudio(_:)),
             keyEquivalent: "")
         studio.target = target
-        let onTop = menu.addItem(
-            withTitle: "Keep Studio on Top", action: #selector(AppController.toggleStudioOnTop(_:)), keyEquivalent: "")
-        onTop.target = target
         menu.addItem(.separator())
         let capture = menu.addItem(
             withTitle: "Capture", action: #selector(AppController.captureStudio(_:)), keyEquivalent: "")

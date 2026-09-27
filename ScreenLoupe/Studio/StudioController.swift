@@ -79,7 +79,6 @@ final class StudioController {
         palette.onToggleOneWindow = { [weak self] in self?.toggleOneWindow() }
         palette.onToggleLeaveOutDock = { [weak self] in self?.toggleLeaveOutDock() }
         palette.onTogglePointer = { [weak self] in self?.togglePointer() }
-        palette.onToggleOnTop = { [weak self] in self?.toggleKeepOnTop() }
         palette.onHide = { [weak self] in self?.hide() }
         palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
         palette.studioFrame = { [weak self] in self?.frame.captureRect }
@@ -93,7 +92,6 @@ final class StudioController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updatePositionAvoiding() }
         }
-        settings.observe(\.studioOnTop) { [weak self] in self?.palette.keepsOnTop = $0 }
         settings.observe(\.studioAspectLocked) { [weak self] in self?.palette.aspectLocked = $0 }
         settings.observe(\.activeStudioAspectRatio) { [weak self] in self?.frame.aspectRatio = $0.map { CGFloat($0) } }
         settings.observe(\.studioLeavesOutDock) { [weak self] in self?.palette.leavesOutDock = $0 }
@@ -152,10 +150,6 @@ final class StudioController {
 
     private func updatePositionAvoiding() {
         frame.positionAvoiding = palette.isVisible ? palette.frame : .null
-    }
-
-    func toggleKeepOnTop() {
-        settings.update { $0.studioOnTop.toggle() }
     }
 
     // MARK: Sizes
@@ -476,8 +470,8 @@ final class StudioController {
     }
 
     /// Starts pointing at windows to leave out, or ends it. While it runs, the window under the
-    /// pointer is tinted, a click leaves it out or brings it back, and the palette floats above the
-    /// picker so its button can end it; Escape ends it too.
+    /// pointer is tinted, a click leaves it out or brings it back, and the palette's button, above
+    /// the picker, ends it; Escape ends it too.
     func toggleLeavingOutWindows() {
         if let windowPicker { return windowPicker.stop() }
         guard isVisible, let converter else { return }
@@ -581,8 +575,7 @@ final class StudioController {
     }
 
     /// As Fit to Window does: the window under the pointer is tinted, a click chooses it, Escape
-    /// or a click on no window cancels. The palette floats above the picker meanwhile, so its
-    /// button cancels too.
+    /// or a click on no window cancels. The palette's button, above the picker, cancels too.
     private func startOneWindowPicker() {
         windowPicker?.stop()
         advance(.pickerStarted)
