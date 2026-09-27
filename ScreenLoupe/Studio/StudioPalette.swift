@@ -1,8 +1,8 @@
 import AppKit
 
 /// The Screenshot studio's palette (docs/product.md, Screenshot studio): the Viewer's toolbar turned
-/// upright — its buttons in groups on a thin utility window that can't be resized, dragged by its
-/// title bar and parked anywhere, apart from the frame. Its close button hides the studio.
+/// upright — its buttons in groups on a thin utility window that can't be resized, dragged by any
+/// place but a button and parked anywhere, apart from the frame. Its close button hides the studio.
 ///
 /// A non-activating panel, so a click on it leaves the app the user works in active, and above every
 /// other window (`WindowLevels.studioPalette`). AppKit shows tooltips only while the app is active,
@@ -34,7 +34,7 @@ final class StudioPalette: NSPanel {
     var onTogglePointer: (() -> Void)?
     /// Called by the close button: the studio hides; the palette is only ordered out.
     var onHide: (() -> Void)?
-    /// Called when a drag of the palette by its title bar begins.
+    /// Called when a user's drag of the palette begins.
     var onDragStarted: (() -> Void)?
     /// Called when the user has dragged the palette to a new place.
     var onMoved: (() -> Void)?
@@ -99,7 +99,7 @@ final class StudioPalette: NSPanel {
     private let saveButton = PaletteButton()
     private let hoverLabel = HoverLabelWindow()
     private var hoverTimer: Timer?
-    /// Set when the user starts dragging the title bar, until the button is up after a move.
+    /// Set when the user starts dragging the palette, until the button is up after a move.
     private var isDragged = false
 
     init() {
@@ -110,6 +110,9 @@ final class StudioPalette: NSPanel {
         standardWindowButton(.miniaturizeButton)?.isHidden = true
         standardWindowButton(.zoomButton)?.isHidden = true
         hasShadow = true
+        // Dragged by any place but a button: the margins, the gaps and the groups' views all let
+        // a mouse-down move the window, and the buttons don't.
+        isMovableByWindowBackground = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         tabbingMode = .disallowed
@@ -170,8 +173,8 @@ final class StudioPalette: NSPanel {
         contentView = content
         setContentSize(content.fittingSize)
 
-        // The title bar's drag is the window server's: it starts with `willMove` (a move by code
-        // posts none), and `didMove` follows while or once it ends.
+        // A drag by the title bar or the background is the window server's: it starts with
+        // `willMove` (a move by code posts none), and `didMove` follows while or once it ends.
         let center = NotificationCenter.default
         _ = center.addObserver(forName: NSWindow.willMoveNotification, object: self, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
