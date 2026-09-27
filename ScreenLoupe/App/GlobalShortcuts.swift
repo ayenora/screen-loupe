@@ -59,7 +59,8 @@ struct Shortcuts: Codable, Equatable, Sendable {
     /// F13 alone: no modifier reaches the app the mouse is held down in.
     var toggleFreeze: Shortcut? = Shortcut(keyCode: kVK_F13, modifiers: [], key: "F13")
     var pickWindow: Shortcut? = Shortcut(keyCode: kVK_ANSI_W, modifiers: [.control, .option, .command], key: "W")
-    var toggleViewportHandle: Shortcut? = Shortcut(keyCode: kVK_ANSI_M, modifiers: [.control, .command], key: "M")
+    var toggleViewportHandle: Shortcut? = Shortcut(
+        keyCode: kVK_ANSI_M, modifiers: [.control, .option, .command], key: "M")
 
     init() {}
 
