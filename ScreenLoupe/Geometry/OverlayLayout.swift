@@ -87,6 +87,8 @@ struct OverlayMetrics: Sendable {
     var pinMenuWidth: CGFloat = 13
     /// The pill on the outline of the part the Viewer shows, while the viewport handle is on.
     var viewportHandleSize = CGSize(width: 30, height: 18)
+    /// Between the viewport handle and the outline it sits beside.
+    var viewportHandleGap: CGFloat = 2
     /// The position box beside the frame, outside the band and handles.
     var positionGap: CGFloat = 12
     var screenMargin: CGFloat = 6
@@ -282,15 +284,23 @@ struct OverlayLayout: Equatable, Sendable {
         return nil
     }
 
-    /// The viewport handle for `viewedPart`, the part of the area the Viewer shows: centred on its top
-    /// edge, or just inside the captured rect's top where it would stick out above it, and kept
-    /// within the rect's sides.
-    func viewportHandleRect(for viewedPart: CGRect, metrics m: OverlayMetrics = .standard) -> CGRect {
+    /// The viewport handle for `viewedPart`, the part of the area the Viewer shows, never over it:
+    /// `viewportHandleGap` outside it, above and centred on it, else below, else left, else right,
+    /// wherever it first fits inside the captured rect, kept within the rect along that side. `nil`
+    /// when it fits nowhere: the part leaves too little of the area around it.
+    func viewportHandleRect(for viewedPart: CGRect, metrics m: OverlayMetrics = .standard) -> CGRect? {
         let size = m.viewportHandleSize
-        let x = Self.clamp(
-            viewedPart.midX - size.width / 2, lower: captureRect.minX, upper: captureRect.maxX - size.width)
-        let y = min(viewedPart.maxY - size.height / 2, captureRect.maxY - size.height)
-        return CGRect(x: x, y: y, width: size.width, height: size.height)
+        let gap = m.viewportHandleGap
+        let r = captureRect
+        let x = Self.clamp(viewedPart.midX - size.width / 2, lower: r.minX, upper: r.maxX - size.width)
+        let y = Self.clamp(viewedPart.midY - size.height / 2, lower: r.minY, upper: r.maxY - size.height)
+        let candidates = [
+            CGPoint(x: x, y: viewedPart.maxY + gap),
+            CGPoint(x: x, y: viewedPart.minY - gap - size.height),
+            CGPoint(x: viewedPart.minX - gap - size.width, y: y),
+            CGPoint(x: viewedPart.maxX + gap, y: y),
+        ]
+        return candidates.lazy.map { CGRect(origin: $0, size: size) }.first { r.contains($0) }
     }
 
     /// Whether the cursor is close enough to the frame to reveal the handles and the tab.
