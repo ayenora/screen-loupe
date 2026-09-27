@@ -22,6 +22,7 @@
 				Geometry/DisplayLayout.swift,
 				Geometry/EdgeSnapping.swift,
 				Geometry/FrameLayout.swift,
+				Geometry/HoverLabelDelay.swift,
 				Geometry/ImageBudget.swift,
 				Geometry/ImageOrientation.swift,
 				Geometry/LenientDecoding.swift,

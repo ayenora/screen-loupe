@@ -15,9 +15,6 @@ import AppKit
 final class StudioPalette: NSPanel {
     /// The window's width.
     static var width: CGFloat { StudioPlacement.paletteWidth(buttonWidth: ToolbarLook.current.buttonSize.width) }
-    /// How long the pointer rests on a button before its name shows.
-    private static let hoverDelay: TimeInterval = 0.5
-
     var onCapture: (() -> Void)?
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
@@ -99,6 +96,11 @@ final class StudioPalette: NSPanel {
     private let saveButton = PaletteButton()
     private let hoverLabel = HoverLabelWindow()
     private var hoverTimer: Timer?
+    /// The button the pointer last entered, until it leaves it or clicks.
+    private var hoveredButton: PaletteButton?
+    /// When a shown name last went as the pointer left its button (`HoverLabelDelay`); `nil` after
+    /// a click and while hidden.
+    private var labelHiddenAt: TimeInterval?
     /// Set when the user starts dragging the palette, until the button is up after a move.
     private var isDragged = false
 
@@ -199,32 +201,57 @@ final class StudioPalette: NSPanel {
     override func close() { onHide?() }
 
     override func orderOut(_ sender: Any?) {
-        hover(nil)
+        endHover()
         isDragged = false
         super.orderOut(sender)
     }
 
     // MARK: Hover label
 
-    /// Names `button` beside the palette after a short rest, or hides the name when `nil`.
-    fileprivate func hover(_ button: PaletteButton?) {
-        hoverTimer?.invalidate()
-        hoverTimer = nil
-        if hoverLabel.isVisible {
-            removeChildWindow(hoverLabel)
-            hoverLabel.orderOut(nil)
+    /// Names `button` beside the palette after a short rest, or at once while the pointer goes on
+    /// from a named button (`HoverLabelDelay`).
+    fileprivate func pointerEntered(_ button: PaletteButton) {
+        hideLabel()
+        hoveredButton = button
+        let delay = HoverLabelDelay.delay(at: ProcessInfo.processInfo.systemUptime, lastHidden: labelHiddenAt)
+        guard delay > 0 else {
+            showLabel(for: button)
+            return
         }
-        guard let button else { return }
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: Self.hoverDelay, repeats: false) { [weak self] _ in
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.showLabel(for: button) }
         }
+    }
+
+    /// Buttons in a group touch, so the next one's enter comes before this one's exit: an exit
+    /// from a button the pointer has already left for another changes nothing.
+    fileprivate func pointerExited(_ button: PaletteButton) {
+        guard hoveredButton === button else { return }
+        hoveredButton = nil
+        hideLabel()
+    }
+
+    /// A click or hiding: the name goes, and the next button waits the full rest.
+    fileprivate func endHover() {
+        hoveredButton = nil
+        hideLabel()
+        labelHiddenAt = nil
+    }
+
+    private func hideLabel() {
+        hoverTimer?.invalidate()
+        hoverTimer = nil
+        guard hoverLabel.isVisible else { return }
+        removeChildWindow(hoverLabel)
+        hoverLabel.orderOut(nil)
+        labelHiddenAt = ProcessInfo.processInfo.systemUptime
     }
 
     /// Beside the palette on its side away from the studio's frame (`StudioPlacement.hoverLabelX`),
     /// level with the button.
     private func showLabel(for button: PaletteButton) {
         hoverTimer = nil
-        guard isVisible, let name = button.name else { return }
+        guard isVisible, hoveredButton === button, let name = button.name else { return }
         let size = CGSize(width: OverlayStyle.labelWidth(for: name), height: OverlayMetrics.standard.labelHeight)
         let buttonFrame = convertToScreen(button.convert(button.bounds, to: nil))
         let visible = screen?.visibleFrame ?? frame
@@ -412,11 +439,11 @@ private final class PaletteButton: NSButton {
             NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { (window as? StudioPalette)?.hover(self) }
-    override func mouseExited(with event: NSEvent) { (window as? StudioPalette)?.hover(nil) }
+    override func mouseEntered(with event: NSEvent) { (window as? StudioPalette)?.pointerEntered(self) }
+    override func mouseExited(with event: NSEvent) { (window as? StudioPalette)?.pointerExited(self) }
 
     override func mouseDown(with event: NSEvent) {
-        (window as? StudioPalette)?.hover(nil)
+        (window as? StudioPalette)?.endHover()
         super.mouseDown(with: event)
     }
 }
