@@ -115,7 +115,8 @@ struct OverlayLayout: Equatable, Sendable {
     var raiseRect: CGRect
     /// The button that picks a window for the area, after the raise button.
     var pickRect: CGRect
-    /// The L T R B box: right of the frame, or left of it when there is no room on the right.
+    /// The L T R B box: right of the frame, or left of it when there is no room on the right; never
+    /// over the rect it avoids (the studio's palette) while there is room elsewhere beside it.
     var positionRect: CGRect
     /// A short notice beside the tab, away from the buttons; empty when there is none.
     var noticeRect: CGRect
@@ -125,8 +126,8 @@ struct OverlayLayout: Equatable, Sendable {
 
     init(
         captureRect: CGRect, screenFrame: CGRect, tabWidth: CGFloat, labelWidth: CGFloat,
-        positionSize: CGSize = .zero, noticeWidth: CGFloat = 0, lockButtons: Bool = true,
-        metrics m: OverlayMetrics = .standard
+        positionSize: CGSize = .zero, positionAvoiding: CGRect = .null, noticeWidth: CGFloat = 0,
+        lockButtons: Bool = true, metrics m: OverlayMetrics = .standard
     ) {
         self.captureRect = captureRect
         let r = captureRect
@@ -201,16 +202,33 @@ struct OverlayLayout: Equatable, Sendable {
             r.maxX - labelWidth, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - labelWidth)
         labelRect = CGRect(x: labelX.rounded(), y: labelY.rounded(), width: labelWidth, height: m.labelHeight)
 
-        // Position box: its top level with the frame's top, kept on screen.
-        var boxX = r.maxX + m.positionGap
-        if boxX + positionSize.width > screen.maxX - m.screenMargin {
-            boxX = r.minX - m.positionGap - positionSize.width
-        }
-        boxX = Self.clamp(
-            boxX, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - positionSize.width)
+        // Position box: its top level with the frame's top, kept on screen: right of the frame, or
+        // left of it when the right has no room. Where that covers `positionAvoiding`, the first of
+        // the frame's other side and beyond the avoided rect, away from the frame, that has room and
+        // covers nothing.
         let boxY = Self.clamp(
             r.maxY - positionSize.height, lower: screen.minY + m.screenMargin,
             upper: screen.maxY - m.screenMargin - positionSize.height)
+        let fits = { (x: CGFloat) in
+            x >= screen.minX + m.screenMargin && x + positionSize.width <= screen.maxX - m.screenMargin
+        }
+        let isClear = { (x: CGFloat) in
+            !CGRect(x: x, y: boxY, width: positionSize.width, height: positionSize.height)
+                .intersects(positionAvoiding)
+        }
+        let rightX = r.maxX + m.positionGap
+        let leftX = r.minX - m.positionGap - positionSize.width
+        var boxX = rightX + positionSize.width <= screen.maxX - m.screenMargin ? rightX : leftX
+        if !isClear(boxX) {
+            // Beyond the avoided rect: on its side away from the frame.
+            let avoided = positionAvoiding
+            let beyond =
+                avoided.midX < r.midX
+                ? avoided.minX - m.positionGap - positionSize.width : avoided.maxX + m.positionGap
+            boxX = [rightX, leftX, beyond].first { fits($0) && isClear($0) } ?? boxX
+        }
+        boxX = Self.clamp(
+            boxX, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - positionSize.width)
         positionRect = CGRect(
             x: boxX.rounded(), y: boxY.rounded(), width: positionSize.width, height: positionSize.height)
 

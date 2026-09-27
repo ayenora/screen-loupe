@@ -5,8 +5,9 @@ import CoreGraphics
 enum StudioPlacement {
     /// The frame's size the first time, shrunk to fit its display.
     static let defaultFrameSize = CGSize(width: 1440, height: 900)
-    /// Between the frame's rect and the palette: clear of the frame's band and handles.
-    static let paletteGap: CGFloat = 16
+    /// Between the frame's rect and the palette: wider than the frame's hover zone
+    /// (`OverlayMetrics.hoverReach`), so the pointer on the palette never reveals the frame's handles.
+    static let paletteGap: CGFloat = 32
     /// Kept free at the display's edges.
     static let screenMargin: CGFloat = 8
     /// Kept free above and below the frame, for its tab and size label.
@@ -25,20 +26,20 @@ enum StudioPlacement {
             width: size.width, height: size.height)
     }
 
-    /// The palette's origin: right of `frame`, its top level with the frame's top; left of it when
-    /// there is no room on the right; at the display's right edge, over the frame, when there is room
+    /// The palette's origin: left of `frame`, its top level with the frame's top; right of it when
+    /// there is no room on the left; at the display's left edge, over the frame, when there is room
     /// on neither side. Always inside `visibleFrame`.
     static func paletteOrigin(size: CGSize, beside frame: CGRect, in visibleFrame: CGRect) -> CGPoint {
-        let right = frame.maxX + paletteGap
         let left = frame.minX - paletteGap - size.width
-        let maxX = visibleFrame.maxX - screenMargin - size.width
+        let right = frame.maxX + paletteGap
+        let minX = visibleFrame.minX + screenMargin
         let x: CGFloat
-        if right <= maxX {
-            x = right
-        } else if left >= visibleFrame.minX + screenMargin {
+        if left >= minX {
             x = left
+        } else if right <= visibleFrame.maxX - screenMargin - size.width {
+            x = right
         } else {
-            x = maxX
+            x = minX
         }
         let y = min(
             max(frame.maxY - size.height, visibleFrame.minY + screenMargin),
@@ -49,8 +50,9 @@ enum StudioPlacement {
     /// Between the palette and the Size list.
     static let popoverGap: CGFloat = 6
 
-    /// The Size list's origin: right of `palette`, or left of it when there is no room on the right,
-    /// its top level with `anchorTop` (the Size button's top); always inside `visibleFrame`, vertically.
+    /// The Size list's origin: right of `palette`, towards the frame it sits left of, or left of it
+    /// when there is no room on the right, its top level with `anchorTop` (the Size button's top);
+    /// always inside `visibleFrame`, vertically.
     static func popoverOrigin(
         size: CGSize, beside palette: CGRect, anchorTop: CGFloat, in visibleFrame: CGRect
     )
@@ -62,5 +64,27 @@ enum StudioPlacement {
             max(anchorTop - size.height, visibleFrame.minY + screenMargin),
             visibleFrame.maxY - screenMargin - size.height)
         return CGPoint(x: x.rounded(), y: y.rounded())
+    }
+
+    /// Between the palette and a button's hover label.
+    static let hoverLabelGap: CGFloat = 6
+
+    /// The x of a hover label `width` wide: beside `palette` on its side away from `frame`, or
+    /// towards the frame when that side has no room in `visibleFrame`; right of the palette without a
+    /// frame.
+    static func hoverLabelX(
+        width: CGFloat, beside palette: CGRect, frame: CGRect?, in visibleFrame: CGRect
+    ) -> CGFloat {
+        let left = palette.minX - hoverLabelGap - width
+        let right = palette.maxX + hoverLabelGap
+        let fitsLeft = left >= visibleFrame.minX
+        let fitsRight = right + width <= visibleFrame.maxX
+        let x: CGFloat
+        if let frame, frame.midX > palette.midX {
+            x = fitsLeft || !fitsRight ? left : right
+        } else {
+            x = fitsRight || !fitsLeft ? right : left
+        }
+        return x.rounded()
     }
 }

@@ -265,6 +265,75 @@ struct OverlayPositionBoxTests {
         #expect(l.positionRect.maxY == CGFloat(900 - 6))
     }
 
+    @Test func boxGoesLeftOfTheFrameWhenItWouldCoverTheAvoidedRectOnTheRight() {
+        let palette = CGRect(x: 320, y: 0, width: 36, height: 500)
+        let l = OverlayLayout(
+            captureRect: CGRect(x: 100, y: 100, width: 200, height: 100), screenFrame: screen, tabWidth: 180,
+            labelWidth: 60, positionSize: box, positionAvoiding: palette)
+        #expect(l.positionRect == CGRect(x: 100 - 12 - 50, y: 140, width: 50, height: 60))
+        #expect(!l.positionRect.intersects(palette))
+    }
+
+    @Test func boxStaysRightWhenTheAvoidedRectIsOnTheLeft() {
+        let palette = CGRect(x: 30, y: 0, width: 36, height: 500)
+        let l = OverlayLayout(
+            captureRect: CGRect(x: 100, y: 100, width: 200, height: 100), screenFrame: screen, tabWidth: 180,
+            labelWidth: 60, positionSize: box, positionAvoiding: palette)
+        #expect(l.positionRect.minX == CGFloat(312))
+    }
+
+    @Test func boxGoesBeyondTheAvoidedRectWhenNeitherSideOfTheFrameIsFree() {
+        // The frame at the screen's right edge, the palette left of it: no room on the right, and the
+        // left side is the palette's.
+        let frame = CGRect(x: 1200, y: 100, width: 220, height: 100)
+        let palette = CGRect(x: 1200 - 32 - 36, y: 0, width: 36, height: 500)
+        let l = OverlayLayout(
+            captureRect: frame, screenFrame: screen, tabWidth: 180, labelWidth: 60, positionSize: box,
+            positionAvoiding: palette)
+        #expect(l.positionRect.maxX == palette.minX - 12)
+        #expect(!l.positionRect.intersects(palette))
+    }
+
+    @Test func boxGoesBeyondAnAvoidedRectRightOfTheFrameAwayFromTheFrame() {
+        // The frame at the screen's left edge, the palette right of it.
+        let frame = CGRect(x: 10, y: 100, width: 300, height: 100)
+        let palette = CGRect(x: 310 + 32, y: 0, width: 36, height: 500)
+        let l = OverlayLayout(
+            captureRect: frame, screenFrame: screen, tabWidth: 180, labelWidth: 60, positionSize: box,
+            positionAvoiding: palette)
+        #expect(l.positionRect.minX == palette.maxX + 12)
+    }
+
+    @Test func boxKeepsItsPlaceWhenThereIsNoFreeRoom() {
+        // A palette as wide as the screen: nowhere is free, so the box goes where it would anyway.
+        let palette = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let l = OverlayLayout(
+            captureRect: CGRect(x: 100, y: 100, width: 200, height: 100), screenFrame: screen, tabWidth: 180,
+            labelWidth: 60, positionSize: box, positionAvoiding: palette)
+        #expect(l.positionRect.minX == CGFloat(312))
+    }
+
+    @Test func boxOnADisplayWithNegativeCoordinatesAvoidsTheRect() {
+        let display = CGRect(x: -1920, y: -300, width: 1920, height: 1080)
+        let frame = CGRect(x: -1500, y: -100, width: 800, height: 500)
+        let palette = CGRect(x: -668, y: 0, width: 36, height: 400)
+        let l = OverlayLayout(
+            captureRect: frame, screenFrame: display, tabWidth: 180, labelWidth: 60, positionSize: box,
+            positionAvoiding: palette)
+        #expect(l.positionRect.maxX == frame.minX - 12)
+        #expect(!l.positionRect.intersects(palette))
+    }
+
+    @Test func boxAvoidsNothingByDefault() {
+        let frame = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let plain = OverlayLayout(
+            captureRect: frame, screenFrame: screen, tabWidth: 180, labelWidth: 60, positionSize: box)
+        let avoidingNull = OverlayLayout(
+            captureRect: frame, screenFrame: screen, tabWidth: 180, labelWidth: 60, positionSize: box,
+            positionAvoiding: .null)
+        #expect(plain.positionRect == avoidingNull.positionRect)
+    }
+
     @Test func pinnedFrameOnlyAnswersItsButtons() {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.hitTarget(at: CGPoint(x: l.pinRect.midX, y: l.pinRect.midY), lock: .pinned) == .pin)

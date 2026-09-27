@@ -1,15 +1,18 @@
 import AppKit
 
-/// The Screenshot studio's palette (docs/product.md, Screenshot studio): a narrow floating strip of
-/// icon buttons, dragged by the grab bar at its top and parked anywhere, apart from the frame.
+/// The Screenshot studio's palette (docs/product.md, Screenshot studio): the Viewer's toolbar turned
+/// upright — its buttons in floating groups, dragged by the grab bar at the top of the first group
+/// and parked anywhere, apart from the frame.
 ///
 /// A non-activating panel, so a click on it leaves the app the user works in active. AppKit shows
 /// tooltips only while the app is active, so the palette names the hovered button itself, in a small
 /// label beside it. Its buttons call the studio controller directly.
+///
+/// `NSToolbar` draws its own look: a `.toolbar`-bezel button outside a toolbar is bordered and shows
+/// its on state in the accent colour. So the palette draws the toolbar's look itself (`ToolbarLook`).
 @MainActor
 final class StudioPalette: NSPanel {
-    static let width: CGFloat = 40
-    private static let buttonSize = CGSize(width: 30, height: 28)
+    static var width: CGFloat { ToolbarLook.current.buttonSize.width }
     /// How long the pointer rests on a button before its name shows.
     private static let hoverDelay: TimeInterval = 0.5
 
@@ -33,6 +36,9 @@ final class StudioPalette: NSPanel {
     var onDragStarted: (() -> Void)?
     /// Called when the user has dragged the palette to a new place.
     var onMoved: (() -> Void)?
+    /// The studio's frame, in AppKit global coordinates: hover labels show on the palette's side away
+    /// from it.
+    var studioFrame: (() -> CGRect?)?
 
     /// Floats above other apps' windows, below the studio's frame (`.statusBar`).
     var keepsOnTop = false {
@@ -119,17 +125,10 @@ final class StudioPalette: NSPanel {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
-        let capture = Self.button("camera.fill", "Capture — Copy and Save", #selector(captureClicked))
-        capture.isBordered = false
-        capture.wantsLayer = true
-        capture.layer?.backgroundColor = SettingsColor.studio.nsColor.cgColor
-        capture.layer?.cornerRadius = 6
-        capture.contentTintColor = .white
         Self.configure(saveButton, "square.and.arrow.down", "Save…", #selector(saveClicked))
         Self.configure(onTopButton, "pin", "Keep on Top", #selector(onTopClicked))
         onTopButton.setButtonType(.pushOnPushOff)
@@ -156,65 +155,37 @@ final class StudioPalette: NSPanel {
         Self.configure(pointerButton, "cursorarrow", "Include the Pointer", #selector(pointerClicked))
         pointerButton.setButtonType(.pushOnPushOff)
 
-        let separators = (0..<3).map { _ in
-            let separator = NSBox()
-            separator.boxType = .separator
-            separator.widthAnchor.constraint(equalToConstant: 24).isActive = true
-            return separator
-        }
         let grabBar = GrabBar()
         grabBar.onMoved = { [weak self] in self?.onMoved?() }
         grabBar.onDragStarted = { [weak self] in self?.onDragStarted?() }
-        let stack = NSStackView(views: [
-            grabBar,
-            capture,
-            Self.button("doc.on.doc", "Copy", #selector(copyClicked)),
-            saveButton,
-            separators[0],
-            Self.button("arrow.up.left.and.arrow.down.right", "Size", #selector(sizeClicked)),
-            aspectLockButton,
-            timerButton,
-            separators[1],
-            backgroundButton,
-            leaveOutWindowsButton,
-            oneWindowButton,
-            dockButton,
-            pointerButton,
-            separators[2],
-            onTopButton,
-            Self.button("eye.slash", "Hide Screenshot Studio", #selector(hideClicked)),
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 4
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 5, bottom: 6, right: 5)
-        for case let button as NSButton in stack.arrangedSubviews {
+        // The toolbar's groups, apart as its items around a space are.
+        let groups: [[NSView]] = [
+            [
+                grabBar,
+                Self.button("camera", "Capture — Copy and Save", #selector(captureClicked)),
+                Self.button("doc.on.doc", "Copy", #selector(copyClicked)),
+                saveButton,
+            ],
+            [
+                Self.button("arrow.up.left.and.arrow.down.right", "Size", #selector(sizeClicked)),
+                aspectLockButton,
+                timerButton,
+            ],
+            [backgroundButton, leaveOutWindowsButton, oneWindowButton, dockButton, pointerButton],
+            [onTopButton, Self.button("eye.slash", "Hide Screenshot Studio", #selector(hideClicked))],
+        ]
+        for case let button as NSButton in groups.joined() {
             button.target = self
         }
-        // A group of buttons, then a separator with a little more room on each side.
-        stack.setCustomSpacing(6, after: saveButton)
-        stack.setCustomSpacing(6, after: separators[0])
-        stack.setCustomSpacing(6, after: timerButton)
-        stack.setCustomSpacing(6, after: separators[1])
-        stack.setCustomSpacing(6, after: pointerButton)
-        stack.setCustomSpacing(6, after: separators[2])
-
-        let background = NSVisualEffectView()
-        background.material = .popover
-        background.blendingMode = .behindWindow
-        background.state = .active
-        background.maskImage = Self.roundedMask(radius: 10)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: background.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: background.bottomAnchor),
-            stack.widthAnchor.constraint(equalToConstant: Self.width),
-        ])
-        contentView = background
-        setContentSize(background.fittingSize)
+        let look = ToolbarLook.current
+        let stack = NSStackView(views: groups.map(look.group))
+        stack.orientation = .vertical
+        stack.spacing = look.groupSpacing
+        // The glass draws its own edge and shadow; the older groups get the window's.
+        hasShadow = !look.isGlass
+        let content = look.container(stack)
+        contentView = content
+        setContentSize(content.fittingSize)
     }
 
     /// A click on a button goes to its action without first making the panel key.
@@ -241,16 +212,15 @@ final class StudioPalette: NSPanel {
         }
     }
 
-    /// Right of the palette, or left of it at the display's right edge, level with the button.
+    /// Beside the palette on its side away from the studio's frame (`StudioPlacement.hoverLabelX`),
+    /// level with the button.
     private func showLabel(for button: PaletteButton) {
         hoverTimer = nil
         guard isVisible, let name = button.name else { return }
         let size = CGSize(width: OverlayStyle.labelWidth(for: name), height: OverlayMetrics.standard.labelHeight)
         let buttonFrame = convertToScreen(button.convert(button.bounds, to: nil))
         let visible = screen?.visibleFrame ?? frame
-        let gap: CGFloat = 6
-        var x = frame.maxX + gap
-        if x + size.width > visible.maxX { x = frame.minX - gap - size.width }
+        let x = StudioPlacement.hoverLabelX(width: size.width, beside: frame, frame: studioFrame?(), in: visible)
         // At the palette's level, so it also shows above the window picker's panels.
         hoverLabel.level = level
         hoverLabel.show(
@@ -267,14 +237,17 @@ final class StudioPalette: NSPanel {
     }
 
     private static func configure(_ button: PaletteButton, _ symbol: String, _ title: String, _ action: Selector) {
-        button.bezelStyle = .toolbar
+        button.isBordered = false
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
         button.imagePosition = .imageOnly
+        // At the symbol's own size, as the toolbar shows it.
+        button.imageScaling = .scaleNone
+        button.contentTintColor = .labelColor
         button.name = title
-        button.setAccessibilityHelp(title)
         button.action = action
-        button.widthAnchor.constraint(equalToConstant: buttonSize.width).isActive = true
-        button.heightAnchor.constraint(equalToConstant: buttonSize.height).isActive = true
+        let size = ToolbarLook.current.buttonSize
+        button.widthAnchor.constraint(equalToConstant: size.width).isActive = true
+        button.heightAnchor.constraint(equalToConstant: size.height).isActive = true
     }
 
     @objc private func captureClicked() { onCapture?() }
@@ -345,6 +318,77 @@ final class StudioPalette: NSPanel {
     }
 }
 
+/// The Viewer toolbar's look as `NSToolbar` draws it on this macOS. From macOS 26 its items sit
+/// flush in Liquid Glass capsules as tall as the bar, 36 pt, 8 pt apart around a space, and a toggle
+/// that is on shows a `systemFill` capsule inset 4 to 5 pt. Before, the items sit on the titlebar's
+/// material, and a toggle that is on shows a rounded `systemFill` rect.
+private struct ToolbarLook {
+    let isGlass: Bool
+    let buttonSize: CGSize
+    let fillInset: CGSize
+    /// `nil` for a capsule.
+    let fillRadius: CGFloat?
+    let groupRadius: CGFloat
+    let groupSpacing: CGFloat = 8
+
+    static let current: ToolbarLook =
+        if #available(macOS 26.0, *) {
+            ToolbarLook(
+                isGlass: true, buttonSize: CGSize(width: 36, height: 36), fillInset: CGSize(width: 5, height: 4),
+                fillRadius: nil, groupRadius: 18)
+        } else {
+            ToolbarLook(
+                isGlass: false, buttonSize: CGSize(width: 32, height: 28), fillInset: CGSize(width: 2, height: 2),
+                fillRadius: 6, groupRadius: 8)
+        }
+
+    /// `views` one under another on a group's background.
+    @MainActor func group(_ views: [NSView]) -> NSView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.spacing = 0
+        if #available(macOS 26.0, *), isGlass {
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = groupRadius
+            glass.contentView = stack
+            return glass
+        }
+        let background = NSVisualEffectView()
+        background.material = .titlebar
+        background.blendingMode = .behindWindow
+        background.state = .active
+        background.maskImage = StudioPalette.roundedMask(radius: groupRadius)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: background.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+        ])
+        return background
+    }
+
+    /// The groups' holder: with glass, a container, so the capsules are drawn together as the
+    /// toolbar's are.
+    @MainActor func container(_ groups: NSView) -> NSView {
+        if #available(macOS 26.0, *), isGlass {
+            let container = NSGlassEffectContainerView()
+            container.contentView = groups
+            return container
+        }
+        return groups
+    }
+
+    /// The on or pressed fill of a button with `bounds`.
+    @MainActor func drawFill(in bounds: CGRect) {
+        let rect = bounds.insetBy(dx: fillInset.width, dy: fillInset.height)
+        let radius = fillRadius ?? min(rect.width, rect.height) / 2
+        NSColor.systemFill.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+    }
+}
+
 /// A button that takes the first click although the palette never becomes key, and tells the
 /// palette while the pointer rests on it.
 private final class PaletteButton: NSButton {
@@ -352,6 +396,12 @@ private final class PaletteButton: NSButton {
     var name: String?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// The toolbar's on and pressed look, under the symbol.
+    override func draw(_ dirtyRect: NSRect) {
+        if state == .on || isHighlighted { ToolbarLook.current.drawFill(in: bounds) }
+        super.draw(dirtyRect)
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -390,7 +440,7 @@ private final class HoverLabelWindow: NSPanel {
     }
 }
 
-/// The handle at the palette's top: dragging it moves the palette.
+/// The handle at the top of the palette's first group: dragging it moves the palette.
 private final class GrabBar: NSView {
     /// Called on the first move of a drag.
     var onDragStarted: (() -> Void)?
@@ -399,7 +449,7 @@ private final class GrabBar: NSView {
     private var dragStart: (mouse: CGPoint, origin: CGPoint)?
     private var hasDragged = false
 
-    override var intrinsicContentSize: NSSize { NSSize(width: StudioPalette.width, height: 14) }
+    override var intrinsicContentSize: NSSize { NSSize(width: StudioPalette.width, height: 16) }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func resetCursorRects() {

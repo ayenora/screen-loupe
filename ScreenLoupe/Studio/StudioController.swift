@@ -49,6 +49,7 @@ final class StudioController {
     private var dimTimer: Timer?
     private var dimTicks = 0
     private let colorTarget = ColorPanelTarget()
+    private var paletteMoveObserver: NSObjectProtocol?
     /// The decoded background image, by its file name.
     private var backgroundImage: (fileName: String, maxPixelSize: PixelSize, image: CGImage)?
     /// Where the chosen background image is copied, in the app's container.
@@ -81,9 +82,16 @@ final class StudioController {
         palette.onToggleOnTop = { [weak self] in self?.toggleKeepOnTop() }
         palette.onHide = { [weak self] in self?.hide() }
         palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
+        palette.studioFrame = { [weak self] in self?.frame.captureRect }
         palette.onMoved = { [weak self] in
             guard let self else { return }
             settings.update { $0.studioPaletteOrigin = self.palette.frame.origin }
+        }
+        // The frame's position box keeps off the palette, wherever it is moved.
+        paletteMoveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification, object: palette, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updatePositionAvoiding() }
         }
         settings.observe(\.studioOnTop) { [weak self] in self?.palette.keepsOnTop = $0 }
         settings.observe(\.studioAspectLocked) { [weak self] in self?.palette.aspectLocked = $0 }
@@ -119,6 +127,7 @@ final class StudioController {
         frame.show()
         if !palette.isVisible { placePalette() }
         palette.orderFrontRegardless()
+        updatePositionAvoiding()
         dropClosedWindows()
         updateDimmed()
         checkOneWindow()
@@ -130,6 +139,7 @@ final class StudioController {
         windowPicker?.stop()
         frame.hide()
         palette.orderOut(nil)
+        updatePositionAvoiding()
         updateDimmed()
         advance(.hidden)
         send(.hidden)
@@ -138,6 +148,10 @@ final class StudioController {
 
     func toggle() {
         isVisible ? hide() : show()
+    }
+
+    private func updatePositionAvoiding() {
+        frame.positionAvoiding = palette.isVisible ? palette.frame : .null
     }
 
     func toggleKeepOnTop() {

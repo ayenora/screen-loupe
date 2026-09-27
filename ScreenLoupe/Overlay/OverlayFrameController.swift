@@ -83,6 +83,12 @@ final class OverlayFrameController {
         didSet { if tabNote != oldValue { apply(captureRect, persist: false) } }
     }
 
+    /// A rect the position box never covers, in AppKit global coordinates: the studio's palette while
+    /// it shows; `.null` for none.
+    var positionAvoiding = CGRect.null {
+        didSet { if positionAvoiding != oldValue { apply(captureRect, persist: false) } }
+    }
+
     /// The rect's size in pixels of the display it is on, or `nil` when it is on no display.
     var pixelSize: PixelSize? {
         guard let converter, let display = converter.owningDisplay(for: GlobalRect(rect: captureRect)) else {
@@ -477,6 +483,7 @@ final class OverlayFrameController {
             tabWidth: OverlayStyle.tabWidth(for: tabText),
             labelWidth: OverlayStyle.labelWidth(for: labelText),
             positionSize: positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines),
+            positionAvoiding: positionAvoiding,
             noticeWidth: noticeText.map(OverlayStyle.labelWidth(for:)) ?? 0,
             lockButtons: kind.hasLocks
         )
