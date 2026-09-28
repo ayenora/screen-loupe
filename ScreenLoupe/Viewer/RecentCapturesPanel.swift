@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
 /// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
-/// newest first — thumbnail, "Snapshot" or the image file's name, its size and time, and Delete.
-/// Clicking a row shows it in the Viewer. Every size but the camera button's is multiplied by `captures.scale`, so the
+/// newest first — square thumbnail, "Snapshot" or the image file's name, its size, its date and time,
+/// and Delete. Clicking a row shows it in the Viewer. Every size but the camera button's is multiplied by `captures.scale`, so the
 /// panel grows with the column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
@@ -72,7 +72,7 @@ private struct LiveRow: View {
 
     var body: some View {
         HStack(spacing: 10 * s) {
-            // Square, as tall as a capture's thumbnail, so the size text has the width.
+            // Square, as a capture's thumbnail, so the size text has the width.
             Image(systemName: "viewfinder")
                 .font(.system(size: 20 * s, weight: .regular))
                 .foregroundStyle(isShown ? Color.accentColor : .secondary)
@@ -162,10 +162,14 @@ private struct CaptureRow: View {
             thumbnail
             VStack(alignment: .leading, spacing: 2 * s) {
                 Text(capture.name).font(.system(size: 12 * s, weight: .semibold)).lineLimit(1)
-                Text(capture.details)
-                    .font(.system(size: 11 * s).monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Group {
+                    Text(capture.sizeText)
+                    Text(capture.dateText)
+                }
+                .font(.system(size: 11 * s).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button {
@@ -190,8 +194,13 @@ private struct CaptureRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { captures.show(capture.id) }
+        // One element, with Show and Delete as its actions.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(capture.name), \(capture.sizeText), \(capture.dateText)")
         .accessibilityAddTraits(isShown ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { captures.show(capture.id) }
         .accessibilityAction(named: "Show") { captures.show(capture.id) }
+        .accessibilityAction(named: "Delete capture") { captures.remove(capture.id) }
     }
 
     private var thumbnail: some View {
@@ -199,14 +208,14 @@ private struct CaptureRow: View {
             if let image = capture.thumbnail {
                 // A tiny kept crop is magnified, so its pixels stay sharp as in the Viewer; a larger
                 // one is scaled down smoothly.
-                let fit = min(76 * s / CGFloat(image.width), 50 * s / CGFloat(image.height)) * displayScale
+                let fit = 50 * s / CGFloat(max(image.width, image.height)) * displayScale
                 Image(decorative: image, scale: 1).resizable().interpolation(fit > 1 ? .none : .medium)
                     .scaledToFit()
             } else {
                 Color.secondary.opacity(0.2)
             }
         }
-        .frame(width: 76 * s, height: 50 * s)
+        .frame(width: 50 * s, height: 50 * s)
         .background(Color.secondary.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 4 * s))
         .overlay(RoundedRectangle(cornerRadius: 4 * s).strokeBorder(Color(nsColor: .separatorColor)))

@@ -28,10 +28,16 @@ struct RecentCapture: Identifiable {
         return formatter
     }()
 
+    /// The user's locale and time zone, following changes to the time zone while the app runs.
+    private static let dateFormatter = RecentCaptureRules.dateFormatter(
+        locale: .autoupdatingCurrent, timeZone: .autoupdatingCurrent)
+
     var time: String { Self.timeFormatter.string(from: date) }
 
-    /// "294 × 239 px · 14:20:05": the kept picture's own size, and when it was kept.
-    var details: String { "\(RecentCaptureRules.sizeText(frame.layout.size)) · \(time)" }
+    /// "294 × 239 px": the kept picture's own size.
+    var sizeText: String { RecentCaptureRules.sizeText(frame.layout.size) }
+    /// "7/12, 14:32:05": when it was kept, in the user's format.
+    var dateText: String { Self.dateFormatter.string(from: date) }
 }
 
 /// The last snapshots of the Capture Area and images opened from files, kept in memory until the
@@ -41,8 +47,9 @@ struct RecentCapture: Identifiable {
 @Observable
 final class RecentCaptures {
     static let limit = RecentCaptureRules.limit
-    /// The side of a thumbnail's box in pixels: 2× the panel's widest row thumbnail.
-    nonisolated private static let thumbnailBox = CGSize(width: 200, height: 132)
+    /// A thumbnail's box in pixels: 2× the panel's largest square thumbnail, 50 pt at the widest
+    /// column's scale (320 / 250), 64 pt.
+    nonisolated private static let thumbnailBox = CGSize(width: 128, height: 128)
 
     /// Newest first.
     private(set) var captures: [RecentCapture] = []

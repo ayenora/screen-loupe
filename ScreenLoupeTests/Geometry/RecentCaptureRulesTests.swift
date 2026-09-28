@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 
 struct SnapshotFrameTests {
@@ -90,6 +91,48 @@ struct RecentCaptureSizeTextTests {
 
     @Test func aSinglePixel() {
         #expect(RecentCaptureRules.sizeText(PixelSize(width: 1, height: 1)) == "1 × 1 px")
+    }
+}
+
+struct RecentCaptureDateTextTests {
+    private let utc = TimeZone(identifier: "UTC")!
+
+    /// 12 July 2026, `hour`:32:05 UTC.
+    private func july12(hour: Int = 14) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        return calendar.date(from: DateComponents(year: 2026, month: 7, day: 12, hour: hour, minute: 32, second: 5))!
+    }
+
+    private func text(_ date: Date, _ locale: String, timeZone: TimeZone? = nil) -> String {
+        RecentCaptureRules.dateFormatter(locale: Locale(identifier: locale), timeZone: timeZone ?? utc)
+            .string(from: date)
+    }
+
+    /// Month first, and the 24-hour time although the US writes 12-hour.
+    @Test func theUSWritesMonthFirstIn24Hours() {
+        #expect(text(july12(), "en_US") == "7/12, 14:32:05")
+    }
+
+    @Test func theUKWritesDayFirst() {
+        #expect(text(july12(), "en_GB") == "12/07, 14:32:05")
+    }
+
+    @Test func germanyWritesDotsAfterDayAndMonth() {
+        #expect(text(july12(), "de_DE") == "12.7., 14:32:05")
+    }
+
+    @Test func russiaWritesDotsWithTwoDigitMonths() {
+        #expect(text(july12(), "ru_RU") == "12.07, 14:32:05")
+    }
+
+    @Test func midnightIsZeroHours() {
+        #expect(text(july12(hour: 0), "en_US") == "7/12, 00:32:05")
+    }
+
+    /// The instant in the given time zone: past midnight in Tokyo it is the next day.
+    @Test func theTimeZoneMovesTheDayAndHour() {
+        #expect(text(july12(hour: 20), "en_US", timeZone: TimeZone(identifier: "Asia/Tokyo")!) == "7/13, 05:32:05")
     }
 }
 

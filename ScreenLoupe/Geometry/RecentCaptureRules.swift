@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// What Recent Captures keeps and how its rows read (docs/product.md, Recent Captures).
 enum RecentCaptureRules {
@@ -49,5 +50,16 @@ enum RecentCaptureRules {
     /// A row's size: "294 × 239 px", the kept picture's own pixels.
     static func sizeText(_ size: PixelSize) -> String {
         "\(size.width) × \(size.height) px"
+    }
+
+    /// Writes a row's date and time: month and day as `locale` writes them, then the 24-hour time
+    /// with seconds — "7/12, 14:32:05" in the US, "12/07, 14:32:05" in the UK. Made once and reused,
+    /// as a formatter is costly to make.
+    static func dateFormatter(locale: Locale, timeZone: TimeZone) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate("MdHHmmss")
+        return formatter
     }
 }
