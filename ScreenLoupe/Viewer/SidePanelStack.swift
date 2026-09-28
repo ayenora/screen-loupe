@@ -27,7 +27,7 @@ extension Settings {
 /// Captures (docs/product.md, References and Recent Captures). With two open only one is expanded
 /// and fills the height; the other is a strip in its place that expands it when clicked.
 ///
-/// Dragging the left edge widens the column within `SidePanel.widthRange`, and everything in it grows
+/// Dragging the left edge (`SidePanelEdge`, a 5 pt strip) widens the column within `SidePanel.widthRange`, and everything in it grows
 /// in proportion: each panel multiplies its own fonts, sizes and spacings by `scale`. No drawing
 /// transform is involved, so clicks land where things are drawn. The Color Meter scrolls when the
 /// column is short.
@@ -38,8 +38,6 @@ final class SidePanelStack: NSView {
     /// Called with the content scale, 1 at the narrowest, whenever the width changes.
     var onScale: ((CGFloat) -> Void)?
 
-    /// How far into the column the left edge can be grabbed, in points.
-    private static let edgeGrab: CGFloat = 5
     private static let stripHeight: CGFloat = 32
 
     private let meterPanel: ColorMeterPanel
@@ -155,31 +153,32 @@ final class SidePanelStack: NSView {
         window?.invalidateCursorRects(for: self)
     }
 
-    private var edgeRect: CGRect {
-        CGRect(x: 0, y: 0, width: Self.edgeGrab, height: bounds.height)
-    }
-
     override func resetCursorRects() {
-        addCursorRect(edgeRect, cursor: .resizeLeftRight)
+        addCursorRect(SidePanelEdge.grabRect(in: bounds), cursor: .resizeLeftRight)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden else { return nil }
-        return edgeRect.contains(convert(point, from: superview)) ? self : super.hitTest(point)
+        return SidePanelEdge.grabs(convert(point, from: superview), in: bounds) ? self : super.hitTest(point)
     }
 
+    // A panel passes a mouse-down it doesn't take (a label, a blank area) up the responder chain to
+    // this view, so only one on the edge starts a resize.
     override func mouseDown(with event: NSEvent) {
+        guard SidePanelEdge.grabs(convert(event.locationInWindow, from: nil), in: bounds) else {
+            return super.mouseDown(with: event)
+        }
         resizeStart = (event.locationInWindow.x, width)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let start = resizeStart else { return }
+        guard let start = resizeStart else { return super.mouseDragged(with: event) }
         // Dragging left widens the column.
         width = start.width + start.mouseX - event.locationInWindow.x
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard resizeStart != nil else { return }
+        guard resizeStart != nil else { return super.mouseUp(with: event) }
         resizeStart = nil
         onResize?(width)
     }
