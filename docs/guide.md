@@ -11,24 +11,30 @@ Screen Loupe shows one spot of your screen magnified in a window of its own, whi
 ## Getting started
 
 1. Open the DMG and drag Screen Loupe to Applications. It needs macOS 14 Sonoma or later.
-2. Open it. The first time, the Viewer asks for **Screen Recording** access: click Grant Access, turn Screen Loupe on in System Settings › Privacy & Security › Screen Recording, and reopen the app when macOS asks.
+2. Open it. The first time, the Viewer asks for **Screen Recording** access: click Grant Access, turn Screen Loupe on in System Settings › Privacy & Security › Screen Recording, and reopen the app when macOS asks. On macOS 15 and later the list is called **Screen & System Audio Recording**; the app captures no audio.
 3. A blue frame — the **Capture Area** — appears on screen, and the **Viewer** window beside it shows what is inside the frame, live.
 
 Closing the Viewer hides the frame too; the app stays in the menu bar (the magnifier icon). Show Viewer there, or click the Dock icon, brings both back.
 
 ## The Capture Area
 
-- **Move** it by its line or the grip tab above it; **resize** it by the handles that appear when the pointer comes near.
+- **Move** it by its line or the grip tab above it; **resize** it by the handles that appear when the pointer comes near. Hold **Shift** on a corner to keep it square.
 - **Clicks inside go to the app underneath**, so you keep working there.
 - **Arrow keys** move it by one pixel (Shift: ten); with Option they resize it. Click the frame first.
 - **Snap with ⌘:** hold ⌘ while moving or resizing, and an edge near a window's or a display's edge snaps onto it.
-- **Fit to a window:** the window button beside the tab, Window › Fit Capture Area to Window…, or ⌃⌥⌘W. Point at a window — it is tinted — and click: the frame takes exactly that window. The click doesn't reach the app, so nothing is tapped. Escape cancels.
-- **Pin** (the pin beside the tab) locks the frame against stray drags. The next button brings the Viewer forward when another window covers it.
+- **Fit to a window:** the window button behind » beside the tab, Window › Fit Capture Area to Window…, or ⌃⌥⌘W. Point at a window — it is tinted — and click: the frame takes exactly that window. The click doesn't reach the app, so nothing is tapped. Escape cancels.
+- **Pin** (the pin beside the tab) locks the frame against stray drags; a click turns it on or off, and its ▾ chooses how:
+  - **Pinned:** the frame neither moves nor resizes.
+  - **Fixed Position:** it can't be moved, but its handles still resize it — handy while a reference is aligned.
+  - **Magnet to Window…:** click a window, and the frame follows it as it moves, keeping its place on it — the Simulator, a browser window. When the window closes, hides, minimises or goes to another Space, the magnet lets go and says so; the frame stays where it was.
+- **»** beside the pin opens the buttons used less often: the viewport handle, bring the Viewer forward (when another window covers it) and Fit to Window. Rest the pointer on any button to see its name.
+- **The part the Viewer shows:** zoomed in, a dashed outline inside the frame marks what the Viewer shows, while you pan or zoom and while the pointer is near the frame.
+- **Viewport handle** (the dashed-rectangle button, View › Show Viewport Handle, or ⌃⌥⌘M): the outline stays, with a small handle beside it; drag the handle to pan the Viewer from the frame. Everything else inside the frame still goes to the app underneath.
 - The tab shows the size in points and pixels; on hover a box beside the frame shows its edges from the display's top-left corner.
 
 ## The Viewer
 
-- **Zoom:** the presets Fit, 100%–1600% in the toolbar, pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom field. Zoom keeps the point under the pointer in place.
+- **Zoom:** the toolbar's presets Fit, 1×, 2×, 4×, 8× and 16× (100% to 1600%), pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom field. Zoom keeps the point under the pointer in place.
 - **Pan:** drag, or scroll with two fingers.
 - **Nothing moves on its own.** Moving or resizing the frame keeps the Viewer's zoom and framing; Fit applies only when you ask for it.
 - **Size Window to Area** (View menu, ⌥⌘0) sizes the window to show the whole magnified area.
@@ -57,12 +63,27 @@ To copy just a part of the view:
 ## Tools
 
 - **Color Meter** (eyedropper button): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a pixel to pin its colour.
-- **Ruler** (⌘R): a corner ruler in screen pixels. Drag the line to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan.
+- **Ruler** (⌘R): a corner ruler in screen pixels. Drag the line or a length label to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan.
 - **Pixel grid:** lines on the pixel boundaries from 800% on.
 - **References:** lay design exports over the live pixels — Add… in the panel, or drop the files on the Viewer — set opacity, or switch to Difference — matching pixels turn black. To try it, open the [example page](examples/reference-check/) and add its [design export](examples/reference-check/design-export.png) as a reference.
-- **Recent Captures:** your last four copies, saves and opened images, kept to zoom, measure and pick colours on later. The Live row goes back to the live view.
+- **Recent Captures:** your last four copies, saves and opened or pasted images, kept to zoom, measure and pick colours on later. The Live row goes back to the live view.
 - **Open Image** (File › Open Image…, ⌘O, or the menu bar item): look at an image file — a screenshot, a design export, a photo — with the same tools: zoom, ruler, Color Meter (with opacity for transparent pixels), references, Copy and Save. Its colours stay in its own colour profile. It becomes a row in Recent Captures and stays in the Viewer, also with References open, until Escape goes back to live.
 - **Dropping images:** drag image files from Finder onto the Viewer. With References open they become reference layers; with Recent Captures open they open for inspection; otherwise a menu asks which.
+- **Pasting an image:** ⌘V in the Viewer takes an image from the clipboard — a design tool's Copy as PNG, a screenshot, image files copied in Finder — the same way as a drop. Edit › Paste as Reference and Paste for Inspection skip the question.
+
+## Screenshot studio
+
+A screenshot tool of its own, for exact, clean pictures — App Store and website screenshots, docs, bug reports. Screenshot › Show Screenshot Studio, or the menu bar item, shows an orange frame and a floating palette; the palette's close button hides them. They are apart from the Capture Area and the Viewer, so the Viewer can be in the picture, and every palette button is also in the Screenshot menu.
+
+- **The frame** moves and resizes like the Capture Area: handles, Shift for a square, ⌘ to snap, arrow keys, and Fit to Window.
+- **Capture, Copy, Save:** Copy puts the picture on the clipboard, Save asks where to save it, Capture does both. The picture is exactly the pixels inside the frame, at the display's resolution; the studio's own frame and palette are never in it, though they stay on screen. A frame across two displays isn't captured.
+- **Size:** the Mac App Store sizes (1280 × 800 to 2880 × 1800 px), web sizes, a size you type, or up to four of your own (Custom Size…). Sizes are in pixels of the frame's display.
+- **Aspect Lock** keeps the frame's proportions while you resize it.
+- **Timer:** 3, 5 or 10 seconds, to catch an open menu or a hover. Pressing Capture, Copy or Save again stops the countdown.
+- **Background:** the real screen, a colour, a gradient or an image of your own. It covers the display under every window, so you see on screen what the picture will show. Hide the Dock yourself (⌥⌘D) if it shouldn't be in the picture.
+- **One Window:** click a window to capture it alone, whole even where it is covered, centred in a picture of the frame's size, with or without its shadow (Window Shadow in the Background list), on a transparent or the chosen background. A green outline marks it; it ends by itself when the window closes or hides.
+- **Include the Pointer** puts the pointer in the picture.
+- **Output** (Screenshot › Output): PNG, JPEG or HEIC; sRGB or the display's colours; native pixels or 1× for the web. No date, device or location is written into the file.
 
 ## Keyboard shortcuts
 
@@ -71,6 +92,7 @@ In the Viewer:
 | Shortcut | Action |
 |---|---|
 | ⌘O | Open Image… |
+| ⌘V | Paste an image |
 | ⌘C / ⇧⌘C | Copy View / Copy Source |
 | ⌘S / ⇧⌘S | Save View… / Save Source… |
 | Space | Freeze / resume |
@@ -83,7 +105,7 @@ In the Viewer:
 | ⌥-drag | Copy a region |
 | Escape | Cancel a countdown, clear a selection, back to live |
 
-On the Capture Area (click it first): arrows move by 1 px, ⇧ by 10 px, ⌥ resizes; hold ⌘ while dragging to snap.
+On the Capture Area and the studio's frame (click it first): arrows move by 1 px, ⇧ by 10 px, ⌥ resizes; hold ⌘ while dragging to snap, ⇧ on a corner for a square.
 
 Global, from any app — each can be changed or cleared in Settings › Shortcuts:
 
@@ -95,6 +117,7 @@ Global, from any app — each can be changed or cleared in Settings › Shortcut
 | ⌃⌥⇧⌘C | Copy Source |
 | F13 | Freeze / Resume Viewer |
 | ⌃⌥⌘W | Fit Capture Area to Window |
+| ⌃⌥⌘M | Show / Hide Viewport Handle |
 
 ## Settings
 
@@ -103,5 +126,6 @@ Settings… (⌘,) has five tabs: General (launch at login, Dock or menu bar onl
 ## If something doesn't work
 
 - **The Viewer asks for access although you granted it:** quit and reopen the app; macOS applies Screen Recording access on launch.
+- **Screen Loupe is missing from the list, or it is on and the Viewer still asks:** select it in the list and remove it with −, add it again with + from Applications, turn it on and reopen the app. This happens most often after an update.
 - **A global shortcut is marked in Settings:** macOS or another app already uses it; choose another.
 - Something else: [open an issue](https://github.com/ayenora/screen-loupe/issues).
