@@ -159,20 +159,25 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     /// Called when a recent capture starts or stops showing.
     var onShowCapture: (() -> Void)?
 
-    /// Whether Take Snapshot can act: capture is allowed and there is a frame of the Capture Area.
-    var canTakeSnapshot: Bool { canCapture && content.hasSnapshotFrame }
+    /// The size of the frame Take Snapshot takes, while it can act: capture is allowed and there is
+    /// a frame of the Capture Area. `nil` otherwise.
+    private var snapshotSize: PixelSize? { canCapture ? content.snapshotFrameSize : nil }
 
-    /// Keeps the Capture Area's frame as a recent capture (`ViewerContentView.takeSnapshot`).
+    /// Whether Take Snapshot can act (`snapshotSize`).
+    var canTakeSnapshot: Bool { snapshotSize != nil }
+
+    /// Keeps what the live view shows as a recent capture (`ViewerContentView.takeSnapshot`).
     func takeSnapshot() {
         guard canTakeSnapshot else { return NSSound.beep() }
         content.takeSnapshot()
     }
 
-    /// Turns the panel's camera button on or off with `canTakeSnapshot`: on each frame, and when a
-    /// freeze, access or the stream changes.
+    /// Gives the panel the live frame's size, which turns its camera button on or off and names the
+    /// Live row's size: on each frame, and when a freeze, access or the stream changes. Set only on a
+    /// change, so the panel redraws only then.
     func refreshSnapshot() {
-        let can = canTakeSnapshot
-        if content.captures.canTakeSnapshot != can { content.captures.canTakeSnapshot = can }
+        let size = snapshotSize
+        if content.captures.liveSize != size { content.captures.liveSize = size }
     }
 
     /// Back to the live view: closing the Viewer, Escape.

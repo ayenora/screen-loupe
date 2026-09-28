@@ -87,4 +87,20 @@ enum ViewRegion {
         guard maxX - minX >= 1, maxY - minY >= 1 else { return nil }
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
+
+    /// The whole source pixels `region` (viewport pixels) touches, inside the image: what a snapshot
+    /// of the viewport keeps. An edge a float step past a pixel boundary stays on it: at a fractional
+    /// zoom, viewport ÷ zoom can come out just over or under a whole pixel. `nil` when it covers none
+    /// of the image.
+    static func sourceRect(of region: CGRect, in state: ZoomPanState) -> CGRect? {
+        let tolerance: CGFloat = 1e-6
+        let a = state.sourcePoint(forViewportPoint: CGPoint(x: region.minX, y: region.minY))
+        let b = state.sourcePoint(forViewportPoint: CGPoint(x: region.maxX, y: region.maxY))
+        let minX = (a.x + tolerance).rounded(.down)
+        let minY = (a.y + tolerance).rounded(.down)
+        let maxX = (b.x - tolerance).rounded(.up)
+        let maxY = (b.y - tolerance).rounded(.up)
+        return PixelSelection.clamped(
+            CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY), to: state.contentSize)
+    }
 }

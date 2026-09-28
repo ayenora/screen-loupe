@@ -411,20 +411,27 @@ final class ViewerContentView: NSStackView {
         captures.show(capture.id)
     }
 
-    /// Whether Take Snapshot has a frame to take (`FrameStore.snapshotFrame`). Access to capture is
-    /// the window controller's to check.
-    var hasSnapshotFrame: Bool { frameStore.snapshotFrame != nil }
+    /// The size of the frame Take Snapshot takes (`FrameStore.snapshotFrame`), or `nil` without one.
+    /// Access to capture is the window controller's to check.
+    var snapshotFrameSize: PixelSize? { frameStore.snapshotFrame?.layout.size }
 
-    /// Take Snapshot (docs/product.md, Recent Captures): keeps the Capture Area's frame as the newest
-    /// recent capture, whatever the Viewer shows, without showing it. It opens as the live view was
-    /// when it was taken: at its zoom and pan, with its selection. Without a frame it beeps.
+    /// Take Snapshot (docs/product.md, Recent Captures): keeps what the live view shows of the Capture
+    /// Area's frame — its selection, or else the part in the Viewer — as the newest recent capture,
+    /// whatever the Viewer shows, without showing it (`RecentCaptureRules.snapshotArea`). It opens as
+    /// the live view was when it was taken: at its zoom, with the kept pixels where they were, and
+    /// without a selection. With nothing to keep it beeps.
     func takeSnapshot() {
         guard let frame = frameStore.snapshotFrame else { return NSSound.beep() }
         let current = (zoom: zoomPan.state.zoom, offset: zoomPan.state.offset, selection: selection.keptSelection)
         let view = RecentCaptureRules.snapshotView(savedLive: liveView, current: current)
-        guard
+        let size = frame.layout.size
+        let live = ZoomPanState(
+            zoom: view.zoom, offset: view.offset, contentSize: CGSize(width: size.width, height: size.height),
+            viewportSize: zoomPan.state.viewportSize)
+        guard let area = RecentCaptureRules.snapshotArea(selection: view.selection, in: live),
             let capture = RecentCaptures.snapshot(
-                of: frame, zoom: view.zoom, offset: view.offset, selection: view.selection)
+                of: frame, area: area, zoom: view.zoom,
+                offset: RecentCaptureRules.snapshotOffset(view.offset, zoom: view.zoom, area: area))
         else { return NSSound.beep() }
         captures.add(capture)
     }

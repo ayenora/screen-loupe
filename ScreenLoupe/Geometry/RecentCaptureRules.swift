@@ -20,6 +20,21 @@ enum RecentCaptureRules {
         savedLive ?? current
     }
 
+    /// The source pixels a snapshot keeps, for the live view's `state`: the Select tool's `selection`
+    /// when there is one, whether the viewport shows all of it or not; else every pixel the viewport
+    /// shows, even in part. Only the part inside the image: zoomed out, the space around it isn't
+    /// kept. `nil` when none of the image is.
+    static func snapshotArea(selection: CGRect?, in state: ZoomPanState) -> CGRect? {
+        if let selection, let inside = PixelSelection.clamped(selection, to: state.contentSize) { return inside }
+        return ViewRegion.sourceRect(of: CGRect(origin: .zero, size: state.viewportSize), in: state)
+    }
+
+    /// Where the snapshot of `area` opens at the live view's `zoom`: the live `offset` moved by the
+    /// area's corner, so the kept pixels show where the live view showed them.
+    static func snapshotOffset(_ offset: CGPoint, zoom: CGFloat, area: CGRect) -> CGPoint {
+        CGPoint(x: offset.x + area.minX * zoom, y: offset.y + area.minY * zoom)
+    }
+
     /// `items`, newest first, with `item` on top; past `limit` the oldest goes. The shown one is never
     /// pushed out from under the Viewer: the oldest other one goes instead.
     static func adding<Item>(_ item: Item, to items: [Item], limit: Int = limit, isShown: (Item) -> Bool) -> [Item] {

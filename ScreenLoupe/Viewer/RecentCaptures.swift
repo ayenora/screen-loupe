@@ -2,11 +2,11 @@ import AppKit
 import Observation
 
 /// A picture kept by Take Snapshot, or an image file opened to inspect (docs/product.md, Recent
-/// Captures). A snapshot keeps the Capture Area's frame at native resolution, so every tool works on
-/// real screen pixels when it is opened again.
+/// Captures). A snapshot keeps the part of the Capture Area's frame the Viewer shows, or the
+/// selection, at native resolution, so every tool works on real screen pixels when it is opened again.
 struct RecentCapture: Identifiable {
     let id = UUID()
-    /// The frame, in a buffer of its own, cut to `ImageBudget`.
+    /// The frame, in a buffer of its own, cut to what was kept and to `ImageBudget`.
     let frame: ViewerFrame
     /// "Snapshot", or an image file's name.
     let name: String
@@ -50,9 +50,11 @@ final class RecentCaptures {
     private(set) var shownID: UUID?
     /// The panel's content scale, 1 at the side column's narrowest.
     var scale: CGFloat = 1
-    /// Whether Take Snapshot has a frame to take (`ViewerContentView.canTakeSnapshot`), for the
-    /// panel's camera button.
-    var canTakeSnapshot = false
+    /// The size of the frame the live view shows, while Take Snapshot can take it
+    /// (`ViewerWindowController.refreshSnapshot`): the Live row's subtitle. `nil` without one.
+    var liveSize: PixelSize?
+    /// Whether Take Snapshot has a frame to take, for the panel's camera button.
+    var canTakeSnapshot: Bool { liveSize != nil }
     /// Take Snapshot, from the panel's camera button.
     @ObservationIgnored var onTakeSnapshot: (() -> Void)?
 
@@ -72,15 +74,15 @@ final class RecentCaptures {
     /// Called after a capture is added or removed.
     @ObservationIgnored var onChange: (() -> Void)?
 
-    /// A snapshot of `frame`, copied now so it no longer depends on the stream, shown at `zoom` and
-    /// `offset` with `selection` when it is opened. The thumbnail is drawn from the kept pixels. `nil`
-    /// when nothing of the frame is kept.
-    static func snapshot(of frame: ViewerFrame, zoom: CGFloat, offset: CGPoint, selection: CGRect?) -> RecentCapture? {
-        guard let kept = frame.copiedForKeeping() else { return nil }
+    /// A snapshot of `area` of `frame` (source pixels), copied now so it no longer depends on the
+    /// stream, shown at `zoom` and `offset` with no selection when it is opened. The thumbnail is
+    /// drawn from the kept pixels. `nil` when nothing of the frame is kept.
+    static func snapshot(of frame: ViewerFrame, area: CGRect, zoom: CGFloat, offset: CGPoint) -> RecentCapture? {
+        guard let kept = frame.copiedForKeeping(area: area) else { return nil }
         let keptImage = ScreenshotExporter.sourceImage(from: kept, colorSpace: kept.colorSpace)
         return RecentCapture(
             frame: kept, name: "Snapshot", date: Date(), thumbnail: keptImage.flatMap(thumbnail(of:)), isFile: false,
-            zoom: zoom, offset: offset, selection: selection)
+            zoom: zoom, offset: offset, selection: nil)
     }
 
     /// A row for the image file `name`, decoded into `frame` with its `thumbnail`

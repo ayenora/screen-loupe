@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 /// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
-/// live view on top, which can't be deleted, and Take Snapshot under it, then one row per capture,
-/// newest first — thumbnail, "Snapshot" or the image file's name, its size and time, and Delete. Clicking a row shows
-/// it in the Viewer. Every size is multiplied by `captures.scale`, so the panel grows with the
+/// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
+/// newest first — thumbnail, "Snapshot" or the image file's name, its size and time, and Delete.
+/// Clicking a row shows it in the Viewer. Every size is multiplied by `captures.scale`, so the panel grows with the
 /// column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
@@ -23,12 +23,12 @@ struct RecentCapturesPanel: View {
             .padding(.top, 12 * s)
             .padding(.bottom, 8 * s)
 
-            LiveRow(captures: captures)
-                .padding(.horizontal, 8 * s)
-                .padding(.bottom, 6 * s)
-            SnapshotButton(captures: captures)
-                .padding(.horizontal, 8 * s)
-                .padding(.bottom, 8 * s)
+            HStack(spacing: 6 * s) {
+                LiveRow(captures: captures)
+                SnapshotButton(captures: captures)
+            }
+            .padding(.horizontal, 8 * s)
+            .padding(.bottom, 8 * s)
             Divider()
                 .padding(.bottom, 6 * s)
 
@@ -62,7 +62,8 @@ struct RecentCapturesPanel: View {
     }
 }
 
-/// The live view: what the Capture Area shows now. Chosen whenever no capture shows.
+/// The live view: what the Capture Area shows now, with its size in pixels while there is a frame.
+/// Chosen whenever no capture shows.
 private struct LiveRow: View {
     let captures: RecentCaptures
 
@@ -80,10 +81,12 @@ private struct LiveRow: View {
                 .overlay(RoundedRectangle(cornerRadius: 4 * s).strokeBorder(Color(nsColor: .separatorColor)))
             VStack(alignment: .leading, spacing: 2 * s) {
                 Text("Live").font(.system(size: 12 * s, weight: .semibold))
-                Text("What the Capture Area shows now")
-                    .font(.system(size: 11 * s))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if let size = captures.liveSize {
+                    Text(RecentCaptureRules.sizeText(size))
+                        .font(.system(size: 11 * s).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -99,7 +102,8 @@ private struct LiveRow: View {
     }
 }
 
-/// Take Snapshot: keeps the Capture Area's frame as a new row, whatever the Viewer shows. Off
+/// Take Snapshot: keeps what the live view shows as a new row, whatever the Viewer shows. A
+/// borderless button with the standard hover and pressed look, its symbol at the toolbar's size; off
 /// without a frame to take.
 private struct SnapshotButton: View {
     let captures: RecentCaptures
@@ -111,19 +115,10 @@ private struct SnapshotButton: View {
             captures.onTakeSnapshot?()
         } label: {
             Image(systemName: "camera")
-                .font(.system(size: 13 * s, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .frame(height: 24 * s)
-                .background(
-                    RoundedRectangle(cornerRadius: 5 * s).fill(Color(nsColor: .controlBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5 * s).strokeBorder(Color(nsColor: .separatorColor))
-                )
-                .opacity(captures.canTakeSnapshot ? 1 : 0.5)
-                .contentShape(Rectangle())
+                .font(.system(size: 13 * s))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.accessoryBar)
+        .controlSize(.large)
         .disabled(!captures.canTakeSnapshot)
         .help("Take Snapshot")
         .accessibilityLabel("Take Snapshot")

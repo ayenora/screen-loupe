@@ -29,6 +29,23 @@ extension FrameLayout {
             width: CGFloat(imageSize.width), height: CGFloat(imageSize.height))
     }
 
+    /// The picture cut to `rect`, whole pixels from its top-left: the picture becomes `rect` and the
+    /// frame the part of it inside `rect`. `offset` is where that part starts in the frame, to copy
+    /// from. `nil` when none of the frame is inside. For a snapshot of the part the Viewer shows or
+    /// of a selection (docs/product.md, Recent Captures).
+    func cropped(toArea rect: CGRect) -> (layout: FrameLayout, offset: PixelSize)? {
+        let image = CGRect(
+            x: imageOrigin.x, y: imageOrigin.y, width: CGFloat(imageSize.width), height: CGFloat(imageSize.height))
+        let inside = image.intersection(rect.integral)
+        guard !inside.isNull, inside.width >= 1, inside.height >= 1 else { return nil }
+        var next = self
+        next.size = PixelSize(width: Int(rect.integral.width), height: Int(rect.integral.height))
+        next.imageOrigin = CGPoint(x: inside.minX - rect.integral.minX, y: inside.minY - rect.integral.minY)
+        next.imageSize = PixelSize(width: Int(inside.width), height: Int(inside.height))
+        let offset = PixelSize(width: Int(inside.minX - imageOrigin.x), height: Int(inside.minY - imageOrigin.y))
+        return (next, offset)
+    }
+
     /// The picture kept as a recent capture: cut to `ImageBudget` from its top-left, and the frame
     /// cut to the part inside it, which stays at the same place. The frame's top-left part of
     /// `imageSize` is what to copy. `nil` when none of the frame is left (an area straddling two

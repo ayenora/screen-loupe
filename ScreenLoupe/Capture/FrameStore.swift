@@ -48,11 +48,13 @@ struct ViewerFrame: @unchecked Sendable {
         PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
     }
 
-    /// The frame copied into a buffer of its own, cut to `ImageBudget`, to keep as a recent capture.
-    /// The stream's buffers come from a small pool it reuses; holding on to them would starve it.
-    /// IOSurface-backed and Metal-compatible, so it is drawn like a live frame.
-    func copiedForKeeping() -> ViewerFrame? {
-        guard let kept = layout.fittedToImageBudget() else { return nil }
+    /// The frame copied into a buffer of its own, cut to `area` (whole pixels of the picture: what a
+    /// snapshot keeps) and to `ImageBudget`, to keep as a recent capture. The stream's buffers come
+    /// from a small pool it reuses; holding on to them would starve it. IOSurface-backed and
+    /// Metal-compatible, so it is drawn like a live frame.
+    func copiedForKeeping(area: CGRect) -> ViewerFrame? {
+        guard let cut = layout.cropped(toArea: area), let kept = cut.layout.fittedToImageBudget() else { return nil }
+        let offset = cut.offset
         let width = kept.imageSize.width
         let height = kept.imageSize.height
         guard let copy = Self.makeBuffer(width: width, height: height) else { return nil }
@@ -67,9 +69,10 @@ struct ViewerFrame: @unchecked Sendable {
         }
         let fromRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let toRow = CVPixelBufferGetBytesPerRow(copy)
-        // The kept image is the top-left of the captured one.
+        // The kept image starts at `offset` in the captured one.
+        let start = from.advanced(by: offset.height * fromRow + offset.width * 4)
         for row in 0..<height {
-            memcpy(to.advanced(by: row * toRow), from.advanced(by: row * fromRow), width * 4)
+            memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
         }
         return ViewerFrame(pixelBuffer: copy, layout: kept, displayID: displayID)
     }
