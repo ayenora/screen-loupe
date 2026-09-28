@@ -64,7 +64,8 @@ enum MainMenu {
     /// ⌘C copies what the Viewer shows; ⇧⌘C the Capture Area without zoom (docs/product.md, Screenshots).
     /// The standard items go to the first responder, so text fields cut, copy and paste as usual:
     /// ⌘C is `copy(_:)`, which a text field with the focus takes, and `AppController`, the app
-    /// delegate, turns into Copy View otherwise.
+    /// delegate, turns into Copy View otherwise; ⌘V, `paste(_:)`, likewise pastes an image into the
+    /// Viewer (Dropping and pasting images).
     private static func editMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "Edit")
         menu.delegate = target
@@ -78,6 +79,13 @@ enum MainMenu {
             withTitle: "Copy Source", action: #selector(AppController.copySource(_:)), keyEquivalent: "C")
         copySource.target = target
         menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        let pasteAsReference = menu.addItem(
+            withTitle: "Paste as Reference", action: #selector(AppController.pasteAsReference(_:)), keyEquivalent: "")
+        pasteAsReference.target = target
+        let pasteForInspection = menu.addItem(
+            withTitle: "Paste for Inspection", action: #selector(AppController.pasteForInspection(_:)),
+            keyEquivalent: "")
+        pasteForInspection.target = target
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         return menu
     }

@@ -141,6 +141,20 @@ final class ReferencesController {
         return failed
     }
 
+    /// The panel's Paste button (docs/product.md, Dropping and pasting images).
+    @ObservationIgnored var onPaste: (() -> Void)?
+
+    /// Writes pasted image data into the project and adds it as a layer on top, selected, sized by
+    /// its pixel density (`ProjectStore.importImage(data:type:name:sourceScale:)`). `false` when the
+    /// stack is full or the data isn't an image.
+    func add(_ data: Data, type: String, name: String, sourceScale: CGFloat?) -> Bool {
+        guard stack.canAdd,
+            let layer = project.importImage(data: data, type: type, name: name, sourceScale: sourceScale)
+        else { return false }
+        update { $0.add(layer) }
+        return true
+    }
+
     // MARK: The mouse in the Viewer
 
     /// The selected layer's corner handles, in drawable pixels.

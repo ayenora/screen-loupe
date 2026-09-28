@@ -15,6 +15,7 @@
 		5C6000000000000000000001 /* Exceptions for "ScreenLoupe" folder in "ScreenLoupeTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Geometry/ClipboardImageSource.swift,
 				Geometry/ColorMath.swift,
 				Geometry/CoordinateTypes.swift,
 				Geometry/CornerRuler.swift,
@@ -26,11 +27,13 @@
 				Geometry/HoverLabelDelay.swift,
 				Geometry/ImageBudget.swift,
 				Geometry/ImageOrientation.swift,
+				Geometry/ImagePlacement.swift,
 				Geometry/LenientDecoding.swift,
 				Geometry/MagnetHold.swift,
 				Geometry/OverlayLayout.swift,
 				Geometry/PaletteButtonLook.swift,
 				Geometry/PaletteHitShape.swift,
+				Geometry/PixelDensity.swift,
 				Geometry/ReferenceLayers.swift,
 				Geometry/ScreenshotName.swift,
 				Geometry/ShortcutRules.swift,

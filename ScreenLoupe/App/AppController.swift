@@ -250,6 +250,20 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.export.copySource()
     }
 
+    /// Edit › Paste (⌘V) when no text field has the focus: the clipboard's image goes into the Viewer
+    /// (docs/product.md, Dropping and pasting images). A text field with the focus pastes its text first.
+    @objc func paste(_ sender: Any?) {
+        windows.viewer.paste(as: nil)
+    }
+
+    @objc func pasteAsReference(_ sender: Any?) {
+        windows.pasteImage(as: .references)
+    }
+
+    @objc func pasteForInspection(_ sender: Any?) {
+        windows.pasteImage(as: .captures)
+    }
+
     @objc func saveView(_ sender: Any?) {
         windows.export.saveView()
     }
@@ -427,6 +441,16 @@ extension AppController: NSMenuItemValidation {
             return builtWindows?.viewer.showsCapture == true
         case #selector(openImage(_:)):
             return builtWindows?.isChoosingImage != true
+        case #selector(NSText.paste(_:)):
+            // Into the Viewer in front, showing the capture; the clipboard's types only, no decoding.
+            guard let viewer = builtWindows?.viewer, viewer.window?.isKeyWindow == true, viewer.showsCapture
+            else { return false }
+            return ImageInput.isOnClipboard
+        case #selector(pasteAsReference(_:)):
+            // Off with the references full, rather than opening the Viewer to beep.
+            return ImageInput.isOnClipboard && builtWindows?.viewer.canAddReference != false
+        case #selector(pasteForInspection(_:)):
+            return ImageInput.isOnClipboard
         case #selector(sizeViewerToArea(_:)):
             return builtWindows?.viewer.canSizeToArea == true
         case #selector(copyView(_:)), #selector(NSText.copy(_:)), #selector(copySource(_:)), #selector(saveView(_:)),

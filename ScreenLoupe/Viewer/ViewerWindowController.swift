@@ -179,6 +179,23 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.showImage(frame, thumbnail: thumbnail, name: name)
     }
 
+    // MARK: Paste
+
+    /// Pastes the clipboard's image where a drop would go, or where `chosen` says
+    /// (`ViewerContentView.paste`; docs/product.md, Dropping and pasting images).
+    func paste(as chosen: ImageDestination?) {
+        content.paste(as: chosen)
+    }
+
+    /// Pixels per point of the Capture Area's display (`ViewerContentView.areaScale`).
+    var areaScale: () -> CGFloat? {
+        get { content.areaScale }
+        set { content.areaScale = newValue }
+    }
+
+    /// Whether the references take another layer (`ViewerContentView.canAddReference`).
+    var canAddReference: Bool { content.canAddReference }
+
     /// A new request for an image file to show (`ViewerContentView.newImageRequest`).
     func newImageRequest() -> Int { content.newImageRequest() }
 

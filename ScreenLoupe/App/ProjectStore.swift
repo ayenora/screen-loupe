@@ -2,6 +2,7 @@ import AppKit
 import ImageIO
 import OSLog
 import Observation
+import UniformTypeIdentifiers
 
 /// The working project (docs/product.md, Project): the reference layers, with copies of their
 /// images, and the ruler. There is one, saved as you work and restored at launch.
@@ -61,16 +62,42 @@ final class ProjectStore {
 
     /// Copies an image into the project and returns a layer for it, or `nil` when it isn't an image.
     func importImage(at url: URL) -> ReferenceLayer? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return importImage(source, name: url.lastPathComponent, fileExtension: url.pathExtension) {
+            try FileManager.default.copyItem(at: url, to: $0)
+        }
+    }
+
+    /// Writes pasted image data of `type` (a uniform type identifier) into the project and returns
+    /// a layer for it, or `nil` when it isn't an image. The layer is sized by the density the image
+    /// carries for a display of `sourceScale` pixels per point (`PixelDensity`).
+    func importImage(data: Data, type: String, name: String, sourceScale: CGFloat?) -> ReferenceLayer? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            var layer = importImage(
+                source, name: name, fileExtension: UTType(type)?.preferredFilenameExtension ?? "",
+                write: { try data.write(to: $0) })
+        else { return nil }
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let density = PixelDensity.pixelsPerPoint(
+            dpiWidth: (properties?[kCGImagePropertyDPIWidth] as? NSNumber)?.doubleValue,
+            dpiHeight: (properties?[kCGImagePropertyDPIHeight] as? NSNumber)?.doubleValue)
+        layer.scale = PixelDensity.referenceScale(pixelsPerPoint: density, sourceScale: sourceScale)
+        return layer
+    }
+
+    /// Puts the image `source` reads into the project with `write` and returns a layer named `name`.
+    private func importImage(
+        _ source: CGImageSource, name: String, fileExtension: String, write: (URL) throws -> Void
+    ) -> ReferenceLayer? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
             let width = properties[kCGImagePropertyPixelWidth] as? Int,
             let height = properties[kCGImagePropertyPixelHeight] as? Int
         else { return nil }
         let id = UUID()
-        let fileName = "\(id.uuidString).\(url.pathExtension.isEmpty ? "png" : url.pathExtension.lowercased())"
+        let fileName = "\(id.uuidString).\(fileExtension.isEmpty ? "png" : fileExtension.lowercased())"
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: url, to: imageURL(for: fileName))
+            try write(imageURL(for: fileName))
         } catch {
             log.error("Importing a reference failed: \(error.localizedDescription, privacy: .public)")
             return nil
@@ -81,7 +108,7 @@ final class ProjectStore {
         let upright = orientation.swapsSides ? (width: height, height: width) : (width: width, height: height)
         let kept = ImageBudget.fitted(width: upright.width, height: upright.height)
         return ReferenceLayer(
-            id: id, name: url.lastPathComponent, fileName: fileName,
+            id: id, name: name, fileName: fileName,
             imageSize: CGSize(width: kept.width, height: kept.height))
     }
 

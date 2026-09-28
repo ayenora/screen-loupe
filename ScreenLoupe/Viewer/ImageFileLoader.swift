@@ -3,8 +3,9 @@ import CoreVideo
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Reads image files for the Viewer: an opened image (docs/product.md, Open Image) and reference
-/// layers (References). Called off the main actor: a large file takes a while to decode.
+/// Reads image files, and pasted image data, for the Viewer: an opened image (docs/product.md, Open
+/// Image) and reference layers (References). Called off the main actor: a large file takes a while
+/// to decode.
 enum ImageFileLoader {
     /// The image files Open Image and references take: every type ImageIO reads, but not PDF.
     static var openableTypes: [UTType] {
@@ -15,10 +16,17 @@ enum ImageFileLoader {
     /// The file's first frame, upright as its EXIF orientation says, and past `ImageBudget` just its
     /// top-left part. `nil` when ImageIO can't read it.
     static func image(at url: URL) -> CGImage? {
+        CGImageSourceCreateWithURL(url as CFURL, nil).flatMap(image(from:))
+    }
+
+    /// Pasted image data read as a file is (`image(at:)`).
+    static func image(data: Data) -> CGImage? {
+        CGImageSourceCreateWithData(data as CFData, nil).flatMap(image(from:))
+    }
+
+    private static func image(from source: CGImageSource) -> CGImage? {
         let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-            let stored = CGImageSourceCreateImageAtIndex(source, 0, options)
-        else { return nil }
+        guard let stored = CGImageSourceCreateImageAtIndex(source, 0, options) else { return nil }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         let orientation = ImageOrientation(exif: properties?[kCGImagePropertyOrientation] as? Int ?? 1)
         guard let image = orientation.isUpright ? stored : upright(stored, orientation) else { return nil }
@@ -70,9 +78,17 @@ enum ImageFileLoader {
     /// when ImageIO can't read it. With it, the thumbnail for its Recent Captures row.
     @concurrent
     static func frame(at url: URL) async -> (frame: ViewerFrame, thumbnail: CGImage?)? {
-        guard let image = image(at: url),
-            let buffer = ViewerFrame.makeBuffer(width: image.width, height: image.height)
-        else { return nil }
+        image(at: url).flatMap(frame(of:))
+    }
+
+    /// Pasted image data as a picture of its own, as a file is (`frame(at:)`).
+    @concurrent
+    static func frame(data: Data) async -> (frame: ViewerFrame, thumbnail: CGImage?)? {
+        image(data: data).flatMap(frame(of:))
+    }
+
+    private static func frame(of image: CGImage) -> (frame: ViewerFrame, thumbnail: CGImage?)? {
+        guard let buffer = ViewerFrame.makeBuffer(width: image.width, height: image.height) else { return nil }
         let space = CGColorSpace.rgbSpace(forImageIn: image.colorSpace)
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }

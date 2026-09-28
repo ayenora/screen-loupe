@@ -16,6 +16,8 @@ struct ReferencesPanel: View {
             HStack {
                 Text("References").font(.system(size: 13 * s, weight: .bold))
                 Spacer()
+                PanelButton(title: "Paste", scale: s) { references.onPaste?() }
+                    .disabled(references.stack.layers.count >= ReferenceStack.limit)
                 PanelButton(title: "Add…", scale: s) { references.addFromFiles() }
                     .disabled(references.stack.layers.count >= ReferenceStack.limit)
             }

@@ -62,6 +62,7 @@ final class WindowManager {
         }
         captureArea.onMagnetStopped = { [weak self] in self?.magnetHoldEvent(.magnetStopped) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
+        viewer.areaScale = { [weak self] in self?.captureArea.captureGeometry?.layout.scale }
         viewer.onPermissionChange = { [weak self] in
             self?.magnetHoldEvent(.captureInterrupted)
             self?.updateCapture()
@@ -246,6 +247,14 @@ final class WindowManager {
             NSApp.activate()
             open(panel.runModal())
         }
+    }
+
+    /// Edit › Paste as Reference or Paste for Inspection: the clipboard's image goes to `destination`
+    /// in the Viewer, which opens for it. Nothing to paste beeps and opens nothing.
+    func pasteImage(as destination: ImageDestination) {
+        guard ImageInput.isOnClipboard else { return NSSound.beep() }
+        showViewer()
+        viewer.paste(as: destination)
     }
 
     private func imageFailed(_ url: URL) {

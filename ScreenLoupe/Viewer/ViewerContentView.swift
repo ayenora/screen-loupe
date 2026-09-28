@@ -3,9 +3,9 @@ import SwiftUI
 
 /// The Viewer's content while it shows the capture: the magnified image with the overlay, the
 /// frozen indicator, the status panel and the toast over it, and the side column (Color Meter,
-/// References or Recent Captures) at its right. Image files dropped on it become reference layers
-/// or recent captures (`dropTarget`). What happens inside it is wired here; the window controller
-/// only places it.
+/// References or Recent Captures) at its right. Image files dropped on it, and images pasted into
+/// it, become reference layers or recent captures (`ImagePlacement`). What happens inside it is
+/// wired here; the window controller only places it.
 @MainActor
 final class ViewerContentView: NSStackView {
     let viewerView: ViewerView
@@ -128,6 +128,7 @@ final class ViewerContentView: NSStackView {
             self?.viewerView.requestDraw()
             self?.overlay.needsDisplay = true
         }
+        references.onPaste = { [weak self] in self?.paste(as: .references) }
         viewerView.onPick = { [weak self] in self?.pickColor() }
         meterPanel.onCopy = { [weak self] text, what in self?.copyText(text, what: what) }
 
@@ -193,29 +194,28 @@ final class ViewerContentView: NSStackView {
         showToast("Region copied")
     }
 
-    // MARK: Dropped image files
+    // MARK: Dropped and pasted images
 
-    /// Where dropped image files go (docs/product.md, Dropping images).
-    private enum DropTarget {
-        /// Reference layers: the References panel is open.
-        case references
-        /// Recent captures, to inspect: Recent Captures is open.
-        case captures
-        /// Asked in a menu at the drop point: neither panel is open.
-        case ask
+    /// Where a dropped or pasted image goes (docs/product.md, Dropping and pasting images): `chosen`
+    /// by Paste as Reference or Paste for Inspection, else by the open panel.
+    private func placement(chosen: ImageDestination?) -> ImagePlacement {
+        ImagePlacement.of(
+            chosen: chosen, showsReferences: sidePanelLayout?.showsReferences == true,
+            showsCaptures: sidePanelLayout?.showsCaptures == true)
     }
 
-    private var dropTarget: DropTarget {
-        if sidePanelLayout?.showsReferences == true { return .references }
-        if sidePanelLayout?.showsCaptures == true { return .captures }
-        return .ask
-    }
+    /// Pixels per point of the display the Capture Area is on, `nil` when it is on none; a pasted
+    /// reference is sized for it until the stream has its geometry.
+    var areaScale: () -> CGFloat? = { nil }
+
+    /// Whether the references take another layer: Edit › Paste as Reference is off when they don't.
+    var canAddReference: Bool { references.stack.canAdd }
 
     /// Whether a drag is over the content and would be taken; its border shows then.
     private var isDropTargeted = false {
         didSet { needsDisplay = true }
     }
-    /// Counts image files asked for, by Open Image or a drop, so only the latest request shows;
+    /// Counts image files asked for, by Open Image, a drop or a paste, so only the latest request shows;
     /// closing the Viewer counts too.
     private(set) var imageRequest = 0
 
@@ -230,17 +230,14 @@ final class ViewerContentView: NSStackView {
 
     /// The dragged files of the types Open Image and Add… take; the rest are ignored.
     private func imageURLs(_ info: NSDraggingInfo) -> [URL] {
-        let options: [NSPasteboard.ReadingOptionKey: Any] = [
-            .urlReadingFileURLsOnly: true,
-            .urlReadingContentsConformToTypes: ImageFileLoader.openableTypes.map(\.identifier),
-        ]
-        return info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? []
+        ImageInput.imageFileURLs(on: info.draggingPasteboard)
     }
 
     /// Text, web links and other files are refused, and so are references with the stack full.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         isDropTargeted =
-            !imageURLs(sender).isEmpty && (dropTarget != .references || references.stack.canAdd)
+            !imageURLs(sender).isEmpty
+            && (placement(chosen: nil) != .place(.references) || references.stack.canAdd)
         return isDropTargeted ? .copy : []
     }
 
@@ -259,46 +256,72 @@ final class ViewerContentView: NSStackView {
         let urls = imageURLs(sender)
         guard !urls.isEmpty else { return false }
         let point = convert(sender.draggingLocation, from: nil)
-        DispatchQueue.main.async { [weak self] in self?.place(urls, askingAt: point) }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            place(.files(urls), placement(chosen: nil), askingAt: point)
+        }
         return true
     }
 
-    private func place(_ urls: [URL], askingAt point: CGPoint) {
-        switch dropTarget {
-        case .references:
-            addReferences(urls)
-        case .captures:
-            inspect(urls)
+    /// Edit › Paste in the Viewer, the References panel's Paste (`chosen` `.references`), and Edit ›
+    /// Paste as Reference or Paste for Inspection: the clipboard's image goes where a drop would,
+    /// or where `chosen` says. The menu that asks comes up at the pointer over the image, else at
+    /// its centre. Nothing to paste, or a full stack of references, beeps and changes nothing.
+    func paste(as chosen: ImageDestination?) {
+        guard let input = ImageInput.fromClipboard() else { return NSSound.beep() }
+        let placement = placement(chosen: chosen)
+        if placement == .place(.references), !references.stack.canAdd { return NSSound.beep() }
+        let pointer = window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) }
+        place(input, placement, askingAt: ImagePlacement.menuPoint(pointer: pointer, imageArea: imageArea.frame))
+    }
+
+    private func place(_ input: ImageInput, _ placement: ImagePlacement, askingAt point: CGPoint) {
+        switch placement {
+        case .place(.references):
+            addReferences(input)
+        case .place(.captures):
+            inspect(input)
         case .ask:
             let menu = NSMenu()
             menu.autoenablesItems = false
             let add = menu.addItem(
-                withTitle: "Add as Reference", action: #selector(placeDroppedFiles(_:)), keyEquivalent: "")
+                withTitle: "Add as Reference", action: #selector(placeAsChosen(_:)), keyEquivalent: "")
             add.isEnabled = references.stack.canAdd
-            menu.addItem(withTitle: "Open for Inspection", action: #selector(placeDroppedFiles(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "Open for Inspection", action: #selector(placeAsChosen(_:)), keyEquivalent: "")
                 .tag = 1
             for item in menu.items {
                 item.target = self
-                item.representedObject = urls
+                item.representedObject = input
             }
             menu.popUp(positioning: nil, at: point, in: self)
         }
     }
 
-    @objc private func placeDroppedFiles(_ item: NSMenuItem) {
-        guard let urls = item.representedObject as? [URL] else { return }
+    @objc private func placeAsChosen(_ item: NSMenuItem) {
+        guard let input = item.representedObject as? ImageInput else { return }
         if item.tag == 0 {
-            addReferences(urls)
+            addReferences(input)
         } else {
-            inspect(urls)
+            inspect(input)
         }
     }
 
-    /// Adds image files as reference layers, as Add… does, and opens the References panel on them
-    /// as its toolbar button does. When none could be added, says so.
-    private func addReferences(_ urls: [URL]) {
+    /// Adds image files or a pasted image as reference layers, as Add… does, and opens the
+    /// References panel on them as its toolbar button does. A pasted image is sized by its pixel
+    /// density for the display the stream captures, or is about to (`PixelDensity.sourceScale`).
+    /// When none could be added, says so.
+    private func addReferences(_ input: ImageInput) {
         let count = references.stack.layers.count
-        let failed = references.add(urls)
+        let failed: [String]
+        switch input {
+        case .files(let urls):
+            failed = references.add(urls).map(\.lastPathComponent)
+        case .data(let data, let type):
+            let name = ImageInput.pastedName
+            let scale = PixelDensity.sourceScale(stream: frameStore.captureScale, area: areaScale())
+            let added = references.add(data, type: type, name: name, sourceScale: scale)
+            failed = added || !references.stack.canAdd ? [] : [name]
+        }
         guard references.stack.layers.count > count else {
             // Nothing failed: the stack filled up after the drag came in.
             if !failed.isEmpty { showFailure(failed, verb: "added") }
@@ -311,11 +334,19 @@ final class ViewerContentView: NSStackView {
         }
     }
 
-    /// Decodes image files off the main thread and keeps each as a recent capture, in order, the last
-    /// one shown, as Open Image does; only as many as the list keeps. The rows are added once all are
-    /// read, so the Viewer shows the last one only, not each in turn. When none could be read, says so.
-    private func inspect(_ urls: [URL]) {
-        let urls = Array(urls.suffix(RecentCaptures.limit))
+    /// Decodes image files, or a pasted image, off the main thread and keeps each as a recent
+    /// capture, in order, the last one shown, as Open Image does; only as many as the list keeps.
+    /// The rows are added once all are read, so the Viewer shows the last one only, not each in
+    /// turn. When none could be read, says so.
+    private func inspect(_ input: ImageInput) {
+        let files: [URL]
+        switch input {
+        case .files(let urls):
+            files = urls
+        case .data(let data, _):
+            return inspectPasted(data)
+        }
+        let urls = Array(files.suffix(RecentCaptures.limit))
         let request = newImageRequest()
         Task {
             var failed: [URL] = []
@@ -331,17 +362,29 @@ final class ViewerContentView: NSStackView {
                 read.append(
                     RecentCaptures.file(decoded.frame, thumbnail: decoded.thumbnail, name: url.lastPathComponent))
             }
-            guard let last = read.last else { return showFailure(failed, verb: "opened") }
+            guard let last = read.last else { return showFailure(failed.map(\.lastPathComponent), verb: "opened") }
             read.dropLast().forEach(captures.add)
             showFile(last)
         }
     }
 
+    /// A pasted image as a recent capture, shown, named "Pasted image".
+    private func inspectPasted(_ data: Data) {
+        let request = newImageRequest()
+        Task {
+            let decoded = await ImageFileLoader.frame(data: data)
+            guard request == imageRequest else { return }
+            let name = ImageInput.pastedName
+            guard let decoded else { return showFailure([name], verb: "opened") }
+            showFile(RecentCaptures.file(decoded.frame, thumbnail: decoded.thumbnail, name: name))
+        }
+    }
+
     /// "The image couldn't be added." or "…opened.", naming the files.
-    private func showFailure(_ files: [URL], verb: String) {
+    private func showFailure(_ names: [String], verb: String) {
         let alert = NSAlert()
-        alert.messageText = files.count == 1 ? "The image couldn't be \(verb)." : "The images couldn't be \(verb)."
-        alert.informativeText = files.map(\.lastPathComponent).joined(separator: ", ")
+        alert.messageText = names.count == 1 ? "The image couldn't be \(verb)." : "The images couldn't be \(verb)."
+        alert.informativeText = names.joined(separator: ", ")
         if let window { alert.beginSheetModal(for: window) }
     }
 
