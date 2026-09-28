@@ -4,8 +4,8 @@ import SwiftUI
 /// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
 /// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
 /// newest first — thumbnail, "Snapshot" or the image file's name, its size and time, and Delete.
-/// Clicking a row shows it in the Viewer. Every size is multiplied by `captures.scale`, so the panel grows with the
-/// column.
+/// Clicking a row shows it in the Viewer. Every size but the camera button's is multiplied by `captures.scale`, so the
+/// panel grows with the column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
 
@@ -72,10 +72,11 @@ private struct LiveRow: View {
 
     var body: some View {
         HStack(spacing: 10 * s) {
+            // Square, as tall as a capture's thumbnail, so the size text has the width.
             Image(systemName: "viewfinder")
                 .font(.system(size: 20 * s, weight: .regular))
                 .foregroundStyle(isShown ? Color.accentColor : .secondary)
-                .frame(width: 76 * s, height: 50 * s)
+                .frame(width: 50 * s, height: 50 * s)
                 .background(Color.secondary.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 4 * s))
                 .overlay(RoundedRectangle(cornerRadius: 4 * s).strokeBorder(Color(nsColor: .separatorColor)))
@@ -102,26 +103,48 @@ private struct LiveRow: View {
     }
 }
 
-/// Take Snapshot: keeps what the live view shows as a new row, whatever the Viewer shows. A
-/// borderless button with the standard hover and pressed look, its symbol at the toolbar's size; off
-/// without a frame to take.
+/// Take Snapshot: keeps what the live view shows as a new row, whatever the Viewer shows. A Viewer
+/// toolbar button, not scaled with the panel as the toolbar isn't; off without a frame to take.
 private struct SnapshotButton: View {
     let captures: RecentCaptures
-
-    private var s: CGFloat { captures.scale }
 
     var body: some View {
         Button {
             captures.onTakeSnapshot?()
         } label: {
             Image(systemName: "camera")
-                .font(.system(size: 13 * s))
         }
-        .buttonStyle(.accessoryBar)
-        .controlSize(.large)
+        .buttonStyle(ToolbarButtonStyle())
         .disabled(!captures.canTakeSnapshot)
         .help("Take Snapshot")
         .accessibilityLabel("Take Snapshot")
+    }
+}
+
+/// A Viewer toolbar button (`ToolbarLook`): `buttonSize`, the symbol at the `.large` scale of the
+/// 13 pt default in `labelColor`, no fill at rest, a `systemFill` circle while pressed (from macOS 26,
+/// where the button is square; before, a rect with the toolbar's fill corners), and a tertiary
+/// symbol when off.
+private struct ToolbarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Content(configuration: configuration)
+    }
+
+    private struct Content: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            let look = ToolbarLook.current
+            let shape = RoundedRectangle(cornerRadius: look.fillRadius ?? look.buttonSize.height / 2)
+            configuration.label
+                .font(.system(size: 13))
+                .imageScale(.large)
+                .foregroundStyle(Color(nsColor: isEnabled ? .labelColor : .tertiaryLabelColor))
+                .frame(width: look.buttonSize.width, height: look.buttonSize.height)
+                .background(shape.fill(configuration.isPressed ? Color(nsColor: .systemFill) : .clear))
+                .contentShape(shape)
+        }
     }
 }
 

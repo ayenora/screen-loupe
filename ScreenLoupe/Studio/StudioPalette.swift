@@ -317,8 +317,9 @@ final class StudioPalette: NSPanel {
 /// flush in Liquid Glass capsules as tall as the bar, 36 pt, 8 pt apart around a space, and a pressed
 /// button shows a grey 30 × 28 pt capsule. Before, the items sit on the titlebar's material, and
 /// a pressed button shows a rounded grey rect. A toggle that is on, in an active app, fills the same
-/// shape with the accent colour under a near-white symbol (docs/design.md).
-private struct ToolbarLook {
+/// shape with the accent colour under a near-white symbol (docs/design.md). Also the size and
+/// pressed shape of Recent Captures' camera button.
+struct ToolbarLook {
     let isGlass: Bool
     let buttonSize: CGSize
     let fillInset: CGSize
