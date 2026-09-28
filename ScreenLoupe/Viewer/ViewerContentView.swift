@@ -204,10 +204,6 @@ final class ViewerContentView: NSStackView {
             showsCaptures: sidePanelLayout?.showsCaptures == true)
     }
 
-    /// Pixels per point of the display the Capture Area is on, `nil` when it is on none; a pasted
-    /// reference is sized for it until the stream has its geometry.
-    var areaScale: () -> CGFloat? = { nil }
-
     /// Whether the references take another layer: Edit › Paste as Reference is off when they don't.
     var canAddReference: Bool { references.stack.canAdd }
 
@@ -307,9 +303,7 @@ final class ViewerContentView: NSStackView {
     }
 
     /// Adds image files or a pasted image as reference layers, as Add… does, and opens the
-    /// References panel on them as its toolbar button does. A pasted image is sized by its pixel
-    /// density for the display the stream captures, or is about to (`PixelDensity.sourceScale`).
-    /// When none could be added, says so.
+    /// References panel on them as its toolbar button does. When none could be added, says so.
     private func addReferences(_ input: ImageInput) {
         let count = references.stack.layers.count
         let failed: [String]
@@ -318,8 +312,7 @@ final class ViewerContentView: NSStackView {
             failed = references.add(urls).map(\.lastPathComponent)
         case .data(let data, let type):
             let name = ImageInput.pastedName
-            let scale = PixelDensity.sourceScale(stream: frameStore.captureScale, area: areaScale())
-            let added = references.add(data, type: type, name: name, sourceScale: scale)
+            let added = references.add(data, type: type, name: name)
             failed = added || !references.stack.canAdd ? [] : [name]
         }
         guard references.stack.layers.count > count else {

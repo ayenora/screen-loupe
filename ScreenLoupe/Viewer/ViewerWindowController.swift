@@ -187,12 +187,6 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.paste(as: chosen)
     }
 
-    /// Pixels per point of the Capture Area's display (`ViewerContentView.areaScale`).
-    var areaScale: () -> CGFloat? {
-        get { content.areaScale }
-        set { content.areaScale = newValue }
-    }
-
     /// Whether the references take another layer (`ViewerContentView.canAddReference`).
     var canAddReference: Bool { content.canAddReference }
 

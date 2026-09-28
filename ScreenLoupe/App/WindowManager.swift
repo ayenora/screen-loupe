@@ -62,7 +62,6 @@ final class WindowManager {
         }
         captureArea.onMagnetStopped = { [weak self] in self?.magnetHoldEvent(.magnetStopped) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
-        viewer.areaScale = { [weak self] in self?.captureArea.captureGeometry?.layout.scale }
         viewer.onPermissionChange = { [weak self] in
             self?.magnetHoldEvent(.captureInterrupted)
             self?.updateCapture()

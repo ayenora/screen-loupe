@@ -169,12 +169,6 @@ final class FrameStore: @unchecked Sendable {
         lock.withLock { capture ?? frozen ?? held ?? frame }
     }
 
-    /// Pixels per point of the display the stream captures, whatever the Viewer shows; `nil`
-    /// without a stream.
-    var captureScale: CGFloat? {
-        lock.withLock { geometry?.layout.scale }
-    }
-
     /// The geometry the stream is currently configured with. Frames arriving from now on carry it.
     /// `configuredAt` is when the stream took it on (host time): 0 for a new stream, whose every
     /// frame has it; `nil` while an update of a running stream is in flight (`geometryTookEffect`).

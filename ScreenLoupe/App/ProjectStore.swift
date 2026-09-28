@@ -69,20 +69,12 @@ final class ProjectStore {
     }
 
     /// Writes pasted image data of `type` (a uniform type identifier) into the project and returns
-    /// a layer for it, or `nil` when it isn't an image. The layer is sized by the density the image
-    /// carries for a display of `sourceScale` pixels per point (`PixelDensity`).
-    func importImage(data: Data, type: String, name: String, sourceScale: CGFloat?) -> ReferenceLayer? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-            var layer = importImage(
-                source, name: name, fileExtension: UTType(type)?.preferredFilenameExtension ?? "",
-                write: { try data.write(to: $0) })
-        else { return nil }
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        let density = PixelDensity.pixelsPerPoint(
-            dpiWidth: (properties?[kCGImagePropertyDPIWidth] as? NSNumber)?.doubleValue,
-            dpiHeight: (properties?[kCGImagePropertyDPIHeight] as? NSNumber)?.doubleValue)
-        layer.scale = PixelDensity.referenceScale(pixelsPerPoint: density, sourceScale: sourceScale)
-        return layer
+    /// a layer for it, or `nil` when it isn't an image.
+    func importImage(data: Data, type: String, name: String) -> ReferenceLayer? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return importImage(
+            source, name: name, fileExtension: UTType(type)?.preferredFilenameExtension ?? "",
+            write: { try data.write(to: $0) })
     }
 
     /// Puts the image `source` reads into the project with `write` and returns a layer named `name`.

@@ -103,6 +103,7 @@ private struct CaptureRow: View {
     private var s: CGFloat { captures.scale }
     private var isShown: Bool { captures.shownID == capture.id }
     private static let accent = Color(nsColor: .systemPurple)
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         HStack(spacing: 10 * s) {
@@ -144,7 +145,11 @@ private struct CaptureRow: View {
     private var thumbnail: some View {
         Group {
             if let image = capture.thumbnail {
-                Image(decorative: image, scale: 1).resizable().interpolation(.medium).scaledToFit()
+                // A tiny kept crop is magnified, so its pixels stay sharp as in the Viewer; a larger
+                // one is scaled down smoothly.
+                let fit = min(76 * s / CGFloat(image.width), 50 * s / CGFloat(image.height)) * displayScale
+                Image(decorative: image, scale: 1).resizable().interpolation(fit > 1 ? .none : .medium)
+                    .scaledToFit()
             } else {
                 Color.secondary.opacity(0.2)
             }
