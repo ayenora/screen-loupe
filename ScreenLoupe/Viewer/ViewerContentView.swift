@@ -120,6 +120,7 @@ final class ViewerContentView: NSStackView {
         viewerView.onShowLive = { [weak self] in self?.captures.show(nil) }
         captures.onShow = { [weak self] old, new in self?.show(new, after: old) }
         captures.onChange = { [weak self] in self?.showCaptureIndicator() }
+        captures.onTakeSnapshot = { [weak self] in self?.takeSnapshot() }
         inspector.onChange = { [weak self] in
             self?.overlay.needsDisplay = true
             self?.meterPanel.refresh()
@@ -190,7 +191,6 @@ final class ViewerContentView: NSStackView {
         guard let image = viewerView.renderViewImage(showsGrid: settings.settings.gridInCopyView, region: region),
             ScreenshotExporter.copy(image)
         else { return NSSound.beep() }
-        captureKeeper(.region(region), image: image)?()
         showToast("Region copied")
     }
 
@@ -411,47 +411,22 @@ final class ViewerContentView: NSStackView {
         captures.show(capture.id)
     }
 
-    /// What a copy or save was made of, for its recent capture.
-    enum CaptureKind: Equatable {
-        case view, source
-        /// An Option-drag's region, in viewport pixels.
-        case region(CGRect)
-    }
+    /// Whether Take Snapshot has a frame to take (`FrameStore.snapshotFrame`). Access to capture is
+    /// the window controller's to check.
+    var hasSnapshotFrame: Bool { frameStore.snapshotFrame != nil }
 
-    /// Keeps the picture `image` was just made from as a recent capture (docs/product.md, Recent
-    /// Captures): the returned call adds it, now for a copy, once written for a save. The frame and
-    /// how the Viewer shows it are taken now; a view, a selection or a region keeps just its pixels,
-    /// framed as it was, and only a source copy keeps the whole area. `nil` while a recent capture shows: copies made from one add none.
-    func captureKeeper(_ kind: CaptureKind, image: CGImage) -> (() -> Void)? {
-        guard !isShowingCapture, let frame = frameStore.shownFrame else { return nil }
-        let state = zoomPan.state
-        let name: String
-        let area: CGRect?
-        switch kind {
-        case .view:
-            // The selection, or else the source pixels the window shows, as an Option-drag over it.
-            let selected = selection.selection
-            area =
-                selected ?? ViewRegion.sourceRect(of: CGRect(origin: .zero, size: state.viewportSize), in: state)
-            name = selected != nil ? "Selection" : "View · \(Int((state.zoom * 100).rounded()))%"
-            guard area != nil else { return nil }
-        case .source:
-            area = nil
-            name = "Source"
-        case .region(let region):
-            area = ViewRegion.sourceRect(of: region, in: state)
-            name = "Region"
-            guard area != nil else { return nil }
-        }
-        // A cut picture starts at the area's corner: the same pixels stay where they were.
-        let origin = area?.origin ?? .zero
-        let offset = CGPoint(x: state.offset.x + origin.x * state.zoom, y: state.offset.y + origin.y * state.zoom)
+    /// Take Snapshot (docs/product.md, Recent Captures): keeps the Capture Area's frame as the newest
+    /// recent capture, whatever the Viewer shows, without showing it. It opens as the live view was
+    /// when it was taken: at its zoom and pan, with its selection. Without a frame it beeps.
+    func takeSnapshot() {
+        guard let frame = frameStore.snapshotFrame else { return NSSound.beep() }
+        let current = (zoom: zoomPan.state.zoom, offset: zoomPan.state.offset, selection: selection.keptSelection)
+        let view = RecentCaptureRules.snapshotView(savedLive: liveView, current: current)
         guard
-            let capture = RecentCaptures.capture(
-                of: frame, area: area, kind: name, image: image, zoom: state.zoom, offset: offset,
-                selection: area == nil ? selection.keptSelection : nil)
-        else { return nil }
-        return { [weak self] in self?.captures.add(capture) }
+            let capture = RecentCaptures.snapshot(
+                of: frame, zoom: view.zoom, offset: view.offset, selection: view.selection)
+        else { return NSSound.beep() }
+        captures.add(capture)
     }
 
     /// Shows `new` in place of `old` (`nil`: the live view). Each keeps its zoom, pan and selection:
@@ -481,7 +456,7 @@ final class ViewerContentView: NSStackView {
         onShowCapture?()
     }
 
-    /// The purple border and "Capture 2 of 4 · 14:20:05 · Esc for live" while a capture shows, or
+    /// The purple border and "Capture 2 of 8 · 14:20:05 · Esc for live" while a capture shows, or
     /// "photo.png · Esc for live" for an image file; the frozen indicator of the live view waits
     /// under it.
     private func showCaptureIndicator() {

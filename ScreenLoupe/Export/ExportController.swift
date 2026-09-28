@@ -21,22 +21,20 @@ final class ExportController {
     func copyView() {
         let what = viewer.hasSelection ? "Selection" : "View"
         guard let image = viewImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
-        viewer.captureKeeper(.view, image: image)?()
         viewer.showToast("\(what) copied")
     }
 
     func copySource() {
         guard let image = sourceImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
-        viewer.captureKeeper(.source, image: image)?()
         viewer.showToast("Source copied")
     }
 
     func saveView() {
-        save(viewImage(), kind: .view)
+        save(viewImage(), kind: "View")
     }
 
     func saveSource() {
-        save(sourceImage(), kind: .source)
+        save(sourceImage(), kind: "Source")
     }
 
     /// What the Viewer shows, or just the Select tool's selection while there is one, with the grid
@@ -51,17 +49,14 @@ final class ExportController {
         return ScreenshotExporter.sourceImage(from: frame, colorSpace: frame.colorSpace)
     }
 
-    /// The image is taken when the command is given, before the save panel opens; so is its recent
-    /// capture, added once the file is written.
-    private func save(_ image: CGImage?, kind: ViewerContentView.CaptureKind) {
+    /// The image is taken when the command is given, before the save panel opens. `kind` names the
+    /// file: "View" or "Source" (`ScreenshotName`).
+    private func save(_ image: CGImage?, kind: String) {
         guard let image, let png = ScreenshotExporter.pngData(image), let window = viewer.window else {
             return NSSound.beep()
         }
-        let keepCapture = viewer.captureKeeper(kind, image: image)
-        let name = ScreenshotName.fileName(
-            kind: kind == .source ? "Source" : "View", style: settings.settings.fileNameStyle)
+        let name = ScreenshotName.fileName(kind: kind, style: settings.settings.fileNameStyle)
         saveImage(png, type: .png, name: name, sheetOn: window) { [weak self] url in
-            keepCapture?()
             self?.viewer.showToast("Saved \(url.lastPathComponent)")
         }
     }

@@ -24,11 +24,8 @@ struct FrameLayoutTests {
         #expect(layout.imageRectInAreaImage == CGRect(x: 0, y: 0, width: 640, height: 480))
     }
 
-    @Test func aStillImageCutsAndFitsLikeACapture() {
+    @Test func aStillImageFitsLikeACapture() {
         let layout = FrameLayout(image: PixelSize(width: 6016, height: 3384))
-        let cut = layout.cropped(toArea: CGRect(x: 10, y: 20, width: 30, height: 40))
-        #expect(cut?.layout == FrameLayout(image: PixelSize(width: 30, height: 40)))
-        #expect(cut?.offset == PixelSize(width: 10, height: 20))
         #expect(layout.fittedToImageBudget() == FrameLayout(image: PixelSize(width: 4957, height: 3384)))
     }
 }

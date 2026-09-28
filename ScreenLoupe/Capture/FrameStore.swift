@@ -48,18 +48,11 @@ struct ViewerFrame: @unchecked Sendable {
         PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
     }
 
-    /// The frame copied into a buffer of its own, cut to `area` (whole pixels of the picture, for a
-    /// selection or a region) and to `ImageBudget`, to keep as a recent capture. The stream's
-    /// buffers come from a small pool it reuses; holding on to them would starve it.
+    /// The frame copied into a buffer of its own, cut to `ImageBudget`, to keep as a recent capture.
+    /// The stream's buffers come from a small pool it reuses; holding on to them would starve it.
     /// IOSurface-backed and Metal-compatible, so it is drawn like a live frame.
-    func copiedForKeeping(area: CGRect? = nil) -> ViewerFrame? {
-        var cut = layout
-        var offset = PixelSize(width: 0, height: 0)
-        if let area {
-            guard let cropped = layout.cropped(toArea: area) else { return nil }
-            (cut, offset) = cropped
-        }
-        guard let kept = cut.fittedToImageBudget() else { return nil }
+    func copiedForKeeping() -> ViewerFrame? {
+        guard let kept = layout.fittedToImageBudget() else { return nil }
         let width = kept.imageSize.width
         let height = kept.imageSize.height
         guard let copy = Self.makeBuffer(width: width, height: height) else { return nil }
@@ -74,10 +67,9 @@ struct ViewerFrame: @unchecked Sendable {
         }
         let fromRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let toRow = CVPixelBufferGetBytesPerRow(copy)
-        // The kept image starts at `offset` in the captured one.
-        let start = from.advanced(by: offset.height * fromRow + offset.width * 4)
+        // The kept image is the top-left of the captured one.
         for row in 0..<height {
-            memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
+            memcpy(to.advanced(by: row * toRow), from.advanced(by: row * fromRow), width * 4)
         }
         return ViewerFrame(pixelBuffer: copy, layout: kept, displayID: displayID)
     }
@@ -162,6 +154,12 @@ final class FrameStore: @unchecked Sendable {
     /// is current when it goes back to live.
     var still: ViewerFrame? {
         lock.withLock { capture ?? frozen }
+    }
+
+    /// The frame Take Snapshot keeps (`RecentCaptureRules.snapshotFrame`): the one the live view shows,
+    /// whatever shows in its place.
+    var snapshotFrame: ViewerFrame? {
+        lock.withLock { RecentCaptureRules.snapshotFrame(frozen: frozen, held: held, live: frame) }
     }
 
     /// The frame the Viewer shows: the still one, or else the held one, or else the latest live frame.

@@ -1,22 +1,19 @@
 import AppKit
 import Observation
 
-/// A picture kept by a copy or save on the Viewer, or an image file opened to inspect
-/// (docs/product.md, Recent Captures). A copy keeps the Capture Area's frame at native resolution,
-/// not the copied image, so every tool works on real screen pixels when it is opened again.
+/// A picture kept by Take Snapshot, or an image file opened to inspect (docs/product.md, Recent
+/// Captures). A snapshot keeps the Capture Area's frame at native resolution, so every tool works on
+/// real screen pixels when it is opened again.
 struct RecentCapture: Identifiable {
     let id = UUID()
     /// The frame, in a buffer of its own, cut to `ImageBudget`.
     let frame: ViewerFrame
-    /// What was copied or saved: "View · 800%", "Selection", "Region" or "Source"; an image file's
-    /// name.
-    let kind: String
-    /// The size of the copied or saved image.
-    let imageSize: PixelSize
+    /// "Snapshot", or an image file's name.
+    let name: String
     let date: Date
     /// The kept frame, or an image file, small, for the panel.
     let thumbnail: CGImage?
-    /// An image file (docs/product.md, Open Image), not a copy of the screen.
+    /// An image file (docs/product.md, Open Image), not a snapshot of the screen.
     let isFile: Bool
     /// How the Viewer shows it: as when it was taken, then as it was last left. `nil`: fitted to the
     /// Viewer, as an image file first shows.
@@ -32,15 +29,18 @@ struct RecentCapture: Identifiable {
     }()
 
     var time: String { Self.timeFormatter.string(from: date) }
+
+    /// "294 × 239 px · 14:20:05": the kept picture's own size, and when it was kept.
+    var details: String { "\(RecentCaptureRules.sizeText(frame.layout.size)) · \(time)" }
 }
 
-/// The last four pictures copied or saved on the Viewer or opened from files, kept in memory until
-/// the app quits, and which of them the Viewer shows in place of the live view (docs/product.md,
-/// Recent Captures).
+/// The last snapshots of the Capture Area and images opened from files, kept in memory until the
+/// app quits, and which of them the Viewer shows in place of the live view (docs/product.md, Recent
+/// Captures).
 @MainActor
 @Observable
 final class RecentCaptures {
-    static let limit = 4
+    static let limit = RecentCaptureRules.limit
     /// The side of a thumbnail's box in pixels: 2× the panel's widest row thumbnail.
     nonisolated private static let thumbnailBox = CGSize(width: 200, height: 132)
 
@@ -50,16 +50,21 @@ final class RecentCaptures {
     private(set) var shownID: UUID?
     /// The panel's content scale, 1 at the side column's narrowest.
     var scale: CGFloat = 1
+    /// Whether Take Snapshot has a frame to take (`ViewerContentView.canTakeSnapshot`), for the
+    /// panel's camera button.
+    var canTakeSnapshot = false
+    /// Take Snapshot, from the panel's camera button.
+    @ObservationIgnored var onTakeSnapshot: (() -> Void)?
 
     /// Called with the capture shown before and the one shown now (`nil`: the live view).
     @ObservationIgnored var onShow: ((_ old: RecentCapture?, _ new: RecentCapture?) -> Void)?
 
     var shown: RecentCapture? { captures.first { $0.id == shownID } }
 
-    /// "Capture 2 of 4 · 14:20:05 · Esc for live", or "photo.png · Esc for live" for an image file,
+    /// "Capture 2 of 8 · 14:20:05 · Esc for live", or "photo.png · Esc for live" for an image file,
     /// over the Viewer while `capture` shows.
     func label(for capture: RecentCapture) -> String {
-        if capture.isFile { return "\(capture.kind) · Esc for live" }
+        if capture.isFile { return "\(capture.name) · Esc for live" }
         let number = (captures.firstIndex { $0.id == capture.id } ?? 0) + 1
         return "Capture \(number) of \(captures.count) · \(capture.time) · Esc for live"
     }
@@ -67,38 +72,29 @@ final class RecentCaptures {
     /// Called after a capture is added or removed.
     @ObservationIgnored var onChange: (() -> Void)?
 
-    /// A capture of `frame`, or of just `area` of it (source pixels), copied now so it no longer
-    /// depends on the stream. `image` is what was copied or saved, for the size. The thumbnail is
-    /// drawn from the kept pixels, which the row shows: a copied view also holds the reference
-    /// layers and the grid, which the kept frame doesn't. `nil` when nothing of the frame is kept.
-    static func capture(
-        of frame: ViewerFrame, area: CGRect?, kind: String, image: CGImage, zoom: CGFloat, offset: CGPoint,
-        selection: CGRect?
-    ) -> RecentCapture? {
-        guard let kept = frame.copiedForKeeping(area: area) else { return nil }
+    /// A snapshot of `frame`, copied now so it no longer depends on the stream, shown at `zoom` and
+    /// `offset` with `selection` when it is opened. The thumbnail is drawn from the kept pixels. `nil`
+    /// when nothing of the frame is kept.
+    static func snapshot(of frame: ViewerFrame, zoom: CGFloat, offset: CGPoint, selection: CGRect?) -> RecentCapture? {
+        guard let kept = frame.copiedForKeeping() else { return nil }
         let keptImage = ScreenshotExporter.sourceImage(from: kept, colorSpace: kept.colorSpace)
         return RecentCapture(
-            frame: kept, kind: kind, imageSize: PixelSize(width: image.width, height: image.height), date: Date(),
-            thumbnail: keptImage.flatMap(thumbnail(of:)), isFile: false, zoom: zoom, offset: offset,
-            selection: selection)
+            frame: kept, name: "Snapshot", date: Date(), thumbnail: keptImage.flatMap(thumbnail(of:)), isFile: false,
+            zoom: zoom, offset: offset, selection: selection)
     }
 
     /// A row for the image file `name`, decoded into `frame` with its `thumbnail`
     /// (`ImageFileLoader.frame(at:)`): its buffer is already its own.
     static func file(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) -> RecentCapture {
         RecentCapture(
-            frame: frame, kind: name, imageSize: frame.layout.size, date: Date(), thumbnail: thumbnail, isFile: true,
+            frame: frame, name: name, date: Date(), thumbnail: thumbnail, isFile: true,
             zoom: nil, offset: .zero, selection: nil)
     }
 
-    /// Keeps `capture` as the newest; the oldest goes past the limit.
+    /// Keeps `capture` as the newest; the oldest other than the shown one goes past the limit
+    /// (`RecentCaptureRules.adding`).
     func add(_ capture: RecentCapture) {
-        captures.insert(capture, at: 0)
-        if captures.count > Self.limit {
-            // The shown one is never pushed out from under the Viewer: the oldest other one goes.
-            let index = captures.lastIndex { $0.id != shownID } ?? captures.count - 1
-            captures.remove(at: index)
-        }
+        captures = RecentCaptureRules.adding(capture, to: captures) { $0.id == shownID }
         onChange?()
     }
 

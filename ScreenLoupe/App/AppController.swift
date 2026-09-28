@@ -232,6 +232,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.viewer.selectWholeArea()
     }
 
+    /// View › Take Snapshot (⌘T; docs/product.md, Recent Captures).
+    @objc func takeSnapshot(_ sender: Any?) {
+        windows.viewer.takeSnapshot()
+    }
+
     @objc func sizeViewerToArea(_ sender: Any?) {
         windows.viewer.sizeToArea()
     }
@@ -451,6 +456,8 @@ extension AppController: NSMenuItemValidation {
             return ImageInput.isOnClipboard && builtWindows?.viewer.canAddReference != false
         case #selector(pasteForInspection(_:)):
             return ImageInput.isOnClipboard
+        case #selector(takeSnapshot(_:)):
+            return builtWindows?.viewer.canTakeSnapshot == true
         case #selector(sizeViewerToArea(_:)):
             return builtWindows?.viewer.canSizeToArea == true
         case #selector(copyView(_:)), #selector(NSText.copy(_:)), #selector(copySource(_:)), #selector(saveView(_:)),

@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 /// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
-/// live view on top, which can't be deleted, then one row per capture, newest first — thumbnail,
-/// what was copied or the image file's name, its size and time, and Delete. Clicking a row shows
+/// live view on top, which can't be deleted, and Take Snapshot under it, then one row per capture,
+/// newest first — thumbnail, "Snapshot" or the image file's name, its size and time, and Delete. Clicking a row shows
 /// it in the Viewer. Every size is multiplied by `captures.scale`, so the panel grows with the
 /// column.
 struct RecentCapturesPanel: View {
@@ -26,12 +26,15 @@ struct RecentCapturesPanel: View {
             LiveRow(captures: captures)
                 .padding(.horizontal, 8 * s)
                 .padding(.bottom, 6 * s)
+            SnapshotButton(captures: captures)
+                .padding(.horizontal, 8 * s)
+                .padding(.bottom, 8 * s)
             Divider()
                 .padding(.bottom, 6 * s)
 
             if captures.captures.isEmpty {
                 Text(
-                    "Copy or save in the Viewer — ⌘C, ⇧⌘C, ⌘S, an Option-drag or a selection — or open an image file, and the picture waits here to be studied later."
+                    "Take a snapshot of the Capture Area — the camera or ⌘T — or open an image file, and the picture waits here to be studied later."
                 )
                 .font(.system(size: 12 * s))
                 .foregroundStyle(.secondary)
@@ -49,7 +52,7 @@ struct RecentCapturesPanel: View {
             }
 
             Divider()
-            Text("Last \(RecentCaptures.limit) copies, saves and images · kept until quit")
+            Text("Last \(RecentCaptures.limit) snapshots and images · kept until quit")
                 .font(.system(size: 10.5 * s))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14 * s)
@@ -96,6 +99,37 @@ private struct LiveRow: View {
     }
 }
 
+/// Take Snapshot: keeps the Capture Area's frame as a new row, whatever the Viewer shows. Off
+/// without a frame to take.
+private struct SnapshotButton: View {
+    let captures: RecentCaptures
+
+    private var s: CGFloat { captures.scale }
+
+    var body: some View {
+        Button {
+            captures.onTakeSnapshot?()
+        } label: {
+            Image(systemName: "camera")
+                .font(.system(size: 13 * s, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .frame(height: 24 * s)
+                .background(
+                    RoundedRectangle(cornerRadius: 5 * s).fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5 * s).strokeBorder(Color(nsColor: .separatorColor))
+                )
+                .opacity(captures.canTakeSnapshot ? 1 : 0.5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!captures.canTakeSnapshot)
+        .help("Take Snapshot")
+        .accessibilityLabel("Take Snapshot")
+    }
+}
+
 private struct CaptureRow: View {
     let captures: RecentCaptures
     let capture: RecentCapture
@@ -109,8 +143,8 @@ private struct CaptureRow: View {
         HStack(spacing: 10 * s) {
             thumbnail
             VStack(alignment: .leading, spacing: 2 * s) {
-                Text(capture.kind).font(.system(size: 12 * s, weight: .semibold)).lineLimit(1)
-                Text("\(capture.imageSize.width) × \(capture.imageSize.height) px · \(capture.time)")
+                Text(capture.name).font(.system(size: 12 * s, weight: .semibold)).lineLimit(1)
+                Text(capture.details)
                     .font(.system(size: 11 * s).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

@@ -29,6 +29,8 @@ final class WindowManager {
         studio = StudioController(settings: settings, permissions: permissions, export: export)
 
         capture.onFrame = { [weak self] in
+            // Take Snapshot takes the area's frame whatever the Viewer shows.
+            self?.viewer.refreshSnapshot()
             // A still picture in the Viewer (frozen, a recent capture) stays put; the live frame
             // waits in the store.
             guard let self, capture.frameStore.still == nil else { return }
@@ -59,6 +61,7 @@ final class WindowManager {
         capture.onProblem = { [weak self] problem in
             if problem != nil { self?.magnetHoldEvent(.captureInterrupted) }
             self?.viewer.setCaptureProblem(problem)
+            self?.viewer.refreshSnapshot()
         }
         captureArea.onMagnetStopped = { [weak self] in self?.magnetHoldEvent(.magnetStopped) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
@@ -344,6 +347,7 @@ final class WindowManager {
             inspector.frameArrived()
         }
         updateViewedPart()
+        viewer.refreshSnapshot()
     }
 
     // MARK: Holding while the magnet moves the area
@@ -450,6 +454,7 @@ final class WindowManager {
     private func updateCapture() {
         let active = isViewerOpen && viewer.canCapture
         capture.capture(active ? captureArea.captureGeometry : nil)
+        viewer.refreshSnapshot()
     }
 }
 

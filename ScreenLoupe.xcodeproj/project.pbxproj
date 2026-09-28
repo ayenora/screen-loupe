@@ -33,6 +33,7 @@
 				Geometry/OverlayLayout.swift,
 				Geometry/PaletteButtonLook.swift,
 				Geometry/PaletteHitShape.swift,
+				Geometry/RecentCaptureRules.swift,
 				Geometry/ReferenceLayers.swift,
 				Geometry/ScreenshotName.swift,
 				Geometry/ShortcutRules.swift,

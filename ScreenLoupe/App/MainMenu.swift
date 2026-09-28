@@ -115,6 +115,9 @@ enum MainMenu {
         let laterItem = submenuItem(later)
         laterItem.title = later.title
         menu.addItem(laterItem)
+        let snapshot = menu.addItem(
+            withTitle: "Take Snapshot", action: #selector(AppController.takeSnapshot(_:)), keyEquivalent: "t")
+        snapshot.target = target
         let select = menu.addItem(
             withTitle: "Select", action: #selector(AppController.toggleSelectTool(_:)), keyEquivalent: "e")
         select.target = target

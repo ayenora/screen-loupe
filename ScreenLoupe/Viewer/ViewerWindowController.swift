@@ -159,9 +159,20 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     /// Called when a recent capture starts or stops showing.
     var onShowCapture: (() -> Void)?
 
-    /// Keeps what `image` was made from as a recent capture; see `ViewerContentView.captureKeeper`.
-    func captureKeeper(_ kind: ViewerContentView.CaptureKind, image: CGImage) -> (() -> Void)? {
-        content.captureKeeper(kind, image: image)
+    /// Whether Take Snapshot can act: capture is allowed and there is a frame of the Capture Area.
+    var canTakeSnapshot: Bool { canCapture && content.hasSnapshotFrame }
+
+    /// Keeps the Capture Area's frame as a recent capture (`ViewerContentView.takeSnapshot`).
+    func takeSnapshot() {
+        guard canTakeSnapshot else { return NSSound.beep() }
+        content.takeSnapshot()
+    }
+
+    /// Turns the panel's camera button on or off with `canTakeSnapshot`: on each frame, and when a
+    /// freeze, access or the stream changes.
+    func refreshSnapshot() {
+        let can = canTakeSnapshot
+        if content.captures.canTakeSnapshot != can { content.captures.canTakeSnapshot = can }
     }
 
     /// Back to the live view: closing the Viewer, Escape.
@@ -291,6 +302,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         let needsPermission = !access && !isShowingCapture
         guard access != hasAccess || needsPermission != showsPermissionView else { return }
         hasAccess = access
+        refreshSnapshot()
         if needsPermission != showsPermissionView {
             showContent(!needsPermission)
         }

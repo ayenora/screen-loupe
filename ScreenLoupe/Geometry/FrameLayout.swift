@@ -4,7 +4,7 @@ import CoreGraphics
 /// recent capture (docs/design.md §2). Every tool counts pixels from the picture's top-left, so
 /// they all work on each of them alike.
 struct FrameLayout: Equatable, Sendable {
-    /// The whole picture in pixels: the Capture Area, or the part a recent capture keeps.
+    /// The whole picture in pixels: the Capture Area, or the part a recent capture keeps of it.
     var size: PixelSize
     /// Top-left corner of the frame's pixels inside the picture. Non-zero only when the area
     /// straddles two displays and part of it lies on the other one, which the frame lacks.
@@ -27,23 +27,6 @@ extension FrameLayout {
         CGRect(
             x: imageOrigin.x, y: CGFloat(size.height) - imageOrigin.y - CGFloat(imageSize.height),
             width: CGFloat(imageSize.width), height: CGFloat(imageSize.height))
-    }
-
-    /// The picture cut to `rect`, whole pixels from its top-left: the picture becomes `rect` and the
-    /// frame the part of it inside `rect`. `offset` is where that part starts in the frame, to copy
-    /// from. `nil` when none of the frame is inside. For a recent capture of a selection or a region
-    /// (docs/product.md, Recent Captures).
-    func cropped(toArea rect: CGRect) -> (layout: FrameLayout, offset: PixelSize)? {
-        let image = CGRect(
-            x: imageOrigin.x, y: imageOrigin.y, width: CGFloat(imageSize.width), height: CGFloat(imageSize.height))
-        let inside = image.intersection(rect.integral)
-        guard !inside.isNull, inside.width >= 1, inside.height >= 1 else { return nil }
-        var next = self
-        next.size = PixelSize(width: Int(rect.integral.width), height: Int(rect.integral.height))
-        next.imageOrigin = CGPoint(x: inside.minX - rect.integral.minX, y: inside.minY - rect.integral.minY)
-        next.imageSize = PixelSize(width: Int(inside.width), height: Int(inside.height))
-        let offset = PixelSize(width: Int(inside.minX - imageOrigin.x), height: Int(inside.minY - imageOrigin.y))
-        return (next, offset)
     }
 
     /// The picture kept as a recent capture: cut to `ImageBudget` from its top-left, and the frame
