@@ -62,4 +62,25 @@ struct StudioFilterTests {
         #expect(StudioFilter.path([], ownPID: ownPID, appIsListed: true, kept: []) == .excludingApp)
         #expect(StudioFilter.path([], ownPID: ownPID, appIsListed: false, kept: []) == .excludingWindows([]))
     }
+
+    // MARK: The Viewer's stream
+
+    @Test func theViewersStreamKeepsOnlyTheBackdrop() {
+        #expect(
+            StudioFilter.path(desktop, ownPID: ownPID, appIsListed: false, kept: [backdrop.id])
+                == .excludingWindows([viewer.id, captureArea.id, studioFrame.id, palette.id]))
+    }
+
+    @Test func theViewersStreamWithoutABackdropLeavesOutEveryWindowOfTheApp() {
+        #expect(
+            StudioFilter.path(desktop, ownPID: ownPID, appIsListed: false, kept: [])
+                == .excludingWindows([viewer.id, captureArea.id, studioFrame.id, palette.id, backdrop.id]))
+    }
+
+    @Test func aKeptWindowNotListedChangesNothing() {
+        // The backdrop's number, kept before the list is read again.
+        #expect(
+            StudioFilter.path([viewer, safari], ownPID: ownPID, appIsListed: false, kept: [backdrop.id])
+                == .excludingWindows([viewer.id]))
+    }
 }

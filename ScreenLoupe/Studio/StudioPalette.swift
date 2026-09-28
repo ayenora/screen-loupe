@@ -429,24 +429,26 @@ private final class PaletteButton: NSButton {
         return super.hitTest(point)
     }
 
-    /// The toolbar's on and pressed look, in the button's slot: the bounds are taller by the
-    /// symbol's alignment insets. Pressed, with its list open or while its picker runs, a grey fill
-    /// under the label-coloured symbol; a toggle that is on, the accent colour under a near-white
-    /// symbol, both faded while the button is off, as the toolbar's are. A momentary button's `state`
-    /// flips on every click too, though AppKit doesn't show it: only a toggle's is drawn. The colours
-    /// resolve here, so an appearance or accent change shows at the next draw.
+    /// The toolbar's on and pressed look (`PaletteButtonLook`), in the button's slot: the bounds are
+    /// taller by the symbol's alignment insets. The colours resolve here, so an appearance or accent
+    /// change shows at the next draw.
     override func draw(_ dirtyRect: NSRect) {
         let slot = convert(alignmentRect(forFrame: frame), from: superview)
-        let tint: NSColor
-        if isHighlighted || isListOpen || isPicking {
-            ToolbarLook.current.drawFill(.systemFill, in: slot)
-            tint = isEnabled ? .labelColor : .tertiaryLabelColor
-        } else if isToggle && state == .on {
-            ToolbarLook.current.drawFill(.controlAccentColor.withAlphaComponent(isEnabled ? 1 : 0.5), in: slot)
-            tint = NSColor(white: 0.9375, alpha: isEnabled ? 1 : 0.55)
-        } else {
-            tint = isEnabled ? .labelColor : .tertiaryLabelColor
+        let look = PaletteButtonLook.look(
+            isHighlighted: isHighlighted, isListOpen: isListOpen, isPicking: isPicking, isToggle: isToggle,
+            isOn: state == .on, isEnabled: isEnabled)
+        switch look.fill {
+        case .none: break
+        case .pressed: ToolbarLook.current.drawFill(.systemFill, in: slot)
+        case .accent(let enabled):
+            ToolbarLook.current.drawFill(.controlAccentColor.withAlphaComponent(enabled ? 1 : 0.5), in: slot)
         }
+        let tint: NSColor =
+            switch look.symbol {
+            case .label: .labelColor
+            case .tertiary: .tertiaryLabelColor
+            case .onAccent(let enabled): NSColor(white: 0.9375, alpha: enabled ? 1 : 0.55)
+            }
         // Unchanged, setting it would ask for another draw.
         if contentTintColor != tint { contentTintColor = tint }
         super.draw(dirtyRect)

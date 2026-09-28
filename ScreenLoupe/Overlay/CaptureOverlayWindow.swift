@@ -10,7 +10,7 @@ final class CaptureOverlayWindow: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        level = .statusBar
+        level = NSWindow.Level(rawValue: WindowLevels.frames)
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         isReleasedWhenClosed = false
         hidesOnDeactivate = false

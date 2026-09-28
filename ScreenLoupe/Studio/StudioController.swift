@@ -451,77 +451,63 @@ final class StudioController {
 
     // MARK: Backdrop
 
-    /// What the backdrop shows, in which colour space; `nil` while it is hidden.
-    private var backdropShown: (placement: StudioBackdrop.Placement, space: CGColorSpace)?
-    /// What the latest backdrop picture was asked for: while it is drawn, and after it failed, so a
-    /// failure isn't tried again, and beeped about, on every move of the frame.
-    private var backdropAsked: (placement: StudioBackdrop.Placement, space: CGColorSpace)?
-    /// Counts the pictures asked for: only the latest is shown.
-    private var backdropRequest = 0
+    /// What the backdrop shows and what was asked for (`StudioBackdrop.Tracker`).
+    private var backdropTracker = StudioBackdrop.Tracker()
     /// The latest backdrop drawing, until a picture has waited for it (`backdropOnScreen`).
     private var backdropRender: Task<Void, Never>?
 
     /// Shows the backdrop on the frame's display while the studio shows and a background other
-    /// than the screen is chosen (`StudioBackdrop.placement`), hides it otherwise. Its picture is
-    /// drawn only when the background, the display, its scale or its colour space change; moving
-    /// the frame within its display does nothing. For another display the old picture goes at once
-    /// rather than showing stretched there; for another background it stays until the new one is
-    /// drawn.
+    /// than the screen is chosen (`StudioBackdrop.placement`), hides it otherwise; when a picture
+    /// is drawn and which one shows, `StudioBackdrop.Tracker` decides. Moving the frame within its
+    /// display does nothing.
     private func updateBackdrop() {
-        guard
-            let wanted = StudioBackdrop.placement(
-                studioVisible: isVisible, background: background, frame: GlobalRect(rect: frame.captureRect),
-                converter: converter)
-        else {
-            backdropRequest += 1
-            backdropAsked = nil
-            hideBackdrop()
-            return
-        }
-        let space = NSScreen.colorSpace(forDisplay: wanted.display.id)
-        if let shown = backdropShown, shown.placement == wanted, shown.space == space {
-            // Back to what shows: a picture still drawn for another background must not replace it.
-            if backdropAsked != nil {
-                backdropRequest += 1
-                backdropAsked = nil
-            }
-            return
-        }
-        if let asked = backdropAsked, asked.placement == wanted, asked.space == space { return }
-        if let shown = backdropShown, shown.placement.display.globalFrame != wanted.display.globalFrame {
-            hideBackdrop()
-        }
-        backdropRequest += 1
-        let request = backdropRequest
-        backdropAsked = (wanted, space)
-        backdropRender = Task {
-            var image: CGImage?
-            do {
-                if let fill = try await fill(for: wanted.background) {
-                    image = await Self.drawBackdrop(fill, size: wanted.pixelSize, space: space)
-                }
-            } catch {
-                guard request == backdropRequest else { return }
-                hideBackdrop()
-                NSSound.beep()
-                return frame.showNotice("Background image can't be read")
-            }
-            guard request == backdropRequest else { return }
-            guard let image else {
-                log.error("The backdrop couldn't be drawn.")
-                return hideBackdrop()
-            }
-            backdrop.show(image, over: wanted.display.globalFrame)
-            let wasShown = backdropShown != nil
-            backdropShown = (wanted, space)
-            if !wasShown { onBackdropChange?(CGWindowID(backdrop.windowNumber)) }
+        let wanted = StudioBackdrop.placement(
+            studioVisible: isVisible, background: background, frame: GlobalRect(rect: frame.captureRect),
+            converter: converter
+        ).map { StudioBackdrop.Target(placement: $0, space: NSScreen.colorSpace(forDisplay: $0.display.id)) }
+        switch backdropTracker.update(wanted: wanted) {
+        case .none: return
+        case .hide: hideBackdrop()
+        case .render(let target, let request, let hidesFirst):
+            if hidesFirst { hideBackdrop() }
+            render(target, request: request)
         }
     }
 
+    private func render(_ target: StudioBackdrop.Target, request: Int) {
+        let wanted = target.placement
+        backdropRender = Task {
+            var image: CGImage?
+            var unreadable = false
+            do {
+                if let fill = try await fill(for: wanted.background) {
+                    image = await Self.drawBackdrop(fill, size: wanted.pixelSize, space: target.space)
+                }
+            } catch {
+                unreadable = true
+            }
+            switch backdropTracker.finished(request, drawn: image != nil) {
+            case .stale: return
+            case .failed(let hides):
+                if hides { hideBackdrop() }
+                if unreadable {
+                    NSSound.beep()
+                    frame.showNotice("Background image can't be read")
+                } else {
+                    log.error("The backdrop couldn't be drawn.")
+                }
+            case .shown(let announces):
+                // `.shown` comes only with a picture.
+                guard let image else { return }
+                backdrop.show(image, over: wanted.display.globalFrame)
+                if announces { onBackdropChange?(CGWindowID(backdrop.windowNumber)) }
+            }
+        }
+    }
+
+    /// Hides the backdrop's window; the tracker has already taken it as hidden.
     private func hideBackdrop() {
-        guard backdropShown != nil else { return }
         backdrop.hide()
-        backdropShown = nil
         onBackdropChange?(nil)
     }
 

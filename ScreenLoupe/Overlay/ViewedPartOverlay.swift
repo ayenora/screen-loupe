@@ -15,7 +15,7 @@ final class ViewedPartOverlay: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         ignoresMouseEvents = true
-        level = .statusBar
+        level = NSWindow.Level(rawValue: WindowLevels.frames)
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         isReleasedWhenClosed = false
         hidesOnDeactivate = false

@@ -293,17 +293,23 @@ final class ScreenCaptureManager: NSObject {
 
     /// The whole display minus every window of this app but `keptWindow`: the Capture Area frame and
     /// the Viewer never show up in the capture, wherever they are; the studio's backdrop does, as it
-    /// is on screen (docs/design.md §2.1).
+    /// is on screen (docs/design.md §2.1). The app is excluded as a whole, or, when it isn't listed
+    /// (docs/design.md §6, risk 4), its windows are named one by one (`StudioFilter`).
     private func filter(for display: SCDisplay, in content: SCShareableContent) -> SCContentFilter {
         let pid = ProcessInfo.processInfo.processIdentifier
-        let kept = content.windows.filter { $0.windowID == keptWindow }
-        if let app = content.applications.first(where: { $0.processID == pid }) {
-            return SCContentFilter(display: display, excludingApplications: [app], exceptingWindows: kept)
+        let listed = content.windows.map { ListedWindow(id: $0.windowID, ownerPID: $0.owningApplication?.processID) }
+        let app = content.applications.first { $0.processID == pid }
+        let included: Set<CGWindowID> = keptWindow.map { [$0] } ?? []
+        let path = StudioFilter.path(listed, ownPID: pid, appIsListed: app != nil, kept: included)
+        if case .excludingWindows(let ids) = path {
+            let excluded = Set(ids)
+            log.info("App not in shareable content; excluding \(ids.count) windows instead")
+            return SCContentFilter(
+                display: display, excludingWindows: content.windows.filter { excluded.contains($0.windowID) })
         }
-        // Fallback (docs/design.md §6, risk 4): exclude our windows one by one.
-        let ours = content.windows.filter { $0.owningApplication?.processID == pid && $0.windowID != keptWindow }
-        log.info("App not in shareable content; excluding \(ours.count) windows instead")
-        return SCContentFilter(display: display, excludingWindows: ours)
+        // `.excludingApp` comes only with the app listed.
+        let kept = content.windows.filter { included.contains($0.windowID) }
+        return SCContentFilter(display: display, excludingApplications: app.map { [$0] } ?? [], exceptingWindows: kept)
     }
 
     private static func configuration(for geometry: CaptureGeometry, showsCursor: Bool) -> SCStreamConfiguration {

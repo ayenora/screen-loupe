@@ -29,6 +29,7 @@
 				Geometry/LenientDecoding.swift,
 				Geometry/MagnetHold.swift,
 				Geometry/OverlayLayout.swift,
+				Geometry/PaletteButtonLook.swift,
 				Geometry/PaletteHitShape.swift,
 				Geometry/ReferenceLayers.swift,
 				Geometry/ScreenshotName.swift,

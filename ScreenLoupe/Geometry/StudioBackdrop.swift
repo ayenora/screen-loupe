@@ -32,4 +32,83 @@ enum StudioBackdrop {
             width: Int((display.globalFrame.width * display.scale).rounded()),
             height: Int((display.globalFrame.height * display.scale).rounded()))
     }
+
+    /// A backdrop picture: the placement, drawn in `space`, its display's colour space.
+    struct Target: Equatable {
+        var placement: Placement
+        var space: CGColorSpace
+    }
+
+    /// What the backdrop shows, what was last asked for and which drawing is the latest: decides
+    /// when a picture is drawn, when the backdrop hides at once, and which finished drawing shows.
+    /// A picture is drawn only when the background, the display, its scale or its colour space
+    /// change; for another display the old picture goes at once rather than showing stretched
+    /// there; for another background it stays until the new one is drawn.
+    struct Tracker {
+        /// What the backdrop shows; `nil` while it is hidden.
+        private(set) var shown: Target?
+        /// What the latest picture was asked for: while it is drawn, and after it failed, so a
+        /// failure isn't tried again, and beeped about, on every move of the frame.
+        private(set) var asked: Target?
+        /// Counts the pictures asked for: only the latest is shown.
+        private(set) var request = 0
+
+        enum Update: Equatable {
+            /// Nothing to do: what is wanted shows, or is being drawn.
+            case none
+            /// Hide the backdrop now.
+            case hide
+            /// Draw `target` as drawing number `request`, hiding the backdrop first when `hidesFirst`.
+            case render(Target, request: Int, hidesFirst: Bool)
+        }
+
+        enum Finish: Equatable {
+            /// A newer picture was asked for meanwhile: this one is dropped.
+            case stale
+            /// It couldn't be drawn; the backdrop hides when `hides`.
+            case failed(hides: Bool)
+            /// It shows; `announces` when the backdrop wasn't showing before.
+            case shown(announces: Bool)
+        }
+
+        /// The backdrop should show `wanted`, `nil` for none.
+        mutating func update(wanted: Target?) -> Update {
+            guard let wanted else {
+                request += 1
+                asked = nil
+                return hide() ? .hide : .none
+            }
+            if shown == wanted {
+                // Back to what shows: a picture still drawn for another background must not replace it.
+                if asked != nil {
+                    request += 1
+                    asked = nil
+                }
+                return .none
+            }
+            if asked == wanted { return .none }
+            let hidesFirst =
+                shown.map { $0.placement.display.globalFrame != wanted.placement.display.globalFrame } ?? false
+            if hidesFirst { shown = nil }
+            request += 1
+            asked = wanted
+            return .render(wanted, request: request, hidesFirst: hidesFirst)
+        }
+
+        /// Drawing number `request` finished, with a picture when `drawn`.
+        mutating func finished(_ request: Int, drawn: Bool) -> Finish {
+            guard request == self.request, let asked else { return .stale }
+            guard drawn else { return .failed(hides: hide()) }
+            let announces = shown == nil
+            shown = asked
+            return .shown(announces: announces)
+        }
+
+        /// Whether a shown backdrop goes.
+        private mutating func hide() -> Bool {
+            guard shown != nil else { return false }
+            shown = nil
+            return true
+        }
+    }
 }

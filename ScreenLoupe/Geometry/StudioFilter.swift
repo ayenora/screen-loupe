@@ -10,7 +10,8 @@ struct ListedWindow: Equatable, Sendable {
 /// Which windows a studio picture leaves out: every window of this app but the kept ones — the
 /// Viewer, the Capture Area frame and the studio's backdrop. Nothing of other apps or of the
 /// system: the backdrop covers the wallpaper and the desktop icons on screen, so the picture is
-/// what the frame shows.
+/// what the frame shows. The Viewer's stream leaves out its windows the same way, keeping only the
+/// studio's backdrop.
 enum StudioFilter {
     /// How the filter is made (`StudioFilter.path`).
     enum Path: Equatable, Sendable {

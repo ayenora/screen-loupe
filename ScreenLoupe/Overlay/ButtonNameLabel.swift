@@ -10,13 +10,10 @@ final class ButtonNameLabel {
     private let panel = ButtonNamePanel()
     private weak var parent: NSWindow?
     private var timer: Timer?
-    /// The button the pointer last entered, until it leaves it or clicks.
-    private var hovered: AnyHashable?
+    /// The hovered button and when a shown name last went (`HoverLabelState`).
+    private var state = HoverLabelState<AnyHashable>()
     /// The hovered button's name and where its label goes, until it leaves it or clicks.
     private var pending: (name: String, frame: (CGSize) -> CGRect?)?
-    /// When a shown name last went as the pointer left its button; `nil` after a click and while
-    /// the buttons are hidden.
-    private var hiddenAt: TimeInterval?
 
     init(parent: NSWindow) {
         self.parent = parent
@@ -25,34 +22,31 @@ final class ButtonNameLabel {
     /// The pointer entered `button`: `name` shows after the rest, where `frame` puts a label of the
     /// size it is given, in AppKit global coordinates; `nil` shows none.
     func pointerEntered(_ button: AnyHashable, name: String, frame: @escaping (CGSize) -> CGRect?) {
+        let next = state.enter(button, at: ProcessInfo.processInfo.systemUptime, labelShown: panel.isVisible)
         hide()
-        hovered = button
         pending = (name, frame)
-        let delay = HoverLabelDelay.delay(at: ProcessInfo.processInfo.systemUptime, lastHidden: hiddenAt)
-        guard delay > 0 else {
-            show()
-            return
-        }
-        timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.show() }
+        switch next {
+        case .show: show()
+        case .wait(let delay):
+            timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.show() }
+            }
         }
     }
 
-    /// An exit from a button the pointer has already left for another changes nothing: where
-    /// buttons touch, the next one's enter can come first.
+    /// An exit from a button the pointer has already left for another changes nothing
+    /// (`HoverLabelState.exit`).
     func pointerExited(_ button: AnyHashable) {
-        guard hovered == button else { return }
-        hovered = nil
+        guard state.exit(button, at: ProcessInfo.processInfo.systemUptime, labelShown: panel.isVisible) else { return }
         pending = nil
         hide()
     }
 
     /// A click or hiding: the name goes, and the next button waits the full rest.
     func end() {
-        hovered = nil
+        state.end()
         pending = nil
         hide()
-        hiddenAt = nil
     }
 
     private func hide() {
@@ -61,7 +55,6 @@ final class ButtonNameLabel {
         guard panel.isVisible else { return }
         parent?.removeChildWindow(panel)
         panel.orderOut(nil)
-        hiddenAt = ProcessInfo.processInfo.systemUptime
     }
 
     private func show() {
