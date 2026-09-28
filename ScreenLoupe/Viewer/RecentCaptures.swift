@@ -14,7 +14,7 @@ struct RecentCapture: Identifiable {
     /// The size of the copied or saved image.
     let imageSize: PixelSize
     let date: Date
-    /// The copied or saved image, small, for the panel.
+    /// The kept frame, or an image file, small, for the panel.
     let thumbnail: CGImage?
     /// An image file (docs/product.md, Open Image), not a copy of the screen.
     let isFile: Bool
@@ -68,16 +68,19 @@ final class RecentCaptures {
     @ObservationIgnored var onChange: (() -> Void)?
 
     /// A capture of `frame`, or of just `area` of it (source pixels), copied now so it no longer
-    /// depends on the stream. `image` is what was copied or saved, for the thumbnail and the size.
-    /// `nil` when nothing of the frame is kept.
+    /// depends on the stream. `image` is what was copied or saved, for the size. The thumbnail is
+    /// drawn from the kept pixels, which the row shows: a copied view also holds the reference
+    /// layers and the grid, which the kept frame doesn't. `nil` when nothing of the frame is kept.
     static func capture(
         of frame: ViewerFrame, area: CGRect?, kind: String, image: CGImage, zoom: CGFloat, offset: CGPoint,
         selection: CGRect?
     ) -> RecentCapture? {
         guard let kept = frame.copiedForKeeping(area: area) else { return nil }
+        let keptImage = ScreenshotExporter.sourceImage(from: kept, colorSpace: kept.colorSpace)
         return RecentCapture(
             frame: kept, kind: kind, imageSize: PixelSize(width: image.width, height: image.height), date: Date(),
-            thumbnail: thumbnail(of: image), isFile: false, zoom: zoom, offset: offset, selection: selection)
+            thumbnail: keptImage.flatMap(thumbnail(of:)), isFile: false, zoom: zoom, offset: offset,
+            selection: selection)
     }
 
     /// A row for the image file `name`, decoded into `frame` with its `thumbnail`
