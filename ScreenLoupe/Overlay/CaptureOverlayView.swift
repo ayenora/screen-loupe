@@ -19,8 +19,9 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 
 /// Draws the Capture Area frame and turns mouse and key events into delegate calls.
 ///
-/// The line is always drawn. The band, the handles, the tab and the position box fade in on hover;
-/// the muted size label shows at rest. A frame whose lock stops resizing shows no band or handles.
+/// The line is always drawn, by the outline's panel while the frame is fitted. The band, the handles,
+/// the tab and the position box fade in on hover; the muted size label shows at rest. A frame whose
+/// lock stops resizing, or that is fitted to the magnet's window, shows no band or handles.
 /// The viewport handle on the outline of the part the Viewer shows (the outline itself is in its own
 /// click-through panel, `ViewedPartOverlay`), and a notice beside the tab, fade in and out as the
 /// controller asks. The buttons the layout leaves out (`.null`), collapsed behind "»" or in its place,
@@ -101,6 +102,18 @@ final class CaptureOverlayView: NSView {
         didSet {
             pinButton.isOn = isLocked
             decorations.alphaValue = decorationsAlpha
+        }
+    }
+
+    /// The magnet's area lies on its window's bounds: no band and no handles, the window's own edges
+    /// resize it (`OverlayLayout.hitTarget`). Its line is drawn by the click-through outline panel,
+    /// since this panel takes a press on every drawn pixel, and pointing at nothing sets no cursor, so
+    /// the window's edges show their own.
+    var isFitted = false {
+        didSet {
+            guard isFitted != oldValue else { return }
+            decorations.alphaValue = decorationsAlpha
+            needsDisplay = true
         }
     }
 
@@ -287,7 +300,9 @@ final class CaptureOverlayView: NSView {
     }
 
     private var labelAlpha: CGFloat { !isRevealed && style.showsLabelAtRest ? 1 : 0 }
-    private var decorationsAlpha: CGFloat { isRevealed && activeLock?.allowsResize != false ? 1 : 0 }
+    private var decorationsAlpha: CGFloat {
+        isRevealed && !isFitted && activeLock?.allowsResize != false ? 1 : 0
+    }
 
     private func local(_ rect: CGRect) -> CGRect {
         guard let origin = layout?.windowFrame.origin else { return rect }
@@ -296,19 +311,10 @@ final class CaptureOverlayView: NSView {
 
     // MARK: Drawing
 
+    /// A fitted frame's line is drawn by the click-through `ViewedPartOverlay` instead.
     override func draw(_ dirtyRect: NSRect) {
-        guard let layout else { return }
-        let rect = local(layout.captureRect)
-        let width = style.lineWidth
-        // The line sits just outside the captured rect, so every captured pixel stays visible.
-        let halo = NSBezierPath(rect: rect.insetBy(dx: -width - 0.5, dy: -width - 0.5))
-        halo.lineWidth = 1
-        OverlayStyle.halo(for: effectiveAppearance).setStroke()
-        halo.stroke()
-        let line = NSBezierPath(rect: rect.insetBy(dx: -width / 2, dy: -width / 2))
-        line.lineWidth = width
-        style.accent.setStroke()
-        line.stroke()
+        guard let layout, !isFitted else { return }
+        OverlayStyle.drawLine(around: local(layout.captureRect), style: style, appearance: effectiveAppearance)
     }
 
     // MARK: Mouse
@@ -372,7 +378,9 @@ final class CaptureOverlayView: NSView {
 
     private func updateCursor() {
         guard !isDragging else { return }
-        OverlayStyle.cursor(for: delegate?.overlayView(self, hitTargetAt: NSEvent.mouseLocation)).set()
+        let target = delegate?.overlayView(self, hitTargetAt: NSEvent.mouseLocation)
+        if target == nil, isFitted { return }
+        OverlayStyle.cursor(for: target).set()
     }
 
     // MARK: Lock menu

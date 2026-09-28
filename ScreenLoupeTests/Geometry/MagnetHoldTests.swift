@@ -126,4 +126,28 @@ struct MagnetHoldTests {
         // A new stream: every frame of it has its geometry.
         #expect(MagnetHold.isCaptured(at: 0, afterConfiguringAt: 0))
     }
+
+    /// The window resized with a fitted area: the stream takes another source rect and another size.
+    private let resized = CGRect(x: 100, y: 100, width: 160, height: 80)
+
+    @Test func aResizeByTheMagnetKeepsItHoldingAndDoesntEndIt() {
+        var hold = MagnetHold(movedTo: before, at: 10)
+        hold.moved(to: resized, at: 10.1)
+        // The area where the magnet put it: not the user's change.
+        #expect(!hold.ends(on: .areaChanged(to: resized)))
+        #expect(!check(hold, at: 10.2, showsArea: true))
+        #expect(check(hold, at: 10.1 + MagnetHold.settle, showsArea: true))
+    }
+
+    @Test func aFrameOfTheSizeBeforeAResizeDoesntShowTheArea() throws {
+        let now = try #require(geometry(resized))
+        let old = try #require(geometry(before))
+        // The same top-left corner, another size: other pixels out of the stream.
+        #expect(now.outputSize != old.outputSize)
+        #expect(!MagnetHold.frameShows(now, frameGeometry: old, capturedAfterConfiguring: true))
+        #expect(MagnetHold.frameShows(now, frameGeometry: now, capturedAfterConfiguring: true))
+        // A 2× area 1 pt taller: one more row of two pixels is enough.
+        let taller = try #require(geometry(CGRect(x: 100, y: 100, width: 120, height: 81)))
+        #expect(!MagnetHold.frameShows(taller, frameGeometry: old, capturedAfterConfiguring: true))
+    }
 }

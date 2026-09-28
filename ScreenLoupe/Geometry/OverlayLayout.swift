@@ -42,16 +42,21 @@ enum OverlayHitTarget: Hashable, Sendable {
 }
 
 /// What keeps the Capture Area in place while the pin is on (docs/product.md, Capture Area). Moving
-/// is blocked by every lock; Fit to Window works with any, as a deliberate command.
+/// by the line and the arrow keys is blocked by every lock, by the tab by all but the magnet; Fit to
+/// Window works with any, as a deliberate command.
 enum CaptureAreaLock: String, Codable, CaseIterable, Sendable {
     /// Neither moves nor resizes.
     case pinned
     /// Doesn't move, but every handle still resizes it.
     case fixedPosition
-    /// Moves only with the window it is attached to; every handle still resizes it.
+    /// Moves with the window it is attached to, and by its tab, which sets a new place on the window;
+    /// every handle still resizes it, unless it is fitted to the window.
     case magnet
 
     var allowsResize: Bool { self != .pinned }
+
+    /// Whether dragging the tab moves the area.
+    var movesByTab: Bool { self == .magnet }
 
     /// Arrow keys: a move never, a resize (with Option) only when the handles resize too.
     func allowsNudge(resizing: Bool) -> Bool { resizing && allowsResize }
@@ -291,22 +296,27 @@ struct OverlayLayout: Equatable, Sendable {
     }
 
     /// What pressing at `point` does, or `nil` when the press belongs to the app underneath. A locked
-    /// frame answers its buttons and, when `lock` allows resizing, its handles, but never moves:
-    /// picking a window is a command, not a drag. `viewportHandle` is the viewport handle's rect, `nil`
-    /// while it isn't shown: it moves the Viewer, not the area, so it takes a press on any lock, over
-    /// the handles and the tab; only the buttons keep theirs.
+    /// frame answers its buttons and, when `lock` allows resizing, its handles, and moves only by the
+    /// tab when `lock` lets it (`movesByTab`): picking a window is a command, not a drag. `fitted`: the
+    /// magnet's area lies on its window's bounds (`WindowMagnet.isFitted`), and the window's own edges
+    /// resize it, so the frame has no handles, and its line and band take nothing: only the buttons,
+    /// the tab and the viewport handle. `viewportHandle` is the viewport handle's rect, `nil` while it
+    /// isn't shown: it moves the Viewer, not the area, so it takes a press on any lock, over the
+    /// handles and the tab; only the buttons keep theirs.
     func hitTarget(
         at point: CGPoint, metrics m: OverlayMetrics = .standard, lock: CaptureAreaLock? = nil,
-        viewportHandle: CGRect? = nil
+        fitted: Bool = false, viewportHandle: CGRect? = nil
     ) -> OverlayHitTarget? {
         if let button = button(at: point) { return button }
         if viewportHandle?.contains(point) == true { return .viewportHandle }
         if let lock, !lock.allowsResize { return nil }
-        for handle in OverlayHandle.allCases where handleRect(handle, size: m.handleHitSize).contains(point) {
-            return .resize(handle)
+        if !fitted {
+            for handle in OverlayHandle.allCases where handleRect(handle, size: m.handleHitSize).contains(point) {
+                return .resize(handle)
+            }
         }
-        if lock != nil { return nil }
-        if tabRect.contains(point) { return .move }
+        if tabRect.contains(point), lock?.movesByTab ?? true { return .move }
+        if lock != nil || fitted { return nil }
         let outer = captureRect.insetBy(dx: -(m.lineWidth + m.bandWidth), dy: -(m.lineWidth + m.bandWidth))
         if outer.contains(point) && !captureRect.contains(point) { return .move }
         return nil

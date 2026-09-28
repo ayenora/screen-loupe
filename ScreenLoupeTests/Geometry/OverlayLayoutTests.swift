@@ -412,8 +412,52 @@ struct OverlayPositionBoxTests {
     func fixedPositionFrameResizesButDoesNotMove(point: CGPoint, expected: OverlayHitTarget?) {
         let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
         #expect(l.hitTarget(at: point, lock: .fixedPosition) == expected)
-        // An attached magnet takes the same presses: only its window moves it.
-        #expect(l.hitTarget(at: point, lock: .magnet) == expected)
+        // An attached magnet takes the same presses, and its tab moves it.
+        let tab = CGPoint(x: 200, y: 220)
+        #expect(l.hitTarget(at: point, lock: .magnet) == (point == tab ? .move : expected))
+    }
+
+    @Test func onlyTheMagnetMovesByTheTab() {
+        #expect(!CaptureAreaLock.pinned.movesByTab)
+        #expect(!CaptureAreaLock.fixedPosition.movesByTab)
+        #expect(CaptureAreaLock.magnet.movesByTab)
+    }
+
+    @Test(arguments: [
+        // The handles, the line and the band: the press goes to the window under the frame.
+        (CGPoint(x: 100, y: 200), OverlayHitTarget?.none),
+        (CGPoint(x: 300, y: 150), nil),
+        (CGPoint(x: 200, y: 99), nil),
+        (CGPoint(x: 300, y: 100), nil),
+        (CGPoint(x: 100.5, y: 150), nil),
+        (CGPoint(x: 97, y: 120), nil),
+        (CGPoint(x: 250, y: 203), nil),
+        (CGPoint(x: 150, y: 150), nil),
+        (CGPoint(x: 20, y: 20), nil),
+        // The tab still moves it.
+        (CGPoint(x: 200, y: 220), .move),
+        (CGPoint(x: 111, y: 211), .move),
+    ])
+    func aFittedFrameTakesOnlyItsTab(point: CGPoint, expected: OverlayHitTarget?) {
+        let l = layout(CGRect(x: 100, y: 100, width: 200, height: 100))
+        #expect(l.hitTarget(at: point, lock: .magnet, fitted: true) == expected)
+    }
+
+    @Test func aFittedFrameAnswersItsButtonsAndTheViewportHandle() throws {
+        let l = expanded(CGRect(x: 100, y: 100, width: 200, height: 100))
+        for (target, rect) in [
+            (OverlayHitTarget.pin, l.pinRect), (.pinMenu, l.pinMenuRect), (.viewportButton, l.viewportRect),
+            (.raiseViewer, l.raiseRect), (.pickWindow, l.pickRect),
+        ] {
+            #expect(l.hitTarget(at: CGPoint(x: rect.midX, y: rect.midY), lock: .magnet, fitted: true) == target)
+        }
+        let handle = try #require(l.viewportHandleRect(for: CGRect(x: 150, y: 120, width: 50, height: 40)))
+        #expect(
+            l.hitTarget(
+                at: CGPoint(x: handle.midX, y: handle.midY), lock: .magnet, fitted: true, viewportHandle: handle)
+                == .viewportHandle)
+        // With the pill shown, a corner where a handle would be still takes nothing.
+        #expect(l.hitTarget(at: CGPoint(x: 100, y: 100), lock: .magnet, fitted: true, viewportHandle: handle) == nil)
     }
 
     @Test func fixedPositionFrameAnswersItsButtons() {

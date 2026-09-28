@@ -153,7 +153,8 @@ final class OverlayFrameController {
     private struct Magnet {
         /// As last read.
         var window: ScreenWindow
-        /// `WindowMagnet.placement`: taken on attaching and after a resize.
+        /// `WindowMagnet.placement`: taken on attaching, after a resize or a move by the tab, and after
+        /// the area followed its window's bounds.
         var placement: CGRect
         /// Reads in a row that didn't hold the window.
         var badReads = 0
@@ -382,6 +383,7 @@ final class OverlayFrameController {
             $0.captureAreaLock = .magnet
             $0.captureAreaLocked = true
         }
+        updateFitted()
         guard magnetTimer == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.followMagnetWindow() }
@@ -397,8 +399,10 @@ final class OverlayFrameController {
         }
     }
 
-    /// Moves the area with its window, or lets go when the window is gone. Waits out a drag of a
-    /// handle: the window's move since then applies after it.
+    /// Moves the area with its window, or lets go when the window is gone: onto the window's new
+    /// bounds while it is fitted to them, else keeping its place on the window
+    /// (`WindowMagnet.follow`). Waits out a drag of a handle or the tab: the window's change since then
+    /// applies after it.
     private func followMagnetWindow() {
         guard let held = magnet, drag == nil, let converter else { return }
         let now = ScreenWindows.window(held.window.id, converter: converter)
@@ -411,7 +415,17 @@ final class OverlayFrameController {
         if now.frame != held.window.frame {
             magnet?.window = now
             isFollowingWindow = true
-            apply(WindowMagnet.area(at: held.placement, on: now.frame), persist: false)
+            switch WindowMagnet.follow(
+                area: captureRect, placement: held.placement, from: held.window.frame, to: now.frame)
+            {
+            case .fitted(let rect):
+                // Each edge on the pixels, as Fit to Window; the place on the window taken again, for
+                // when the window grows past a minimum-size area, which is no longer fitted.
+                applyEdited(rect, snap: .edges, persist: false)
+                rememberMagnetPlacement()
+            case .moved(let rect):
+                apply(rect, persist: false)
+            }
             isFollowingWindow = false
             magnetMoved = true
         } else if magnetMoved {
@@ -428,7 +442,7 @@ final class OverlayFrameController {
         showNotice("Window gone · magnet off")
     }
 
-    /// After a resize, the area keeps its new size and place on the window.
+    /// After a resize or a move by the tab, the area keeps its new size and place on the window.
     private func rememberMagnetPlacement() {
         guard let held = magnet else { return }
         magnet?.placement = WindowMagnet.placement(of: captureRect, on: held.window.frame)
@@ -440,6 +454,7 @@ final class OverlayFrameController {
         spaceObserver.map(NSWorkspace.shared.notificationCenter.removeObserver)
         spaceObserver = nil
         magnet = nil
+        updateFitted()
         if magnetMoved {
             magnetMoved = false
             settings.update { $0[keyPath: kind.savedRect] = captureRect }
@@ -516,6 +531,7 @@ final class OverlayFrameController {
         }
         // The row expanded or collapsed, or the frame moved under a still pointer.
         updateButtonName()
+        updateFitted()
         onChange?()
     }
 
@@ -528,6 +544,23 @@ final class OverlayFrameController {
         // Resizing snaps each edge on its own, so the edges that don't move stay exactly in place;
         // `apply` then snaps as a whole, which leaves an already snapped rect unchanged.
         apply(snapped(rect, snap), persist: persist)
+    }
+
+    // MARK: Fitted
+
+    /// The magnet holds a window and the area lies on its bounds (`WindowMagnet.isFitted`): the area
+    /// follows the window's size too, and the window's own edges resize it.
+    private var isFitted: Bool {
+        magnet.map { WindowMagnet.isFitted(captureRect, to: $0.window.frame) } ?? false
+    }
+
+    /// While fitted, the frame's line lies on the window's edges: it has no handles, and its line is
+    /// drawn by the click-through outline panel, so a press on it and the cursor go to the window
+    /// underneath, whose own edges resize it. The overlay's panel takes a press on every drawn pixel,
+    /// and setting its `ignoresMouseEvents` back to false would make it take one on every pixel.
+    private func updateFitted() {
+        view.isFitted = isFitted
+        updateViewedPartShown()
     }
 
     // MARK: Hover
@@ -645,7 +678,9 @@ final class OverlayFrameController {
     private func updateViewedPartShown() {
         outline?.setShown(viewedPart != nil && (isNear || viewedPartTimer != nil || showsViewportHandle))
         if let layout {
-            outline?.place(frame: layout.windowFrame, captureRect: layout.captureRect, viewedPart: viewedPart)
+            outline?.place(
+                frame: layout.windowFrame, captureRect: layout.captureRect, viewedPart: viewedPart,
+                drawsFrameLine: isFitted)
         }
         view.viewportHandleRect = viewportHandle
     }
@@ -664,7 +699,8 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
     private var lock: CaptureAreaLock? { kind.hasLocks ? settings.settings.activeCaptureAreaLock : nil }
 
     func overlayView(_ view: CaptureOverlayView, hitTargetAt point: CGPoint) -> OverlayHitTarget? {
-        layout?.hitTarget(at: point, metrics: view.style.metrics, lock: lock, viewportHandle: viewportHandle)
+        layout?.hitTarget(
+            at: point, metrics: view.style.metrics, lock: lock, fitted: isFitted, viewportHandle: viewportHandle)
     }
 
     func overlayView(_ view: CaptureOverlayView, mouseDownAt point: CGPoint) {
@@ -707,7 +743,8 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
             onPickWindow?()
             return
         }
-        // A locked frame takes only the handles its lock allows, which the hit test already left out.
+        // A locked frame takes only the handles its lock allows, and the magnet's frame its tab too, as
+        // the hit test decided.
         // Otherwise the window only receives presses on its drawn pixels, and anything outside the
         // area that isn't a handle moves it. Inside, a press on no target does nothing.
         guard let target = target ?? (lock == nil && !captureRect.contains(point) ? .move : nil) else { return }
@@ -726,8 +763,13 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
         let targets = NSEvent.modifierFlags.contains(.command) ? snapTargets() : []
         switch drag.target {
         case .move:
-            let moved = drag.startRect.offsetBy(dx: delta.dx, dy: delta.dy)
-            applyEdited(EdgeSnapping.moved(moved, targets: targets), snap: .move, persist: false)
+            let moved = EdgeSnapping.moved(drag.startRect.offsetBy(dx: delta.dx, dy: delta.dy), targets: targets)
+            // The tab brought the magnet's area back onto its window: it lands on it, fitted again.
+            if let window = magnet?.window.frame, let onto = WindowMagnet.snappedOnto(window, area: moved) {
+                applyEdited(onto, snap: .edges, persist: false)
+            } else {
+                applyEdited(moved, snap: .move, persist: false)
+            }
         case .resize(let handle):
             let resized = CaptureAreaEditing.resized(drag.startRect, handle: handle, by: delta)
             var rect = EdgeSnapping.resized(resized, handle: handle, targets: targets)

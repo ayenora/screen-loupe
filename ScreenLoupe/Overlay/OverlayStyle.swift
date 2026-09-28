@@ -80,6 +80,20 @@ enum OverlayStyle {
             : NSColor.white.withAlphaComponent(0.75)
     }
 
+    /// Strokes the frame's line with its halo just outside `rect`, the captured rect in the view's
+    /// coordinates, so every captured pixel stays visible.
+    static func drawLine(around rect: CGRect, style: FrameStyle, appearance: NSAppearance) {
+        let width = style.lineWidth
+        let halo = NSBezierPath(rect: rect.insetBy(dx: -width - 0.5, dy: -width - 0.5))
+        halo.lineWidth = 1
+        self.halo(for: appearance).setStroke()
+        halo.stroke()
+        let line = NSBezierPath(rect: rect.insetBy(dx: -width / 2, dy: -width / 2))
+        line.lineWidth = width
+        style.accent.setStroke()
+        line.stroke()
+    }
+
     static func tabWidth(for text: String) -> CGFloat {
         let textWidth = (text as NSString).size(withAttributes: [.font: tabFont]).width
         return (tabLeading + gripWidth + tabGap + textWidth + tabTrailing).rounded(.up)
