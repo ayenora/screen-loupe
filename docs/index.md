@@ -22,9 +22,10 @@ Free and open source (MIT). macOS 14 Sonoma or later. No account, no telemetry: 
 - **Pixel-true.** At 800% every screen pixel is a crisp 8×8 square, never a blur, on Retina and non-Retina displays alike.
 - **Nothing moves on its own.** The Viewer keeps its zoom and framing while you move or resize the frame.
 - **Copy exactly what you see:** the zoomed view, a selection snapped to pixels, or the source at native resolution.
-- **Inspect:** a Color Meter with HEX, CSS, SwiftUI and AppKit values; a pixel ruler; a pixel grid; reference layers with a Difference blend to check the screen against a design export.
+- **Inspect:** a Color Meter with HEX, CSS, SwiftUI and AppKit values; a pixel ruler; a pixel grid; reference layers with a Difference blend to check the screen against a design export. Open, drop or paste an image file to inspect it with the same tools.
 - **Catch transient states:** freeze the view from any app with F13, or after a countdown, while the mouse is held down.
-- **Place the frame fast:** snap it to window edges with ⌘, or fit it to a window in one click.
+- **Place the frame fast:** snap it to window edges with ⌘, fit it to a window in one click, or attach it to a window with the magnet so it follows as the window moves.
+- **Screenshot studio:** exact, clean pictures for the App Store, the web, docs and bug reports — pixel sizes, a timer, a backdrop seen on screen, one window alone with or without its shadow, PNG, JPEG or HEIC with no personal metadata.
 
 ## Privacy
 
