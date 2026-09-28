@@ -9,7 +9,8 @@ extension MTKView {
     }
 }
 
-/// The magnified Capture Area. Draws only when a frame arrives or the zoom/pan changes.
+/// The magnified Capture Area. Draws only when a frame arrives or the zoom/pan changes, and on every
+/// display refresh during a zoom glide.
 ///
 /// Drawing is requested explicitly with `requestDraw()`. With MTKView's `setNeedsDisplay` mode
 /// nothing was drawn any more after the window had been closed and reopened, while frames kept
@@ -63,6 +64,7 @@ final class ViewerView: MTKView {
         renderer = ViewerRenderer(view: self, frameStore: frameStore, zoomPan: zoomPan)
         delegate = renderer
         renderer?.onTextureReady = { [weak self] in self?.requestDraw() }
+        zoomPan.onAnimationStart = { [weak self] in self?.startZoomAnimation() }
     }
 
     @available(*, unavailable)
@@ -83,8 +85,31 @@ final class ViewerView: MTKView {
         }
     }
 
+    private var zoomLink: CADisplayLink?
+
+    /// A zoom glide draws on every display refresh until it is over, whether or not frames arrive
+    /// (a stopped stream, a frozen frame, a recent capture): the observers of the presented view ask
+    /// for the draws.
+    private func startZoomAnimation() {
+        guard zoomLink == nil else { return }
+        let link = displayLink(target: self, selector: #selector(zoomAnimationFrame(_:)))
+        link.add(to: .main, forMode: .common)
+        zoomLink = link
+    }
+
+    @objc private func zoomAnimationFrame(_ link: CADisplayLink) {
+        guard !zoomPan.animationFrame() else { return }
+        link.invalidate()
+        zoomLink = nil
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // The link holds the view; out of a window it may not fire to stop itself.
+        if window == nil {
+            zoomLink?.invalidate()
+            zoomLink = nil
+        }
         requestDraw()
     }
 
@@ -111,7 +136,8 @@ final class ViewerView: MTKView {
     }
 
     /// Copy View: what the Viewer shows now, rendered offscreen, with the pixel grid only when
-    /// `showsGrid` (Settings › Screenshots). Tagged with the colour space the Viewer shows it in.
+    /// `showsGrid` (Settings › Screenshots). During a zoom glide it is the model, the view the glide
+    /// is going to. Tagged with the colour space the Viewer shows it in.
     /// Just `region` (viewport pixels) when given; else just the Select tool's selection while there
     /// is one, at the current zoom, even where it reaches beyond the viewport. Past `ImageBudget`
     /// only the top-left part. `nil` without a frame or without Metal.
@@ -119,7 +145,7 @@ final class ViewerView: MTKView {
         guard let renderer else { return nil }
         var style = renderer.style
         style.showsGrid = style.showsGrid && showsGrid
-        var scene = renderer.scene(for: self, style: style)
+        var scene = renderer.scene(for: self, style: style, state: zoomPan.state)
         if let region {
             scene.state.offset = CGPoint(x: scene.state.offset.x - region.minX, y: scene.state.offset.y - region.minY)
             scene.state.viewportSize = region.size
@@ -265,7 +291,7 @@ final class ViewerView: MTKView {
 
     /// Tells the inspector which Capture Area pixel is under the mouse.
     private func inspectPixel(at event: NSEvent) {
-        let pixel = zoomPan.state.sourcePixel(atViewportPoint: drawablePoint(event))
+        let pixel = zoomPan.presented.sourcePixel(atViewportPoint: drawablePoint(event))
         inspector.setViewerPixel(pixel)
     }
 
@@ -286,17 +312,23 @@ final class ViewerView: MTKView {
         if isSpaceHeld {
             // Space-drag pans, whatever is under the mouse.
         } else if event.modifierFlags.contains(.option), let selection {
+            zoomPan.settle()
             selection.beginRegion(at: point)
             toolPress = .selection
             return
         } else if let ruler, ruler.press(at: point, scale: scale) {
+            // A tool takes the press where it shows; a zoom glide stops there, so the drag works in
+            // the view the press was made in.
+            zoomPan.settle()
             toolPress = .ruler
             updateCursor(at: point, modifiers: event.modifierFlags)
             return
         } else if let selection, selection.press(at: point, scale: scale) {
+            zoomPan.settle()
             toolPress = .selection
             return
         } else if let references, references.press(at: point, scale: scale) {
+            zoomPan.settle()
             toolPress = .reference
             updateCursor(at: point, modifiers: event.modifierFlags)
             return
@@ -361,7 +393,7 @@ final class ViewerView: MTKView {
         let wheelZooms = !wheelZoomNeedsCommand && !precise && event.scrollingDeltaY != 0
         if event.modifierFlags.contains(.command) || wheelZooms {
             let factor = exp(event.scrollingDeltaY * (precise ? 0.01 : 0.1))
-            zoomPan.setZoom(zoomPan.state.zoom * factor, around: drawablePoint(event))
+            zoomPan.zoom(by: factor, around: drawablePoint(event))
             return
         }
         let lines: CGFloat = precise ? 1 : 10
@@ -370,7 +402,7 @@ final class ViewerView: MTKView {
     }
 
     override func magnify(with event: NSEvent) {
-        zoomPan.setZoom(zoomPan.state.zoom * (1 + event.magnification), around: drawablePoint(event))
+        zoomPan.zoom(by: 1 + event.magnification, around: drawablePoint(event))
     }
 
     // MARK: Keys

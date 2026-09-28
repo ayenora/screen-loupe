@@ -159,7 +159,8 @@ final class ReferencesController {
     /// The selected layer's corner handles, in drawable pixels.
     func handles(scale: CGFloat) -> [(corner: ReferenceCorner, rect: CGRect)] {
         guard isActive, takesMouse, let layer = stack.selected, layer.isMovable else { return [] }
-        let rect = zoomPan.state.imageRect(origin: layer.origin, size: layer.frame.size)
+        // Where they show: over the presented view during a zoom glide.
+        let rect = zoomPan.presented.imageRect(origin: layer.origin, size: layer.frame.size)
         let size = Self.handleSize * scale
         return ReferenceCorner.allCases.map { corner in
             let point = corner.point(of: rect)
@@ -175,7 +176,7 @@ final class ReferencesController {
         {
             return .corner(selected, handle.corner)
         }
-        let source = zoomPan.state.sourcePoint(forViewportPoint: point)
+        let source = zoomPan.presented.sourcePoint(forViewportPoint: point)
         return stack.movableLayer(at: source).map(Part.layer)
     }
 

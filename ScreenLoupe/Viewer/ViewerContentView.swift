@@ -105,7 +105,8 @@ final class ViewerContentView: NSStackView {
     }
 
     private func wire(zoomPan: ZoomPanController) {
-        zoomPan.observe { [weak self] in
+        // Each frame of a zoom glide as well as each change of the model.
+        zoomPan.observePresented { [weak self] in
             guard let self else { return }
             viewerView.requestDraw()
             overlay.needsDisplay = true

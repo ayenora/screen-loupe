@@ -48,8 +48,9 @@ final class WindowManager {
             trackCursor()
             updateViewedPart()
         }
-        // The frame outlines the part the Viewer shows, for a moment after the image pans or zooms.
-        zoomPan.observe { [weak self] in
+        // The frame outlines the part the Viewer shows, for a moment after the image pans or zooms,
+        // and follows a zoom glide.
+        zoomPan.observePresented { [weak self] in
             self?.updateViewedPart()
             self?.captureArea.flashViewedPart()
         }
@@ -96,6 +97,8 @@ final class WindowManager {
         captureArea.onMouseMoved = { [weak self] in self?.trackCursor() }
         captureArea.onViewportHandleDragBegan = { [weak self] in
             guard let self else { return }
+            // The drag pans from the view as shown: a zoom glide stops there.
+            zoomPan.settle()
             viewedPartDrag = ViewedPartDrag(
                 start: zoomPan.state, startDelta: .zero, last: zoomPan.state, lastDelta: .zero)
         }
@@ -153,7 +156,7 @@ final class WindowManager {
             captureArea.viewedPart = nil
             return
         }
-        captureArea.viewedPart = DisplayCoordinateConverter.viewedPart(of: zoomPan.state, in: geometry)?.rect
+        captureArea.viewedPart = DisplayCoordinateConverter.viewedPart(of: zoomPan.presented, in: geometry)?.rect
     }
 
     /// The geometry the outline of the viewed part is placed with: the shown frame's, or during a

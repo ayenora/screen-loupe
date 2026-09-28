@@ -7,7 +7,8 @@ import AppKit
 /// spot. As a crosshair, lines run across the whole view through that pixel and a box outlines it;
 /// as a cursor, an arrow at its usual size points at the outlined pixel. White under the colour
 /// (orange by default) reads on any content. With the original cursor in the capture nothing is
-/// drawn: the capture has it. Never takes the mouse.
+/// drawn: the capture has it. Never takes the mouse. Everything here is placed over the presented
+/// view (`ZoomPanController.presented`), as the image is drawn during a zoom glide.
 final class ViewerOverlayView: NSView {
     private let zoomPan: ZoomPanController
     private let inspector: PixelInspector
@@ -49,7 +50,7 @@ final class ViewerOverlayView: NSView {
             probe.source == .captureArea
         else { return }
         let pixel = Self.points(
-            zoomPan.state.imageRect(origin: CGPoint(x: probe.x, y: probe.y), size: CGSize(width: 1, height: 1)),
+            zoomPan.presented.imageRect(origin: CGPoint(x: probe.x, y: probe.y), size: CGSize(width: 1, height: 1)),
             scale: drawableScale)
         let center = CGPoint(x: pixel.midX, y: pixel.midY)
         if pointerStyle == .cursor { return drawCursor(at: center, pixel: pixel) }
@@ -96,7 +97,7 @@ final class ViewerOverlayView: NSView {
         guard let references, let layer = references.stack.selected, references.isActive, layer.isVisible else {
             return
         }
-        let rect = Self.points(zoomPan.state.imageRect(origin: layer.origin, size: layer.frame.size), scale: scale)
+        let rect = Self.points(zoomPan.presented.imageRect(origin: layer.origin, size: layer.frame.size), scale: scale)
         let outline = NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5))
         outline.lineWidth = 1
         NSColor.systemBlue.setStroke()
@@ -137,7 +138,7 @@ final class ViewerOverlayView: NSView {
             return
         }
         guard selection.isToolOn, let rect = selection.selection else { return }
-        let state = zoomPan.state
+        let state = zoomPan.presented
         let placed = Self.points(state.imageRect(origin: rect.origin, size: rect.size), scale: scale)
         NSColor.systemBlue.withAlphaComponent(0.08).setFill()
         placed.fill()
@@ -204,7 +205,7 @@ final class ViewerOverlayView: NSView {
             ).fill()
         }
         // Points per source pixel.
-        let step = zoomPan.state.zoom / scale
+        let step = zoomPan.presented.zoom / scale
 
         let path = NSBezierPath()
         path.move(to: horizontalEnd)

@@ -107,7 +107,8 @@ final class SelectionController {
 
     func part(at point: CGPoint, scale: CGFloat) -> Part? {
         guard isToolOn, let rect = selection else { return nil }
-        let state = zoomPan.state
+        // Where it shows: over the presented view during a zoom glide.
+        let state = zoomPan.presented
         let grab = Self.grabRadius * scale
         for handle in SelectionHandle.allCases {
             let center = PixelSelection.handlePoint(handle, of: rect, in: state)

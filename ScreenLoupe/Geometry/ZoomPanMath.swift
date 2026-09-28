@@ -173,20 +173,30 @@ struct ZoomPanState: Equatable, Sendable {
 
     /// Keeps the image in view without moving it more than needed: an image smaller than the viewport
     /// stays wholly inside it, a larger one can't be panned past its edges. The offset is rounded to
-    /// whole pixels.
-    func clamped() -> ZoomPanState {
+    /// whole pixels, unless `toWholePixels` is false (a zoom glide's presented view, whose offset is
+    /// fractional as its zoom is).
+    func clamped(toWholePixels: Bool = true) -> ZoomPanState {
         var next = self
         next.offset = CGPoint(
-            x: Self.clampAxis(offset.x, content: scaledContentSize.width, viewport: viewportSize.width),
-            y: Self.clampAxis(offset.y, content: scaledContentSize.height, viewport: viewportSize.height)
+            x: Self.clampAxis(
+                offset.x, content: scaledContentSize.width, viewport: viewportSize.width, toWholePixels: toWholePixels),
+            y: Self.clampAxis(
+                offset.y, content: scaledContentSize.height, viewport: viewportSize.height, toWholePixels: toWholePixels
+            )
         )
         return next
     }
 
-    private static func clampAxis(_ offset: CGFloat, content: CGFloat, viewport: CGFloat) -> CGFloat {
+    private static func clampAxis(
+        _ offset: CGFloat, content: CGFloat, viewport: CGFloat, toWholePixels: Bool
+    )
+        -> CGFloat
+    {
         if content <= viewport {
-            return min(max(offset, 0), viewport - content).rounded(.down)
+            let limited = min(max(offset, 0), viewport - content)
+            return toWholePixels ? limited.rounded(.down) : limited
         }
-        return min(0, max(viewport - content, offset)).rounded()
+        let limited = min(0, max(viewport - content, offset))
+        return toWholePixels ? limited.rounded() : limited
     }
 }

@@ -52,6 +52,7 @@
 				Geometry/ViewerWindowFit.swift,
 				Geometry/WindowLevels.swift,
 				Geometry/WindowMagnet.swift,
+				Geometry/ZoomAnimation.swift,
 				Geometry/ZoomPanMath.swift,
 			);
 			target = 5C3000000000000000000002 /* ScreenLoupeTests */;

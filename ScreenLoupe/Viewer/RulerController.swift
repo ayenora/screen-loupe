@@ -115,10 +115,12 @@ final class RulerController {
         changed()
     }
 
+    /// Where the ruler shows now: over the presented view, which a zoom glide moves on its way.
     func drawn(scale: CGFloat) -> Drawn? {
-        lastState = zoomPan.state
+        let state = zoomPan.presented
+        lastState = state
         lastScale = scale
-        return drawn(in: zoomPan.state, scale: scale)
+        return drawn(in: state, scale: scale)
     }
 
     /// Between the free placement and the one on pixels, as far as `snap` says.
@@ -286,6 +288,8 @@ final class RulerController {
         guard let part = part(at: point, scale: scale) else { return false }
         switch part {
         case .pin:
+            // Pinned in the view as shown: a zoom glide stops there first.
+            zoomPan.settle()
             ruler?.togglePin(in: zoomPan.state, minimum: Self.minimumLength * scale)
             changed()
         case .line where ruler?.isPinned == true:

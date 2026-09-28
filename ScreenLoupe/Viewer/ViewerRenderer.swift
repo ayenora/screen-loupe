@@ -111,7 +111,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         #if DEBUG
             frameStore.count { $0.draws += 1 }
         #endif
-        let scene = scene(for: view, style: style)
+        // The screen shows the presented view: a zoom glide on its way to the model.
+        let scene = scene(for: view, style: style, state: zoomPan.presented)
         // Textures of layers that are gone or hidden go too.
         referenceTextures = referenceTextures.filter { entry in scene.references.contains { $0.layer.id == entry.key } }
         let texture = encode(scene, into: encoder)
@@ -126,11 +127,11 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         CVMetalTextureCacheFlush(textureCache, 0)
     }
 
-    /// What `view` shows now, drawn with `style`: the one place a scene is put together, for the
-    /// screen and for Copy View alike.
-    func scene(for view: MTKView, style: ViewerStyle) -> Scene {
+    /// What `view` shows at `state`, drawn with `style`: the one place a scene is put together, for
+    /// the screen (the presented view) and for Copy View (the model) alike.
+    func scene(for view: MTKView, style: ViewerStyle, state: ZoomPanState) -> Scene {
         Scene(
-            size: view.drawableSize, drawableScale: view.drawableScale, state: zoomPan.state,
+            size: view.drawableSize, drawableScale: view.drawableScale, state: state,
             frame: frameStore.shownFrame, style: style, references: references(),
             colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!)
     }

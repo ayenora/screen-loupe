@@ -39,6 +39,28 @@ struct ZoomPanStateTests {
         #expect(state.clamped().offset == expected)
     }
 
+    @Test func clampingOffWholePixelsKeepsTheSameLimits() {
+        // (zoom, offset, unrounded, on whole pixels), 100×50 in 400×300.
+        let cases: [(CGFloat, CGPoint, CGPoint, CGPoint)] = [
+            // Small image, inside: fractions kept unrounded, rounded down on whole pixels.
+            (1, CGPoint(x: 40.7, y: 20.3), CGPoint(x: 40.7, y: 20.3), CGPoint(x: 40, y: 20)),
+            // Small image, past the right and top edges: the same limits either way.
+            (1, CGPoint(x: 390.4, y: -5.6), CGPoint(x: 300, y: 0), CGPoint(x: 300, y: 0)),
+            // Large image (800×400), inside: fractions kept, rounded to nearest on whole pixels.
+            (8, CGPoint(x: -120.6, y: -40.4), CGPoint(x: -120.6, y: -40.4), CGPoint(x: -121, y: -40)),
+            // Large image, past its edges both ways: held at them.
+            (8, CGPoint(x: 12.5, y: -171.25), CGPoint(x: 0, y: -100), CGPoint(x: 0, y: -100)),
+        ]
+        for (zoom, offset, unrounded, rounded) in cases {
+            let state = ZoomPanState(
+                zoom: zoom, offset: offset, contentSize: CGSize(width: 100, height: 50),
+                viewportSize: CGSize(width: 400, height: 300))
+            #expect(state.clamped(toWholePixels: false).offset == unrounded)
+            #expect(state.clamped().offset == rounded)
+            #expect(state.clamped(toWholePixels: true) == state.clamped())
+        }
+    }
+
     @Test func fitShowsTheWholeImageCentred() {
         let state = ZoomPanState(
             zoom: 7, offset: CGPoint(x: -300, y: -300), contentSize: CGSize(width: 400, height: 300),
