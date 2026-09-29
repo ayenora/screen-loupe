@@ -20,11 +20,11 @@ Free and open source (MIT). macOS 14 Sonoma or later. No account, no telemetry: 
 
 - **Work in place.** Clicks inside the frame go to the app underneath, so hover states stay live while the Viewer shows them big — on the same display or another one.
 - **Pixel-true.** At 800% every screen pixel is a crisp 8×8 square, never a blur, on Retina and non-Retina displays alike.
-- **Nothing moves on its own.** The Viewer keeps its zoom and framing while you move or resize the frame.
+- **Nothing moves on its own.** The Viewer keeps its zoom and framing while you move or resize the frame; zoom presets glide smoothly to what you were looking at.
 - **Copy exactly what you see:** the zoomed view, a selection snapped to pixels, or the source at native resolution.
 - **Inspect:** a Color Meter with HEX, CSS, SwiftUI and AppKit values; a pixel ruler; a pixel grid; reference layers with a Difference blend to check the screen against a design export. Open, drop or paste an image file to inspect it with the same tools.
-- **Catch transient states:** freeze the view from any app with F13, or after a countdown, while the mouse is held down.
-- **Place the frame fast:** snap it to window edges with ⌘, fit it to a window in one click, or attach it to a window with the magnet so it follows as the window moves.
+- **Catch transient states:** freeze the view from any app with F13, or after a countdown, while the mouse is held down; take snapshots to inspect later.
+- **Place the frame fast:** snap it to window edges with ⌘, fit it to a window in one click, or attach it to a window with the magnet so it follows as the window moves — fitted to the window, it follows its size too, with margins to leave out the window's toolbars.
 - **Screenshot studio:** exact, clean pictures for the App Store, the web, docs and bug reports — pixel sizes, a timer, a backdrop seen on screen, one window alone with or without its shadow, PNG, JPEG or HEIC with no personal metadata.
 
 ## Privacy

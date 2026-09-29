@@ -4,14 +4,14 @@ A small native macOS magnifier for designers and developers.
 
 Place a **Capture Area** rectangle over any part of the screen and inspect it in a separate **Viewer** window. The Viewer shows the area in real time and supports:
 
-- pixel-sharp zoom, panning, and a window sized to the magnified area;
-- a crosshair on the real cursor, and a freeze frame for transient states;
+- pixel-sharp zoom that glides between levels, panning, and a window sized to the magnified area;
+- a crosshair on the real cursor, a freeze frame for transient states, and snapshots kept to inspect later;
 - a Color Meter (HEX, CSS, SwiftUI, AppKit, pinned colours) and a pixel grid;
 - a corner ruler in screen pixels;
 - reference layers: design exports over the live pixels, with a Difference blend;
 - image files opened, dropped or pasted, inspected with the same tools;
 - copies of either the original area or the zoomed view;
-- snapping the frame to window edges with ⌘, fitting it to a window in one click, and a magnet that keeps it on a moving window;
+- snapping the frame to window edges with ⌘, fitting it to a window in one click, and a magnet that keeps it on a moving window, following its size when fitted, with margins to capture only an inner part of it;
 - an outline of the part the Viewer shows, with a handle to pan the Viewer from the frame.
 
 A separate **Screenshot studio** takes exact, clean pictures — App Store and website screenshots, docs, bug reports: preset and custom pixel sizes, a timer, a backdrop of a colour, gradient or image seen on screen, one window alone with or without its shadow, and PNG, JPEG or HEIC output in sRGB or the display's colours, with no personal metadata.

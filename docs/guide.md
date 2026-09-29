@@ -27,7 +27,7 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 - **Pin** (the pin beside the tab) locks the frame against stray drags; a click turns it on or off, and its ▾ chooses how:
   - **Pinned:** the frame neither moves nor resizes.
   - **Fixed Position:** it can't be moved, but its handles still resize it — handy while a reference is aligned.
-  - **Magnet to Window…:** click a window, and the frame follows it as it moves, keeping its place on it — the Simulator, a browser window. When the window closes, hides, minimises or goes to another Space, the magnet lets go and says so; the frame stays where it was.
+  - **Magnet to Window…:** click a window, and the frame follows it as it moves, keeping its place on it — the Simulator, a browser window. A frame fitted to the window (Fit to Window first) also follows the window's size: the window's own edges, under the frame's line, resize the window and the frame with it; drag the frame off by its tab and back onto the window to fit it again. When the window closes, hides, minimises or goes to another Space, the magnet lets go and says so; the frame stays where it was.
 - **Margins** (the button with a dashed square beside the pin's ▾, shown while a magnet's frame is fitted to its window, or Window › Capture Area Margins): capture only an inner part of the window — a web page without the browser's toolbar — and keep it as you resize the window. Set L, T, R and B in the Margins panel below the position box: click it to expand it, then type a value, or drag a field's letter left or right. The band between the window's edge and the captured part is tinted, and clicks go through it; pick its colour and opacity in the same panel. The margins turn off when the frame stops being fitted.
 - **»** beside the pin opens the buttons used less often: the viewport handle, bring the Viewer forward (when another window covers it) and Fit to Window. Rest the pointer on any button to see its name.
 - **The part the Viewer shows:** zoomed in, a dashed outline inside the frame marks what the Viewer shows, while you pan or zoom and while the pointer is near the frame.
@@ -36,7 +36,7 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 
 ## The Viewer
 
-- **Zoom:** the toolbar's presets Fit, 1×, 2×, 4×, 8× and 16× (100% to 1600%), pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom field. Zoom keeps the point under the pointer in place.
+- **Zoom:** the toolbar's presets Fit, 1×, 2×, 4×, 8× and 16× (100% to 1600%), pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom field. Pinch, the wheel, and `+` / `-` with the pointer over the Viewer keep the point under the pointer in place; a preset or a typed zoom brings the middle of what you see to the middle of the Viewer. Presets, `+` / `-` and Reset Zoom glide there in a fifth of a second, or change at once with Reduce Motion on.
 - **Pan:** drag, or scroll with two fingers.
 - **Nothing moves on its own.** Moving or resizing the frame keeps the Viewer's zoom and framing; Fit applies only when you ask for it.
 - **Size Window to Area** (View menu, ⌥⌘0) sizes the window to show the whole magnified area.
@@ -124,7 +124,7 @@ Global, from any app — each can be changed or cleared in Settings › Shortcut
 
 ## Settings
 
-Settings… (⌘,) has five tabs: General (launch at login, Dock or menu bar only), Capture Area (frame colour and line), Viewer (background, grid, crosshair colour, wheel zoom), Screenshots (folder, file names) and Shortcuts.
+Settings… (⌘,) has five tabs: General (launch at login, Dock or menu bar only), Capture Area (frame colour, line and labels), Viewer (background, grid, crosshair colour, wheel zoom), Screenshots (folder, file names) and Shortcuts.
 
 ## If something doesn't work
 
