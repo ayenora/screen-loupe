@@ -8,7 +8,7 @@ What comes after the current version. Every item is measured against the app's p
 
 ## The version after: colour
 
-Screen Loupe already reads exact colours off any screen. The next version could turn that into work designers and brand managers do by hand today. Two directions, both to be researched before they are designed.
+Screen Loupe already reads exact colours off any screen. The next version could turn that into work designers and brand managers do by hand today, to be researched before it is designed.
 
 **First, find out:** what brand managers and designers use today to build and keep palettes and themes, where it hurts, and what they hand over to developers. Talk to people, not only read about tools. The aim is to automate the tedious part, not to add another palette toy.
 
@@ -22,13 +22,6 @@ A generator that builds a complete, balanced colour system from a few colours, w
 - **Previews that look like real UI:** text at several sizes, cards, buttons, surfaces, shadows, in both themes side by side.
 - **Export:** CSS custom properties and an HTML preview page first; later design tokens and native colour sets.
 
-### Colour skins over live UI
-
-Apply a palette to a running app or website as a skin: its colours remapped live in the Viewer — a brand swap, a dark theme, a seasonal theme — to see a redesign on the real product before anyone builds it.
-
-- **The bar is Apple's:** perceptual colour mapping that keeps hierarchy, contrast and gradients, no banding, crisp text. Not a photo filter laid over the screen.
-- **Open questions:** telling UI colours from photos and illustrations, which should stay as they are; whether the skin stays in the Viewer or can cover the app itself; saving and sharing a skin; how it connects to the colour studio's palettes.
-
 ## Candidates
 
 Ordered by how much each strengthens the core experience.
@@ -40,12 +33,12 @@ Ordered by how much each strengthens the core experience.
 ### Each needs its own decision
 
 - **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not planned". It uses Original Cursor in the Capture, so a recorded animation shows the pointer that drives it.
-- **Act through the Viewer.** Clicks and scrolls in the Viewer go to the real spot on screen, making the Viewer a true zoomed monitor. Needs the Accessibility permission to post events and has to feel safe; a bigger design question than the rest.
 
-### Technical, only if a need shows up
+### Only if a need shows up
 
+- **Act through the Viewer.** Clicks and scrolls in the Viewer go to the real spot on screen, making the Viewer a true zoomed monitor. Needs the Accessibility permission to post events and has to feel safe; taken up only if many people ask for it.
 - **Smoother zoom-out.** Below 50% the image aliases, because the texture has no mipmaps. A loupe is about magnification, so this waits for a real complaint.
 
 ## Not planned
 
-No OCR, annotations, drawing, image editing, a screenshot library, cloud sync, accounts, telemetry, subscriptions or AI features, and no web technologies in the app.
+No image editing, a screenshot library, cloud sync, accounts, telemetry, subscriptions or AI features, and no web technologies in the app.
