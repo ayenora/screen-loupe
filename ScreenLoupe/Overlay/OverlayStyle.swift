@@ -5,17 +5,21 @@ struct FrameStyleSettings: Equatable {
     var color: SettingsColor
     var lineWidth: Double
     var showsLabelAtRest: Bool
+    /// Redraws the frame's labels when it changes; they read it from `OverlayStyle.labelFill`.
+    var labelOpacity: Double
 }
 
 extension Settings {
     var frameStyleSettings: FrameStyleSettings {
-        FrameStyleSettings(color: frameColor, lineWidth: frameLineWidth, showsLabelAtRest: showsSizeAtRest)
+        FrameStyleSettings(
+            color: frameColor, lineWidth: frameLineWidth, showsLabelAtRest: showsSizeAtRest, labelOpacity: labelOpacity)
     }
 
     /// The Screenshot studio's frame: its own orange, the line and the label at rest as the Capture
     /// Area's.
     var studioFrameStyleSettings: FrameStyleSettings {
-        FrameStyleSettings(color: .studio, lineWidth: frameLineWidth, showsLabelAtRest: showsSizeAtRest)
+        FrameStyleSettings(
+            color: .studio, lineWidth: frameLineWidth, showsLabelAtRest: showsSizeAtRest, labelOpacity: labelOpacity)
     }
 }
 
@@ -54,7 +58,14 @@ struct FrameStyle {
 /// Fonts, sizes and timings of the Capture Area frame (the mockup's variant E).
 @MainActor
 enum OverlayStyle {
-    static let labelFill = NSColor.black.withAlphaComponent(0.62)
+    /// Behind the labels, the position box, the margins panel and the buttons' names: black at
+    /// Settings › Capture Area › Label background, which `AppController` keeps here.
+    static var labelOpacity: CGFloat = 0.8
+    static var labelFill: NSColor { NSColor.black.withAlphaComponent(labelOpacity) }
+    /// The corners of the labels, the position box, the margins panel and its « button.
+    static let labelCornerRadius: CGFloat = 4
+    /// Keys, captions and units on the label fill.
+    static let mutedText = NSColor.white.withAlphaComponent(0.6)
     static let tabFont = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
     static let labelFont = NSFont.systemFont(ofSize: 10, weight: .medium)
     /// The titles of the position box and the margins panel, while the margins are on.
@@ -74,6 +85,12 @@ enum OverlayStyle {
     /// How long a notice beside the tab stays, and how slowly it then fades.
     static let noticeDelay: TimeInterval = 2
     static let noticeFadeDuration: TimeInterval = 0.4
+
+    /// The background of a label, the position box or the margins panel: `rect` in `labelFill`.
+    static func fillLabel(_ rect: CGRect) {
+        labelFill.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: labelCornerRadius, yRadius: labelCornerRadius).fill()
+    }
 
     /// A thin contrasting outline around the line, so it reads on any background.
     static func halo(for appearance: NSAppearance) -> NSColor {
@@ -110,24 +127,39 @@ enum OverlayStyle {
     /// (`MarginsPanelView`): enough for four-digit values, wider only for longer ones.
     static let positionTitleHeight: CGFloat = 16
     static let positionTitledWidth: CGFloat = 84
+    /// Titled, the box and the margins panel are inset alike on every side, so the panel's 16 pt
+    /// button sits as far from the top as from the right, and the rows start a gap below the title.
+    static let titledPadding: CGFloat = 6
+    static let titleGap: CGFloat = 4
+    /// The top of the rows under a title.
+    static let titledRowsTop = titledPadding + positionTitleHeight + titleGap
 
     static func positionSize(for lines: [(key: String, value: String)], titled: Bool = false) -> CGSize {
         let attributes: [NSAttributedString.Key: Any] = [.font: labelFont]
         let key = lines.map { ($0.key as NSString).size(withAttributes: attributes).width }.max() ?? 0
         let value = lines.map { ($0.value as NSString).size(withAttributes: attributes).width }.max() ?? 0
         let width = (positionPadding.width * 2 + key + positionColumnGap + value).rounded(.up)
-        return CGSize(
-            width: titled ? max(width, positionTitledWidth) : width,
-            height: positionPadding.height * 2 + positionLineHeight * CGFloat(lines.count)
-                + (titled ? positionTitleHeight : 0))
+        let rows = positionLineHeight * CGFloat(lines.count)
+        guard titled else { return CGSize(width: width, height: positionPadding.height * 2 + rows) }
+        return CGSize(width: max(width, positionTitledWidth), height: titledRowsTop + rows + titledPadding)
+    }
+
+    /// The title of the position box or the margins panel, centred in its row under the inset, in a
+    /// flipped view. Returns where the text went.
+    @discardableResult
+    static func drawPanelTitle(_ title: String) -> CGRect {
+        let attributes: [NSAttributedString.Key: Any] = [.font: panelTitleFont, .foregroundColor: NSColor.white]
+        let size = (title as NSString).size(withAttributes: attributes)
+        let origin = CGPoint(
+            x: positionPadding.width, y: titledPadding + ((positionTitleHeight - size.height) / 2).rounded())
+        (title as NSString).draw(at: origin, withAttributes: attributes)
+        return CGRect(origin: origin, size: size)
     }
 
     /// The rows of the position box, or of the collapsed margins panel, in a flipped view of `bounds`
     /// from `top`: keys muted, values right-aligned.
     static func drawPositionLines(_ lines: [(key: String, value: String)], in bounds: CGRect, top: CGFloat) {
-        let keyAttributes: [NSAttributedString.Key: Any] = [
-            .font: labelFont, .foregroundColor: NSColor.white.withAlphaComponent(0.6),
-        ]
+        let keyAttributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: mutedText]
         let valueAttributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: NSColor.white]
         let padding = positionPadding
         for (index, line) in lines.enumerated() {

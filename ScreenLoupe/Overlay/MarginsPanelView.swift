@@ -24,7 +24,10 @@ final class MarginsPanelView: NSView {
     /// The band's colours to pick from; the last swatch opens the system colour panel.
     static let swatches: [SettingsColor] = [.green, .blue, .amber, .pink, .purple, .gray]
 
-    static let expandedSize = CGSize(width: 196, height: 182)
+    /// As tall as the rows, from the title down to the opacity's.
+    static let expandedSize = CGSize(
+        width: expandedWidth, height: opacityRowY + fieldSize.height + padding.height)
+    private static let expandedWidth: CGFloat = 196
 
     var content = Content() {
         didSet {
@@ -142,38 +145,39 @@ final class MarginsPanelView: NSView {
 
     // MARK: Layout
 
-    private static let padding = OverlayStyle.positionPadding
+    private static let padding = CGSize(width: OverlayStyle.titledPadding, height: OverlayStyle.titledPadding)
     private static let fieldSize = CGSize(width: 36, height: 16)
     private static let captionWidth: CGFloat = 10
     private static let captionGap: CGFloat = 2
     /// The window's dashed outline, the fields in its band around the captured rect.
-    private var diagramRect: CGRect {
-        CGRect(x: Self.padding.width, y: 24, width: Self.expandedSize.width - Self.padding.width * 2, height: 100)
-    }
-    private var innerDiagramRect: CGRect { diagramRect.insetBy(dx: 52, dy: 24) }
-    private var separatorY: CGFloat { diagramRect.maxY + 6 }
-    private var swatchRowY: CGFloat { separatorY + 6 }
+    private static let diagramRect = CGRect(
+        x: padding.width, y: OverlayStyle.titledRowsTop, width: expandedWidth - padding.width * 2, height: 100)
+    private static let innerDiagramRect = diagramRect.insetBy(dx: 52, dy: 24)
+    private static let separatorY = diagramRect.maxY + 6
+    private static let swatchRowY = separatorY + 6
     private static let swatchSize: CGFloat = 14
-    private var opacityRowY: CGFloat { swatchRowY + 24 }
+    private static let opacityRowY = swatchRowY + 24
 
+    /// « or », in the title's row.
     private var chevronRect: CGRect {
-        CGRect(x: bounds.width - Self.padding.width - 16, y: Self.padding.height, width: 16, height: 16)
+        let side = OverlayStyle.positionTitleHeight
+        return CGRect(x: bounds.width - Self.padding.width - side, y: Self.padding.height, width: side, height: side)
     }
 
     /// The preset swatches, then the custom one, spread across the panel.
     private var swatchRects: [CGRect] {
         let count = Self.swatches.count + 1
-        let width = diagramRect.width
+        let diagram = Self.diagramRect
         let size = Self.swatchSize
-        let step = (width - size) / CGFloat(count - 1)
+        let step = (diagram.width - size) / CGFloat(count - 1)
         return (0..<count).map {
-            CGRect(x: (diagramRect.minX + CGFloat($0) * step).rounded(), y: swatchRowY + 2, width: size, height: size)
+            CGRect(x: (diagram.minX + CGFloat($0) * step).rounded(), y: Self.swatchRowY + 2, width: size, height: size)
         }
     }
 
     private func layOut() {
-        let d = diagramRect
-        let inner = innerDiagramRect
+        let d = Self.diagramRect
+        let inner = Self.innerDiagramRect
         let group = Self.captionWidth + Self.captionGap + Self.fieldSize.width
         let origins: [CaptureMargins.Edge: CGPoint] = [
             .left: CGPoint(x: d.minX + 4, y: inner.midY - Self.fieldSize.height / 2),
@@ -190,9 +194,10 @@ final class MarginsPanelView: NSView {
                 x: x + Self.captionWidth + Self.captionGap, y: y, width: Self.fieldSize.width,
                 height: Self.fieldSize.height)
         }
-        let row = opacityRowY
-        slider.frame = CGRect(x: 50, y: row, width: 98, height: 16)
-        opacityField.frame = CGRect(x: 152, y: row, width: 28, height: 16)
+        // After the "Opacity" caption: the slider, then the field with "%" after it.
+        let row = Self.opacityRowY
+        slider.frame = CGRect(x: 50, y: row, width: 98, height: Self.fieldSize.height)
+        opacityField.frame = CGRect(x: 152, y: row, width: 28, height: Self.fieldSize.height)
     }
 
     // MARK: Content
@@ -202,7 +207,7 @@ final class MarginsPanelView: NSView {
             fields[index].stringValue = shownText(content.margins[edge])
         }
         if opacityField.currentEditor() == nil {
-            opacityField.stringValue = String(Int((content.opacity * 100).rounded()))
+            opacityField.stringValue = opacityText
         }
         if !slider.isTracking { slider.doubleValue = content.opacity * 100 }
         needsDisplay = true
@@ -228,8 +233,11 @@ final class MarginsPanelView: NSView {
         if let value = Double(sender.stringValue.trimmingCharacters(in: .whitespaces)), value.isFinite {
             onOpacity?(min(max(value, 0), 100) / 100)
         }
-        sender.stringValue = String(Int((content.opacity * 100).rounded()))
+        sender.stringValue = opacityText
     }
+
+    /// The band's opacity in whole percent.
+    private var opacityText: String { String(Int((content.opacity * 100).rounded())) }
 
     @objc private func sliderMoved(_ sender: NSSlider) {
         onOpacity?(sender.doubleValue / 100)
@@ -268,65 +276,65 @@ final class MarginsPanelView: NSView {
     // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        OverlayStyle.labelFill.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
-        let muted = NSColor.white.withAlphaComponent(0.6)
+        OverlayStyle.fillLabel(bounds)
         let padding = Self.padding
-        let titleAttributes: [NSAttributedString.Key: Any] = [
-            .font: OverlayStyle.panelTitleFont, .foregroundColor: NSColor.white,
-        ]
-        let title = "Margins" as NSString
-        let titleSize = title.size(withAttributes: titleAttributes)
-        let titleY = padding.height + ((OverlayStyle.positionTitleHeight - titleSize.height) / 2).rounded()
-        title.draw(at: CGPoint(x: padding.width, y: titleY), withAttributes: titleAttributes)
+        let title = OverlayStyle.drawPanelTitle("Margins")
         drawChevron()
         guard isExpanded else {
             // The four margins, as the position box shows its edges.
             let lines = CaptureMargins.Edge.allCases.map { ($0.key, shownText(content.margins[$0])) }
-            OverlayStyle.drawPositionLines(
-                lines, in: bounds, top: padding.height + OverlayStyle.positionTitleHeight)
+            OverlayStyle.drawPositionLines(lines, in: bounds, top: OverlayStyle.titledRowsTop)
             return
         }
-        let unitAttributes: [NSAttributedString.Key: Any] = [.font: OverlayStyle.labelFont, .foregroundColor: muted]
+        let unitAttributes: [NSAttributedString.Key: Any] = [
+            .font: OverlayStyle.labelFont, .foregroundColor: OverlayStyle.mutedText,
+        ]
         (content.unit as NSString).draw(
-            at: CGPoint(x: padding.width + titleSize.width + 4, y: titleY + 1), withAttributes: unitAttributes)
+            at: CGPoint(x: title.maxX + 4, y: title.minY + 1), withAttributes: unitAttributes)
         drawDiagram()
-        muted.withAlphaComponent(0.25).setFill()
-        CGRect(x: padding.width, y: separatorY, width: bounds.width - padding.width * 2, height: 1).fill()
+        NSColor.white.withAlphaComponent(0.25).setFill()
+        CGRect(x: padding.width, y: Self.separatorY, width: bounds.width - padding.width * 2, height: 1).fill()
         drawSwatches()
         ("Opacity" as NSString).draw(
-            at: CGPoint(x: padding.width, y: opacityRowY + 1), withAttributes: unitAttributes)
-        ("%" as NSString).draw(at: CGPoint(x: 182, y: opacityRowY + 1), withAttributes: unitAttributes)
+            at: CGPoint(x: padding.width, y: Self.opacityRowY + 1), withAttributes: unitAttributes)
+        ("%" as NSString).draw(
+            at: CGPoint(x: opacityField.frame.maxX + 2, y: Self.opacityRowY + 1), withAttributes: unitAttributes)
     }
 
-    /// « or », white on the buttons' fill.
+    /// « or », white on the buttons' fill: two strokes drawn about the button's centre, since a
+    /// symbol image carries uneven margins of its own.
     private func drawChevron() {
         let rect = chevronRect
         NSColor.white.withAlphaComponent(0.18).setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
-        let colour = NSImage.SymbolConfiguration(paletteColors: [.white])
-        guard
-            let image = NSImage(
-                systemSymbolName: isExpanded ? "chevron.left.2" : "chevron.right.2",
-                accessibilityDescription: isExpanded ? "Collapse" : "Expand")?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8, weight: .bold).applying(colour))
-        else { return }
-        image.draw(
-            in: CGRect(
-                x: (rect.midX - image.size.width / 2).rounded(), y: (rect.midY - image.size.height / 2).rounded(),
-                width: image.size.width, height: image.size.height))
+        let radius = OverlayStyle.labelCornerRadius
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        // Each chevron 3 pt wide and 6 tall, 3 pt apart: 6 pt across in all, centred.
+        let direction: CGFloat = isExpanded ? -1 : 1
+        let path = NSBezierPath()
+        for offset: CGFloat in [-1.5, 1.5] {
+            let tipX = rect.midX + offset + direction * 1.5
+            let backX = tipX - direction * 3
+            path.move(to: CGPoint(x: backX, y: rect.midY - 3))
+            path.line(to: CGPoint(x: tipX, y: rect.midY))
+            path.line(to: CGPoint(x: backX, y: rect.midY + 3))
+        }
+        path.lineWidth = 1.3
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        NSColor.white.setStroke()
+        path.stroke()
     }
 
     /// The window as a dashed outline, and inside it the captured rect in the band's colour with its
     /// size.
     private func drawDiagram() {
-        let outline = NSBezierPath(roundedRect: diagramRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
+        let outline = NSBezierPath(roundedRect: Self.diagramRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
         outline.lineWidth = 1
         let dashes: [CGFloat] = [3, 2]
         outline.setLineDash(dashes, count: dashes.count, phase: 0)
         NSColor.white.withAlphaComponent(0.5).setStroke()
         outline.stroke()
-        let inner = innerDiagramRect
+        let inner = Self.innerDiagramRect
         let color = content.color.nsColor
         // No line, as on screen; a faint fill at least, so the rect still shows at 0 %.
         color.withAlphaComponent(max(content.opacity, 0.1)).setFill()
@@ -494,7 +502,7 @@ private final class ScrubCaptionView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let muted = NSColor.white.withAlphaComponent(0.6)
+        let muted = OverlayStyle.mutedText
         let attributes: [NSAttributedString.Key: Any] = [.font: OverlayStyle.labelFont, .foregroundColor: muted]
         let text = key as NSString
         let size = text.size(withAttributes: attributes)

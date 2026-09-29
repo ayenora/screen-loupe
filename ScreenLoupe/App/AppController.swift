@@ -37,6 +37,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             return
         }
         settings.observe(\.showsDockIcon) { [weak self] in self?.applyDockIcon($0) }
+        // Before any frame's observer, so a frame redrawing for the change reads the new fill.
+        settings.observe(\.labelOpacity) { OverlayStyle.labelOpacity = CGFloat($0) }
         NSApp.mainMenu = MainMenu.make(target: self)
         statusItem = StatusItemController(target: self)
         shortcuts.onAction = { [weak self] action in self?.perform(action) }

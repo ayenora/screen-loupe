@@ -67,6 +67,9 @@ struct Settings: Codable, Equatable {
     /// 1 or 2 points.
     var frameLineWidth: Double = 1
     var showsSizeAtRest = true
+    /// The opacity of the dark fill behind the frame's labels, the position box, the margins panel
+    /// and the buttons' names, 0.3...1.
+    var labelOpacity = 0.8
     var sizeUnits = SizeUnits.pointsAndPixels
 
     // Settings › Viewer
@@ -129,6 +132,7 @@ struct Settings: Codable, Equatable {
         frameColor = c.value(.frameColor, or: d.frameColor)
         frameLineWidth = c.value(.frameLineWidth, or: d.frameLineWidth)
         showsSizeAtRest = c.value(.showsSizeAtRest, or: d.showsSizeAtRest)
+        labelOpacity = min(max(c.value(.labelOpacity, or: d.labelOpacity), 0.3), 1)
         sizeUnits = c.value(.sizeUnits, or: d.sizeUnits)
         viewerBackground = c.value(.viewerBackground, or: d.viewerBackground)
         gridMinimumZoom = c.value(.gridMinimumZoom, or: d.gridMinimumZoom)

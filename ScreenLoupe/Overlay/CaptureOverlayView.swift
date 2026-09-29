@@ -137,18 +137,20 @@ final class CaptureOverlayView: NSView {
 
     private var activeLock: CaptureAreaLock? { isLocked ? lock : nil }
 
+    /// The buttons beside the tab, which show and hide with it, shown or left out by the layout.
+    private var tabButtons: [TabButtonView] {
+        [pinButton, marginsButton, viewportButton, moreButton, raiseButton, pickButton]
+    }
+
     var style: FrameStyle {
         didSet {
             decorations.style = style
             tab.style = style
-            pinButton.style = style
-            viewportButton.style = style
-            viewportHandle.style = style
-            raiseButton.style = style
-            pickButton.style = style
-            moreButton.style = style
-            marginsButton.style = style
+            for button in tabButtons + [viewportHandle] { button.style = style }
             label.alphaValue = labelAlpha
+            // The label fill's opacity may have changed.
+            [label, notice, positionBox].forEach { $0.needsDisplay = true }
+            marginsPanel?.needsDisplay = true
             needsDisplay = true
         }
     }
@@ -157,21 +159,16 @@ final class CaptureOverlayView: NSView {
         self.style = style
         self.lockButtons = lockButtons
         marginsPanel = lockButtons ? MarginsPanelView() : nil
+        super.init(frame: .zero)
         decorations.style = style
         tab.style = style
-        pinButton.style = style
-        viewportButton.style = style
-        viewportHandle.style = style
-        raiseButton.style = style
-        pickButton.style = style
-        moreButton.style = style
-        marginsButton.style = style
-        super.init(frame: .zero)
+        for button in tabButtons + [viewportHandle] {
+            button.style = style
+            button.alphaValue = 0
+        }
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        let buttons: [NSView] =
-            lockButtons
-            ? [pinButton, marginsButton, viewportButton, moreButton, raiseButton, pickButton] : [pickButton]
+        let buttons: [NSView] = lockButtons ? tabButtons : [pickButton]
         let parts: [NSView] = [decorations, label, positionBox, tab, viewportHandle]
         for subview in parts + buttons + [notice] + (marginsPanel.map { [$0] } ?? []) {
             addSubview(subview)
@@ -182,14 +179,7 @@ final class CaptureOverlayView: NSView {
         notice.alphaValue = 0
         pinButton.menuWidth = OverlayMetrics.standard.pinMenuWidth
         pinButton.menuLabel = "Pin Mode"
-        pinButton.alphaValue = 0
-        viewportButton.alphaValue = 0
-        viewportHandle.alphaValue = 0
         viewportHandle.cornerRadius = OverlayMetrics.standard.viewportHandleSize.height / 2
-        raiseButton.alphaValue = 0
-        pickButton.alphaValue = 0
-        moreButton.alphaValue = 0
-        marginsButton.alphaValue = 0
         marginsPanel?.alphaValue = 0
         marginsPanel?.isHidden = true
         let named: [(TabButtonView, OverlayHitTarget)] = [
@@ -285,12 +275,7 @@ final class CaptureOverlayView: NSView {
             decorations.animator().alphaValue = decorationsAlpha
             tab.animator().alphaValue = revealed ? 1 : 0
             positionBox.animator().alphaValue = revealed ? 1 : 0
-            pinButton.animator().alphaValue = revealed ? 1 : 0
-            viewportButton.animator().alphaValue = revealed ? 1 : 0
-            raiseButton.animator().alphaValue = revealed ? 1 : 0
-            pickButton.animator().alphaValue = revealed ? 1 : 0
-            moreButton.animator().alphaValue = revealed ? 1 : 0
-            marginsButton.animator().alphaValue = revealed ? 1 : 0
+            for button in tabButtons { button.animator().alphaValue = revealed ? 1 : 0 }
             marginsPanel?.animator().alphaValue = revealed && showsMarginsPanel ? 1 : 0
             label.animator().alphaValue = labelAlpha
         }
@@ -655,19 +640,11 @@ private final class PositionBoxView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        OverlayStyle.labelFill.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
-        let padding = OverlayStyle.positionPadding
-        var top = padding.height
+        OverlayStyle.fillLabel(bounds)
+        var top = OverlayStyle.positionPadding.height
         if let title {
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: OverlayStyle.panelTitleFont, .foregroundColor: NSColor.white,
-            ]
-            let height = (title as NSString).size(withAttributes: attributes).height
-            (title as NSString).draw(
-                at: CGPoint(x: padding.width, y: top + ((OverlayStyle.positionTitleHeight - height) / 2).rounded()),
-                withAttributes: attributes)
-            top += OverlayStyle.positionTitleHeight
+            OverlayStyle.drawPanelTitle(title)
+            top = OverlayStyle.titledRowsTop
         }
         OverlayStyle.drawPositionLines(lines, in: bounds, top: top)
     }
@@ -680,8 +657,7 @@ final class SizeLabelView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        OverlayStyle.labelFill.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+        OverlayStyle.fillLabel(bounds)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: OverlayStyle.labelFont, .foregroundColor: NSColor.white,
         ]

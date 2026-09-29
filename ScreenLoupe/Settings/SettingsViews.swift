@@ -77,6 +77,15 @@ struct CaptureAreaSettingsView: View {
             SettingsRow("Size label at rest", note: "The muted W × H under the frame.") {
                 Toggle("Size label at rest", isOn: store.binding(\.showsSizeAtRest)).labelsHidden()
             }
+            SettingsRow(
+                "Label background", note: "Behind the size label, the position box, the margins panel and button names."
+            ) {
+                HStack(spacing: 8) {
+                    Slider(value: store.binding(\.labelOpacity), in: 0.3...1).frame(width: 140)
+                    Text("\(Int((store.settings.labelOpacity * 100).rounded())) %")
+                        .monospacedDigit().foregroundStyle(.secondary)
+                }
+            }
             SettingsRow("Size on the tab") {
                 Picker("Size on the tab", selection: store.binding(\.sizeUnits)) {
                     Text("pt and px").tag(SizeUnits.pointsAndPixels)
@@ -337,7 +346,7 @@ private struct FramePreview: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 6)
                 .frame(height: 16)
-                .background(RoundedRectangle(cornerRadius: 4).fill(.black.opacity(0.62)))
+                .background(RoundedRectangle(cornerRadius: 4).fill(.black.opacity(settings.labelOpacity)))
                 .opacity(settings.showsSizeAtRest ? 1 : 0)
         }
         .frame(width: 220, height: 96)
