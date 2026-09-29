@@ -38,3 +38,6 @@ CLAUDE.md
 
 # Internal working documents: the private roadmap, the release plan, competitor notes
 /docs/internal/
+
+# Demo videos; the README links to a GitHub upload, not to a file in the repository
+/marketing/video/
