@@ -362,8 +362,9 @@ private struct ScrubLabel: View {
                         let from = start ?? value
                         start = from
                         let flags = NSEvent.modifierFlags
-                        let factor = flags.contains(.shift) ? 10 : flags.contains(.option) ? 0.1 : 1
-                        value = from + Double(drag.translation.width) * step * factor
+                        value = Scrub.value(
+                            from: from, travel: Double(drag.translation.width), step: step,
+                            shift: flags.contains(.shift), option: flags.contains(.option))
                     }
                     .onEnded { _ in start = nil }
             )

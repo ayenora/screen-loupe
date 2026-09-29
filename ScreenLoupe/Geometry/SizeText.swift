@@ -44,7 +44,8 @@ enum SizeText {
         CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
     }
 
-    private static func number(_ value: CGFloat) -> String {
+    /// `12`, or `12.5` on a half: one decimal at most.
+    static func number(_ value: CGFloat) -> String {
         let rounded = (value * 10).rounded() / 10
         if rounded == rounded.rounded() {
             return String(Int(rounded))

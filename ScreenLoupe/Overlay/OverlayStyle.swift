@@ -57,6 +57,8 @@ enum OverlayStyle {
     static let labelFill = NSColor.black.withAlphaComponent(0.62)
     static let tabFont = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
     static let labelFont = NSFont.systemFont(ofSize: 10, weight: .medium)
+    /// The titles of the position box and the margins panel, while the margins are on.
+    static let panelTitleFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
 
     /// Tab: grip, gap, text, padding.
     static let tabLeading: CGFloat = 7
@@ -104,13 +106,37 @@ enum OverlayStyle {
     static let positionColumnGap: CGFloat = 6
     static let positionLineHeight: CGFloat = 13
 
-    static func positionSize(for lines: [(key: String, value: String)]) -> CGSize {
+    /// While the margins are on, the box has a title row and the margins panel's width
+    /// (`MarginsPanelView`): enough for four-digit values, wider only for longer ones.
+    static let positionTitleHeight: CGFloat = 16
+    static let positionTitledWidth: CGFloat = 84
+
+    static func positionSize(for lines: [(key: String, value: String)], titled: Bool = false) -> CGSize {
         let attributes: [NSAttributedString.Key: Any] = [.font: labelFont]
         let key = lines.map { ($0.key as NSString).size(withAttributes: attributes).width }.max() ?? 0
         let value = lines.map { ($0.value as NSString).size(withAttributes: attributes).width }.max() ?? 0
+        let width = (positionPadding.width * 2 + key + positionColumnGap + value).rounded(.up)
         return CGSize(
-            width: (positionPadding.width * 2 + key + positionColumnGap + value).rounded(.up),
-            height: positionPadding.height * 2 + positionLineHeight * CGFloat(lines.count))
+            width: titled ? max(width, positionTitledWidth) : width,
+            height: positionPadding.height * 2 + positionLineHeight * CGFloat(lines.count)
+                + (titled ? positionTitleHeight : 0))
+    }
+
+    /// The rows of the position box, or of the collapsed margins panel, in a flipped view of `bounds`
+    /// from `top`: keys muted, values right-aligned.
+    static func drawPositionLines(_ lines: [(key: String, value: String)], in bounds: CGRect, top: CGFloat) {
+        let keyAttributes: [NSAttributedString.Key: Any] = [
+            .font: labelFont, .foregroundColor: NSColor.white.withAlphaComponent(0.6),
+        ]
+        let valueAttributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: NSColor.white]
+        let padding = positionPadding
+        for (index, line) in lines.enumerated() {
+            let y = top + CGFloat(index) * positionLineHeight
+            (line.key as NSString).draw(at: CGPoint(x: padding.width, y: y), withAttributes: keyAttributes)
+            let width = (line.value as NSString).size(withAttributes: valueAttributes).width
+            (line.value as NSString).draw(
+                at: CGPoint(x: bounds.width - padding.width - width, y: y), withAttributes: valueAttributes)
+        }
     }
 
     static func labelWidth(for text: String) -> CGFloat {
@@ -121,7 +147,8 @@ enum OverlayStyle {
     static func cursor(for target: OverlayHitTarget?) -> NSCursor {
         switch target {
         case nil: return .arrow
-        case .pin, .pinMenu, .viewportButton, .moreButtons, .raiseViewer, .pickWindow: return .pointingHand
+        case .pin, .pinMenu, .viewportButton, .moreButtons, .raiseViewer, .pickWindow, .marginsButton:
+            return .pointingHand
         case .move, .viewportHandle: return .openHand
         case .resize(let handle): return resizeCursor(for: handle)
         }

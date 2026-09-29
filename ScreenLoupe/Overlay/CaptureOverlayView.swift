@@ -27,7 +27,8 @@ protocol CaptureOverlayViewDelegate: AnyObject {
 /// controller asks. The buttons the layout leaves out (`.null`), collapsed behind "»" or in its place,
 /// are hidden. Without `lockButtons` (the Screenshot studio's frame) there is no pin, no viewport
 /// button, no raise button and no "»", only the pick button beside the tab.
-/// Subviews never take the mouse, so every event lands here.
+/// Subviews never take the mouse, so every event lands here — except the margins panel below the
+/// position box (`MarginsPanelView`), which takes its own while the margins are on.
 final class CaptureOverlayView: NSView {
     weak var delegate: CaptureOverlayViewDelegate?
 
@@ -56,6 +57,13 @@ final class CaptureOverlayView: NSView {
         image: TabButtonView.symbol("macwindow"), onImage: TabButtonView.symbol("macwindow"))
     /// Shows the buttons collapsed behind it: "»", or "«" with the buttons left of the tab.
     private let moreButton = TabButtonView(image: nil, onImage: nil)
+    /// Turns the margins on and off while the area is fitted to its magnet's window: filled while on.
+    private let marginsButton = TabButtonView(
+        image: TabButtonView.marginsImage(), onImage: TabButtonView.marginsImage())
+    /// Below the position box while the margins are on; the Capture Area's only.
+    let marginsPanel: MarginsPanelView?
+    /// The margins are on: the panel shows with the position box.
+    private var showsMarginsPanel = false
     /// The side "»" was last drawn for.
     private var moreOnRight: Bool?
     /// The pin with its ▾ and the raise button are shown.
@@ -84,6 +92,11 @@ final class CaptureOverlayView: NSView {
     /// The viewport button is filled.
     var isViewportHandleOn = false {
         didSet { viewportButton.isOn = isViewportHandleOn }
+    }
+
+    /// The margins button is filled.
+    var isMarginsOn = false {
+        didSet { marginsButton.isOn = isMarginsOn }
     }
 
     /// Fit to Window's picker runs: the pick button shows pressed, filled as a button that is on.
@@ -134,6 +147,7 @@ final class CaptureOverlayView: NSView {
             raiseButton.style = style
             pickButton.style = style
             moreButton.style = style
+            marginsButton.style = style
             label.alphaValue = labelAlpha
             needsDisplay = true
         }
@@ -142,6 +156,7 @@ final class CaptureOverlayView: NSView {
     init(style: FrameStyle, lockButtons: Bool = true) {
         self.style = style
         self.lockButtons = lockButtons
+        marginsPanel = lockButtons ? MarginsPanelView() : nil
         decorations.style = style
         tab.style = style
         pinButton.style = style
@@ -150,13 +165,15 @@ final class CaptureOverlayView: NSView {
         raiseButton.style = style
         pickButton.style = style
         moreButton.style = style
+        marginsButton.style = style
         super.init(frame: .zero)
         wantsLayer = true
         autoresizingMask = [.width, .height]
         let buttons: [NSView] =
-            lockButtons ? [pinButton, viewportButton, moreButton, raiseButton, pickButton] : [pickButton]
+            lockButtons
+            ? [pinButton, marginsButton, viewportButton, moreButton, raiseButton, pickButton] : [pickButton]
         let parts: [NSView] = [decorations, label, positionBox, tab, viewportHandle]
-        for subview in parts + buttons + [notice] {
+        for subview in parts + buttons + [notice] + (marginsPanel.map { [$0] } ?? []) {
             addSubview(subview)
         }
         decorations.alphaValue = 0
@@ -172,9 +189,12 @@ final class CaptureOverlayView: NSView {
         raiseButton.alphaValue = 0
         pickButton.alphaValue = 0
         moreButton.alphaValue = 0
+        marginsButton.alphaValue = 0
+        marginsPanel?.alphaValue = 0
+        marginsPanel?.isHidden = true
         let named: [(TabButtonView, OverlayHitTarget)] = [
             (moreButton, .moreButtons), (viewportButton, .viewportButton), (raiseButton, .raiseViewer),
-            (pickButton, .pickWindow),
+            (pickButton, .pickWindow), (marginsButton, .marginsButton),
         ]
         for (button, target) in named {
             button.setAccessibilityRole(.button)
@@ -194,6 +214,7 @@ final class CaptureOverlayView: NSView {
         case .raiseViewer: "Show Viewer"
         case .pickWindow: "Fit to Window"
         case .moreButtons: Self.moreLabel
+        case .marginsButton: "Margins"
         case .move, .resize, .viewportHandle: nil
         }
     }
@@ -203,9 +224,12 @@ final class CaptureOverlayView: NSView {
 
     // MARK: State
 
-    /// Lays the frame out. Call after the window has taken `layout.windowFrame`.
+    /// Lays the frame out. Call after the window has taken `layout.windowFrame`. `margins`: what the
+    /// margins panel shows while the margins are on, and whether it is expanded; the position box then
+    /// has its title.
     func update(
-        layout: OverlayLayout, tabText: String, labelText: String, positionLines: [(key: String, value: String)]
+        layout: OverlayLayout, tabText: String, labelText: String, positionLines: [(key: String, value: String)],
+        margins: (content: MarginsPanelView.Content, expanded: Bool)? = nil
     ) {
         let placementChanged = self.layout.map { $0.tabPlacement != layout.tabPlacement } ?? false
         self.layout = layout
@@ -219,13 +243,16 @@ final class CaptureOverlayView: NSView {
         label.text = labelText
         label.frame = local(layout.labelRect)
         positionBox.lines = positionLines
+        positionBox.title = margins == nil ? nil : "Position"
         positionBox.frame = local(layout.positionRect)
+        placeMarginsPanel(layout.marginsPanelRect, margins)
         notice.frame = local(layout.noticeRect)
         if lockButtons {
             pinButton.frame = local(layout.pinRect.union(layout.pinMenuRect))
             place(viewportButton, at: layout.viewportRect)
             place(raiseButton, at: layout.raiseRect)
             place(moreButton, at: layout.moreRect)
+            place(marginsButton, at: layout.marginsButtonRect)
             if moreOnRight != layout.buttonsOnRight {
                 moreOnRight = layout.buttonsOnRight
                 let more = TabButtonView.symbol(layout.buttonsOnRight ? "chevron.right.2" : "chevron.left.2")
@@ -263,6 +290,8 @@ final class CaptureOverlayView: NSView {
             raiseButton.animator().alphaValue = revealed ? 1 : 0
             pickButton.animator().alphaValue = revealed ? 1 : 0
             moreButton.animator().alphaValue = revealed ? 1 : 0
+            marginsButton.animator().alphaValue = revealed ? 1 : 0
+            marginsPanel?.animator().alphaValue = revealed && showsMarginsPanel ? 1 : 0
             label.animator().alphaValue = labelAlpha
         }
     }
@@ -296,6 +325,29 @@ final class CaptureOverlayView: NSView {
         if button.isHidden {
             button.isHidden = false
             button.alphaValue = isRevealed ? 1 : 0
+        }
+    }
+
+    /// The margins panel shows and hides with the position box; with the margins off it goes at
+    /// once, as a button the layout leaves out.
+    private func placeMarginsPanel(
+        _ rect: CGRect, _ margins: (content: MarginsPanelView.Content, expanded: Bool)?
+    ) {
+        guard let marginsPanel else { return }
+        guard let margins, !rect.isNull else {
+            showsMarginsPanel = false
+            marginsPanel.layer?.removeAllAnimations()
+            marginsPanel.alphaValue = 0
+            marginsPanel.isHidden = true
+            return
+        }
+        marginsPanel.frame = local(rect)
+        marginsPanel.content = margins.content
+        marginsPanel.isExpanded = margins.expanded
+        showsMarginsPanel = true
+        if marginsPanel.isHidden {
+            marginsPanel.isHidden = false
+            marginsPanel.alphaValue = isRevealed ? 1 : 0
         }
     }
 
@@ -383,6 +435,13 @@ final class CaptureOverlayView: NSView {
 
     private func updateCursor() {
         guard !isDragging else { return }
+        if showsMarginsPanel, let marginsPanel, let window {
+            let point = marginsPanel.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+            if marginsPanel.bounds.contains(point) {
+                marginsPanel.cursor(at: point).set()
+                return
+            }
+        }
         let target = delegate?.overlayView(self, hitTargetAt: NSEvent.mouseLocation)
         if target == nil, isFitted { return }
         OverlayStyle.cursor(for: target).set()
@@ -512,6 +571,24 @@ private final class TabButtonView: NSView {
     var menuWidth: CGFloat = 0 { didSet { needsDisplay = true } }
     var menuLabel = ""
 
+    /// The margins button's image: a rounded square with a dashed square inside, as a template.
+    nonisolated static func marginsImage() -> NSImage {
+        let image = NSImage(size: CGSize(width: 14, height: 14), flipped: false) { _ in
+            let outer = NSBezierPath(roundedRect: CGRect(x: 1, y: 1, width: 12, height: 12), xRadius: 3, yRadius: 3)
+            outer.lineWidth = 1.4
+            NSColor.black.setStroke()
+            outer.stroke()
+            let inner = NSBezierPath(rect: CGRect(x: 4.5, y: 4.5, width: 5, height: 5))
+            inner.lineWidth = 1.2
+            let dashes: [CGFloat] = [1.5, 1]
+            inner.setLineDash(dashes, count: dashes.count, phase: 0)
+            inner.stroke()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
     /// An SF Symbol at the buttons' size and weight.
     nonisolated static func symbol(_ name: String) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: nil)?
@@ -568,9 +645,11 @@ private final class TabButtonView: NSView {
     }
 }
 
-/// The L T R B box beside the frame: keys muted, values right-aligned.
+/// The L T R B box beside the frame: keys muted, values right-aligned; while the margins are on,
+/// under a title row, as the margins panel below it.
 private final class PositionBoxView: NSView {
     var lines: [(key: String, value: String)] = [] { didSet { needsDisplay = true } }
+    var title: String? { didSet { if title != oldValue { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -578,20 +657,19 @@ private final class PositionBoxView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         OverlayStyle.labelFill.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
-        let keyAttributes: [NSAttributedString.Key: Any] = [
-            .font: OverlayStyle.labelFont, .foregroundColor: NSColor.white.withAlphaComponent(0.6),
-        ]
-        let valueAttributes: [NSAttributedString.Key: Any] = [
-            .font: OverlayStyle.labelFont, .foregroundColor: NSColor.white,
-        ]
         let padding = OverlayStyle.positionPadding
-        for (index, line) in lines.enumerated() {
-            let y = padding.height + CGFloat(index) * OverlayStyle.positionLineHeight
-            (line.key as NSString).draw(at: CGPoint(x: padding.width, y: y), withAttributes: keyAttributes)
-            let width = (line.value as NSString).size(withAttributes: valueAttributes).width
-            (line.value as NSString).draw(
-                at: CGPoint(x: bounds.width - padding.width - width, y: y), withAttributes: valueAttributes)
+        var top = padding.height
+        if let title {
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: OverlayStyle.panelTitleFont, .foregroundColor: NSColor.white,
+            ]
+            let height = (title as NSString).size(withAttributes: attributes).height
+            (title as NSString).draw(
+                at: CGPoint(x: padding.width, y: top + ((OverlayStyle.positionTitleHeight - height) / 2).rounded()),
+                withAttributes: attributes)
+            top += OverlayStyle.positionTitleHeight
         }
+        OverlayStyle.drawPositionLines(lines, in: bounds, top: top)
     }
 }
 

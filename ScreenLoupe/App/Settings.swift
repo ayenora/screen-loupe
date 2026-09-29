@@ -12,6 +12,12 @@ struct Settings: Codable, Equatable {
     /// The viewport handle mode: the outline of the part the Viewer shows stays on the Capture Area
     /// with a handle that pans the Viewer.
     var showsViewportHandle = false
+    /// The Capture Area's margins as last set, and the colour and opacity of their band. Whether the
+    /// margins are on isn't kept: the magnet they need comes up off.
+    var captureAreaMargins = CaptureMargins()
+    var marginsColor = SettingsColor.green
+    /// 0...1.
+    var marginsOpacity = 0.2
     /// Keep the Viewer above the windows of other apps.
     var viewerAlwaysOnTop = false
     /// The Screenshot studio's frame in AppKit global coordinates, and its palette's origin.
@@ -92,6 +98,9 @@ struct Settings: Codable, Equatable {
         captureAreaLock = c.value(.captureAreaLock, or: d.captureAreaLock)
         captureAreaLocked = (try? CaptureAreaLock.SavedPin(from: decoder))?.isOn ?? d.captureAreaLocked
         showsViewportHandle = c.value(.showsViewportHandle, or: d.showsViewportHandle)
+        captureAreaMargins = c.value(.captureAreaMargins, or: d.captureAreaMargins)
+        marginsColor = c.value(.marginsColor, or: d.marginsColor)
+        marginsOpacity = min(max(c.value(.marginsOpacity, or: d.marginsOpacity), 0), 1)
         viewerAlwaysOnTop = c.value(.viewerAlwaysOnTop, or: d.viewerAlwaysOnTop)
         studioFrame = c.value(.studioFrame, or: d.studioFrame)
         studioPaletteOrigin = c.value(.studioPaletteOrigin, or: d.studioPaletteOrigin)
@@ -180,6 +189,7 @@ struct SettingsColor: Codable, Hashable, Sendable {
     static let pink = SettingsColor(255, 55, 95)
     static let green = SettingsColor(48, 209, 88)
     static let purple = SettingsColor(191, 90, 242)
+    static let gray = SettingsColor(142, 142, 147)
     static let white = SettingsColor(255, 255, 255)
     /// The Screenshot studio's frame, apart from every Capture Area preset.
     static let studio = SettingsColor(240, 127, 26)

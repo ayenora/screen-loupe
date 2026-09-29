@@ -4,11 +4,13 @@ import AppKit
 /// a click-through panel of its own just below the frame's: the frame's panel takes presses on every
 /// drawn pixel, and the outline must never take one, also while it stays shown with the viewport
 /// handle. It also draws the frame's line while the magnet's area is fitted to its window, so the
-/// line takes no press either. It is the app's window, so the Viewer doesn't show it.
+/// line takes no press either, and the band of the margins between that line and the captured rect,
+/// which passes clicks and gestures through too. It is the app's window, so the Viewer doesn't show it.
 @MainActor
 final class ViewedPartOverlay: NSPanel {
     private let outline = ViewedPartView()
     private let frameLine = FrameLineView()
+    private let band = MarginsBandView()
     private var isShown = false
 
     init() {
@@ -22,13 +24,14 @@ final class ViewedPartOverlay: NSPanel {
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
         let content = NSView()
-        for view in [outline, frameLine] {
+        for view in [band, outline, frameLine] {
             view.autoresizingMask = [.width, .height]
             content.addSubview(view)
         }
         contentView = content
         outline.alphaValue = 0
         frameLine.isHidden = true
+        band.isHidden = true
     }
 
     override var canBecomeKey: Bool { false }
@@ -42,15 +45,25 @@ final class ViewedPartOverlay: NSPanel {
     }
 
     /// Covers `frame`, the frame's overlay window, with the outline of `viewedPart` clipped to
-    /// `captureRect`, all in AppKit global coordinates, and with the frame's line around
-    /// `captureRect` when `drawsFrameLine`. A hidden outline isn't redrawn, and one whose part is gone
-    /// fades out where it last was.
-    func place(frame: CGRect, captureRect: CGRect, viewedPart: CGRect?, drawsFrameLine: Bool) {
+    /// `innerRect`, the captured rect, all in AppKit global coordinates, with the frame's line around
+    /// `captureRect`, the frame's rect, when `drawsFrameLine`, and between the two the margins' band in
+    /// `bandColor`, `nil` for none. A hidden outline isn't redrawn, and one whose part is gone fades
+    /// out where it last was.
+    func place(
+        frame: CGRect, captureRect: CGRect, innerRect: CGRect, viewedPart: CGRect?, drawsFrameLine: Bool,
+        bandColor: NSColor?
+    ) {
         setFrame(frame, display: false)
         frameLine.isHidden = !drawsFrameLine
         if drawsFrameLine { frameLine.captureRect = captureRect.offsetBy(dx: -frame.minX, dy: -frame.minY) }
+        band.isHidden = bandColor == nil
+        if let bandColor {
+            band.color = bandColor
+            band.outer = captureRect.offsetBy(dx: -frame.minX, dy: -frame.minY)
+            band.inner = innerRect.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        }
         guard isShown, let viewedPart else { return }
-        outline.captureRect = captureRect.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        outline.captureRect = innerRect.offsetBy(dx: -frame.minX, dy: -frame.minY)
         outline.viewedRect = viewedPart.offsetBy(dx: -frame.minX, dy: -frame.minY)
     }
 
@@ -98,5 +111,20 @@ private final class FrameLineView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let style else { return }
         OverlayStyle.drawLine(around: captureRect, style: style, appearance: effectiveAppearance)
+    }
+}
+
+/// The margins' band: `outer`, the frame's rect, less `inner`, the captured rect, filled with `color`.
+private final class MarginsBandView: NSView {
+    var outer: CGRect = .zero { didSet { if outer != oldValue { needsDisplay = true } } }
+    var inner: CGRect = .zero { didSet { if inner != oldValue { needsDisplay = true } } }
+    var color: NSColor = .clear { didSet { if color != oldValue { needsDisplay = true } } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let band = NSBezierPath(rect: outer)
+        band.append(NSBezierPath(rect: inner))
+        band.windingRule = .evenOdd
+        color.setFill()
+        band.fill()
     }
 }

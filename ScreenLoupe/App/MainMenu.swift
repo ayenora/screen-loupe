@@ -296,6 +296,10 @@ enum MainMenu {
             withTitle: "Fit Capture Area to Window…", action: #selector(AppController.pickWindowForCaptureArea(_:)),
             keyEquivalent: "")
         pick.target = target
+        let margins = menu.addItem(
+            withTitle: "Capture Area Margins", action: #selector(AppController.toggleCaptureAreaMargins(_:)),
+            keyEquivalent: "")
+        margins.target = target
         let onTop = menu.addItem(
             withTitle: "Keep Viewer on Top", action: #selector(AppController.toggleViewerAlwaysOnTop(_:)),
             keyEquivalent: "")

@@ -2,8 +2,8 @@ import AppKit
 
 /// Which frame an `OverlayFrameController` runs. Both share the overlay window, drawing, dragging,
 /// ⌘-snapping, pixel snapping, the arrow keys, Fit to Window and the notice; only the Capture Area
-/// has the pin's locks, the magnet, the raise button and the outline of the part the Viewer shows,
-/// with its viewport handle.
+/// has the pin's locks, the magnet with its margins, the raise button and the outline of the part the
+/// Viewer shows, with its viewport handle.
 enum OverlayFrameKind {
     /// The Capture Area the Viewer shows.
     case captureArea
@@ -45,9 +45,17 @@ enum OverlayFrameKind {
 /// rect, the overlay window, dragging, arrow keys, hover, the magnet and persistence.
 @MainActor
 final class OverlayFrameController {
-    /// The captured rect, in AppKit global coordinates, snapped to its display's pixel grid.
-    private(set) var captureRect: CGRect = .zero
-    /// Called whenever `captureRect` changes.
+    /// The frame's rect, in AppKit global coordinates, snapped to its display's pixel grid.
+    private(set) var frameRect: CGRect = .zero
+
+    /// The captured rect, in AppKit global coordinates: the frame's rect, less the margins while they
+    /// are on (`CaptureMargins.inner`), each edge on the pixel grid.
+    var captureRect: CGRect {
+        guard marginsOn else { return frameRect }
+        return snapped(settings.settings.captureAreaMargins.inner(of: frameRect), .edges)
+    }
+
+    /// Called whenever `captureRect` or the frame changes.
     var onChange: (() -> Void)?
     /// True during `onChange` when the magnet moved the area with its window.
     private(set) var isFollowingWindow = false
@@ -87,7 +95,7 @@ final class OverlayFrameController {
     /// A rect the position box never covers, in AppKit global coordinates: the studio's palette while
     /// it shows; `.null` for none.
     var positionAvoiding = CGRect.null {
-        didSet { if positionAvoiding != oldValue { apply(captureRect, persist: false) } }
+        didSet { if positionAvoiding != oldValue { apply(frameRect, persist: false) } }
     }
 
     /// The rect's size in pixels of the display it is on, or `nil` when it is on no display.
@@ -134,7 +142,7 @@ final class OverlayFrameController {
         didSet {
             updateViewedPartShown()
             // Its button leaves the collapsed buttons while the mode is on.
-            if showsViewportHandle != oldValue { apply(captureRect, persist: false) }
+            if showsViewportHandle != oldValue { apply(frameRect, persist: false) }
         }
     }
     /// "»" was clicked: the buttons it collapses show in its place until the frame's buttons hide; the
@@ -165,6 +173,14 @@ final class OverlayFrameController {
     private var spaceObserver: NSObjectProtocol?
     /// The area followed its window since the placement was last saved.
     private var magnetMoved = false
+
+    /// The margins are on (docs/product.md, Capture Area): only while the magnet's area is fitted to
+    /// its window. Not kept between launches; their values, colour and opacity are, in Settings.
+    private var marginsOn = false
+    /// The margins panel is expanded.
+    private var marginsExpanded = false
+    /// The frame's parts hid since the panel was expanded: the next reveal shows it collapsed.
+    private var marginsCollapseOnReveal = false
     /// The notice beside the tab, while it shows.
     private var noticeText: String?
     private var noticeTimer: Timer?
@@ -202,7 +218,7 @@ final class OverlayFrameController {
         }
         settings.observe(\.sizeUnits) { [weak self] _ in
             guard let self else { return }
-            apply(captureRect, persist: false)
+            apply(frameRect, persist: false)
         }
         guard kind.hasLocks else { return }
         // The magnet's window doesn't survive a relaunch: a Magnet mode comes up off.
@@ -213,6 +229,11 @@ final class OverlayFrameController {
             self?.view.isViewportHandleOn = $0
             self?.showsViewportHandle = $0
         }
+        settings.observe(\.marginsLook) { [weak self] _ in
+            guard let self, marginsOn else { return }
+            apply(frameRect, persist: false)
+        }
+        wireMarginsPanel()
         // The magnet turned off, or another lock chosen.
         settings.observe(\.activeCaptureAreaLock) { [weak self] in
             if $0 != .magnet { self?.stopMagnet() }
@@ -259,8 +280,8 @@ final class OverlayFrameController {
         // than judging the area off-screen and overwriting the saved placement.
         guard DisplayLayout.current() != nil else { return }
         refreshDisplays()
-        let onScreen = converter?.owningDisplay(for: GlobalRect(rect: captureRect)) != nil
-        apply(onScreen ? captureRect : defaultRect(), persist: hasBeenShown || !kind.placedWhenFirstShown)
+        let onScreen = converter?.owningDisplay(for: GlobalRect(rect: frameRect)) != nil
+        apply(onScreen ? frameRect : defaultRect(), persist: hasBeenShown || !kind.placedWhenFirstShown)
     }
 
     private func refreshDisplays() {
@@ -297,8 +318,8 @@ final class OverlayFrameController {
     /// Returns whether it was applied.
     @discardableResult
     func resize(toPixels size: PixelSize) -> Bool {
-        guard let display = converter?.owningDisplay(for: GlobalRect(rect: captureRect)) else { return false }
-        switch StudioSizes.frame(captureRect, resizedTo: size, on: display, minimumSize: CaptureAreaEditing.minimumSize)
+        guard let display = converter?.owningDisplay(for: GlobalRect(rect: frameRect)) else { return false }
+        switch StudioSizes.frame(frameRect, resizedTo: size, on: display, minimumSize: CaptureAreaEditing.minimumSize)
         {
         case .fits(let rect):
             applyEdited(rect, snap: .edges, persist: true)
@@ -351,11 +372,15 @@ final class OverlayFrameController {
         ) { [weak self] picked in
             self?.picker = nil
             self?.view.isPickingWindow = false
+            // The tab kept for the picker hides after the delay if the pointer is away.
+            self?.updateReveal()
             self?.onPickerEnded?()
             if let picked { onPicked(picked) }
         }
         self.picker = picker
         view.isPickingWindow = fits
+        // The tab stays while it runs; started with the row collapsed, it shows collapsed.
+        updateReveal()
         // Started by a key or the menu with a name showing: it goes under the picker's panels.
         updateButtonName()
         onPickerStarted?()
@@ -375,7 +400,7 @@ final class OverlayFrameController {
     /// A click on the magnet while it is off: the window under the area holds it, if there is one.
     private func attachToWindowUnderArea() {
         guard let converter,
-            let window = WindowMagnet.window(under: captureRect, in: ScreenWindows.windows(converter: converter))
+            let window = WindowMagnet.window(under: frameRect, in: ScreenWindows.windows(converter: converter))
         else { return }
         attach(to: window)
     }
@@ -383,7 +408,7 @@ final class OverlayFrameController {
     /// Holds the area on `window` without moving it, and starts reading the window's frame: about
     /// 60 times a second, one window at a time (docs/design.md, Capture Area).
     private func attach(to window: ScreenWindow) {
-        magnet = Magnet(window: window, placement: WindowMagnet.placement(of: captureRect, on: window.frame))
+        magnet = Magnet(window: window, placement: WindowMagnet.placement(of: frameRect, on: window.frame))
         settings.update {
             $0.captureAreaLock = .magnet
             $0.captureAreaLocked = true
@@ -421,7 +446,7 @@ final class OverlayFrameController {
             magnet?.window = now
             isFollowingWindow = true
             switch WindowMagnet.follow(
-                area: captureRect, placement: held.placement, from: held.window.frame, to: now.frame)
+                area: frameRect, placement: held.placement, from: held.window.frame, to: now.frame)
             {
             case .fitted(let rect):
                 // Each edge on the pixels, as Fit to Window; the place on the window taken again, for
@@ -436,7 +461,7 @@ final class OverlayFrameController {
         } else if magnetMoved {
             // Saved once the window stops, not on every step of its move.
             magnetMoved = false
-            settings.update { $0[keyPath: kind.savedRect] = captureRect }
+            settings.update { $0[keyPath: kind.savedRect] = frameRect }
         }
     }
 
@@ -450,7 +475,7 @@ final class OverlayFrameController {
     /// After a resize or a move by the tab, the area keeps its new size and place on the window.
     private func rememberMagnetPlacement() {
         guard let held = magnet else { return }
-        magnet?.placement = WindowMagnet.placement(of: captureRect, on: held.window.frame)
+        magnet?.placement = WindowMagnet.placement(of: frameRect, on: held.window.frame)
     }
 
     private func stopMagnet() {
@@ -462,9 +487,81 @@ final class OverlayFrameController {
         updateFitted()
         if magnetMoved {
             magnetMoved = false
-            settings.update { $0[keyPath: kind.savedRect] = captureRect }
+            settings.update { $0[keyPath: kind.savedRect] = frameRect }
         }
         onMagnetStopped?()
+    }
+
+    // MARK: Margins
+
+    /// The margins can be turned on: the magnet holds a window and the area is fitted to it.
+    var areMarginsAvailable: Bool { kind.hasLocks && isFitted }
+
+    var areMarginsOn: Bool { marginsOn }
+
+    /// The margins button and Window › Capture Area Margins: turns the margins on or off, while they
+    /// can be. Turned on, the panel shows expanded with the position box at once, also from the menu
+    /// with the pointer away, and then hides with the box after the usual delay.
+    func toggleMargins() {
+        guard areMarginsAvailable else { return }
+        if marginsOn {
+            endMargins()
+            apply(frameRect, persist: false)
+        } else {
+            marginsOn = true
+            view.isMarginsOn = true
+            marginsExpanded = true
+            marginsCollapseOnReveal = false
+            apply(frameRect, persist: false)
+            hideTimer?.invalidate()
+            hideTimer = nil
+            setRevealed(true)
+        }
+        updateReveal()
+    }
+
+    /// The margins turn off: the area is the whole frame again. The caller lays it out.
+    private func endMargins() {
+        marginsOn = false
+        view.isMarginsOn = false
+        view.marginsPanel?.stopUsing()
+    }
+
+    private func wireMarginsPanel() {
+        guard let panel = view.marginsPanel else { return }
+        panel.onExpand = { [weak self] expanded in
+            guard let self else { return }
+            marginsExpanded = expanded
+            marginsCollapseOnReveal = false
+            apply(frameRect, persist: false)
+        }
+        panel.onMargin = { [weak self] edge, value in
+            guard let self, marginsOn else { return }
+            let size = frameRect.size
+            settings.update { $0.captureAreaMargins = $0.captureAreaMargins.setting(edge, to: value, frameSize: size) }
+        }
+        panel.onColor = { [weak self] color in self?.settings.update { $0.marginsColor = color } }
+        panel.onOpacity = { [weak self] opacity in
+            self?.settings.update { $0.marginsOpacity = min(max(opacity, 0), 1) }
+        }
+        panel.onInUseChange = { [weak self] in self?.updateReveal() }
+    }
+
+    /// What the margins panel shows, and the band's colour, while the margins are on.
+    private func marginsContent(captured: CGRect, scale: CGFloat) -> MarginsPanelView.Content {
+        let current = settings.settings
+        return MarginsPanelView.Content(
+            margins: current.captureAreaMargins.applied(to: frameRect.size),
+            factor: CaptureMargins.shownPerPoint(units: current.sizeUnits, scale: scale),
+            unit: current.sizeUnits == .pixels ? "px" : "pt",
+            innerSize: SizeText.label(captured.size, scale: scale, units: current.sizeUnits),
+            color: current.marginsColor, opacity: current.marginsOpacity)
+    }
+
+    private var bandColor: NSColor? {
+        guard marginsOn else { return nil }
+        let current = settings.settings
+        return current.marginsColor.nsColor.withAlphaComponent(current.marginsOpacity)
     }
 
     // MARK: Notice
@@ -472,7 +569,7 @@ final class OverlayFrameController {
     /// Shows `text` beside the tab for a moment, then fades it.
     func showNotice(_ text: String) {
         noticeText = text
-        apply(captureRect, persist: false)
+        apply(frameRect, persist: false)
         view.setNotice(text)
         noticeTimer?.invalidate()
         noticeTimer = Timer.scheduledTimer(withTimeInterval: OverlayStyle.noticeDelay, repeats: false) {
@@ -501,34 +598,47 @@ final class OverlayFrameController {
 
     private func apply(_ rect: CGRect, persist: Bool) {
         let rect = snapped(rect, .move)
-        captureRect = rect
-        let display = converter?.owningDisplay(for: GlobalRect(rect: rect))
+        frameRect = rect
+        // No longer fitted: dragged off by the tab, or its window too small for the area.
+        if marginsOn, !isFitted { endMargins() }
+        // The size, the edges and the margins are of what is captured.
+        let captured = captureRect
+        let display = converter?.owningDisplay(for: GlobalRect(rect: captured))
         let screenFrame = self.screenFrame(of: rect)
         let scale = display?.scale ?? 1
 
         let units = settings.settings.sizeUnits
-        let tabText = SizeText.tab(rect.size, scale: scale, units: units)
-        let labelText = SizeText.label(rect.size, scale: scale, units: units)
+        let tabText = SizeText.tab(captured.size, scale: scale, units: units)
+        let labelText = SizeText.label(captured.size, scale: scale, units: units)
         // L T R B from the top-left corner of the display the area is on.
         let local = display.flatMap { display in
-            converter?.displayLocalRect(GlobalRect(rect: rect), on: display).rect
+            converter?.displayLocalRect(GlobalRect(rect: captured), on: display).rect
         }
         let positionLines = local.map { SizeText.edges($0, scale: scale, units: units) } ?? []
+        let positionSize =
+            positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines, titled: marginsOn)
+        let margins =
+            marginsOn ? (content: marginsContent(captured: captured, scale: scale), expanded: marginsExpanded) : nil
         let layout = OverlayLayout(
             captureRect: rect,
             screenFrame: screenFrame,
             tabWidth: OverlayStyle.tabWidth(for: tabText),
             labelWidth: OverlayStyle.labelWidth(for: labelText),
-            positionSize: positionLines.isEmpty ? .zero : OverlayStyle.positionSize(for: positionLines),
+            positionSize: positionSize,
             positionAvoiding: positionAvoiding,
             noticeWidth: noticeText.map(OverlayStyle.labelWidth(for:)) ?? 0,
             lockButtons: kind.hasLocks,
             buttonsExpanded: buttonsExpanded,
-            viewportHandleOn: showsViewportHandle
+            viewportHandleOn: showsViewportHandle,
+            marginsButton: areMarginsAvailable,
+            innerRect: captured,
+            marginsPanelSize: margins.map { $0.expanded ? MarginsPanelView.expandedSize : positionSize } ?? .zero,
+            marginsPanelWidestWidth: MarginsPanelView.expandedSize.width
         )
         self.layout = layout
         window.setFrame(layout.windowFrame, display: false)
-        view.update(layout: layout, tabText: tabText, labelText: labelText, positionLines: positionLines)
+        view.update(
+            layout: layout, tabText: tabText, labelText: labelText, positionLines: positionLines, margins: margins)
         updateViewedPartShown()
 
         if persist {
@@ -556,15 +666,23 @@ final class OverlayFrameController {
     /// The magnet holds a window and the area lies on its bounds (`WindowMagnet.isFitted`): the area
     /// follows the window's size too, and the window's own edges resize it.
     private var isFitted: Bool {
-        magnet.map { WindowMagnet.isFitted(captureRect, to: $0.window.frame) } ?? false
+        magnet.map { WindowMagnet.isFitted(frameRect, to: $0.window.frame) } ?? false
     }
 
     /// While fitted, the frame's line lies on the window's edges: it has no handles, and its line is
     /// drawn by the click-through outline panel, so a press on it and the cursor go to the window
     /// underneath, whose own edges resize it. The overlay's panel takes a press on every drawn pixel,
     /// and setting its `ignoresMouseEvents` back to false would make it take one on every pixel.
+    /// The margins button shows only while fitted, and the margins turn off when it ends.
     private func updateFitted() {
         view.isFitted = isFitted
+        let laidOutAvailable = layout.map { !$0.marginsButtonRect.isNull } ?? false
+        if marginsOn, !isFitted {
+            endMargins()
+            apply(frameRect, persist: false)
+        } else if laidOutAvailable != areMarginsAvailable {
+            apply(frameRect, persist: false)
+        }
         updateViewedPartShown()
     }
 
@@ -619,15 +737,22 @@ final class OverlayFrameController {
         guard let button, let name = view.name(of: button) else { return }
         buttonName.pointerEntered(button, name: name) { [weak self] size in
             guard let self, let layout else { return nil }
-            return layout.buttonNameRect(for: button, size: size, screenFrame: screenFrame(of: captureRect))
+            return layout.buttonNameRect(for: button, size: size, screenFrame: screenFrame(of: frameRect))
         }
     }
 
     /// The handles and tab show while the cursor is near the frame, while dragging, and while the
-    /// frame is key (after a click, so arrow-key nudges are visible).
+    /// frame is key (after a click, so arrow-key nudges are visible); also while the margins panel is
+    /// in use, and while its window picker runs, so the tab that started it
+    /// stays in view wherever the pointer goes.
+    private var wantsReveal: Bool {
+        isHovering || drag != nil || window.isKeyWindow || view.marginsPanel?.isInUse == true
+            || picker != nil
+    }
+
     private func updateReveal() {
         updateViewedPartShown()
-        let wanted = isHovering || drag != nil || window.isKeyWindow
+        let wanted = wantsReveal
         if wanted {
             hideTimer?.invalidate()
             hideTimer = nil
@@ -638,7 +763,7 @@ final class OverlayFrameController {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.hideTimer = nil
-                    if !(self.isHovering || self.drag != nil || self.window.isKeyWindow) {
+                    if !self.wantsReveal {
                         self.setRevealed(false)
                     }
                 }
@@ -650,11 +775,15 @@ final class OverlayFrameController {
         guard revealed != isRevealed else { return }
         isRevealed = revealed
         if !revealed { updateButtonName() }
+        if !revealed, marginsExpanded { marginsCollapseOnReveal = true }
         // The row expanded before the buttons last hid collapses as they show again, before they fade
-        // in: collapsing as they hide would drop the raise and pick buttons mid-fade.
-        if revealed, buttonsExpanded {
+        // in: collapsing as they hide would drop the raise and pick buttons mid-fade. So does the
+        // margins panel.
+        if revealed, buttonsExpanded || marginsCollapseOnReveal {
             buttonsExpanded = false
-            apply(captureRect, persist: false)
+            if marginsCollapseOnReveal { marginsExpanded = false }
+            marginsCollapseOnReveal = false
+            apply(frameRect, persist: false)
         }
         view.setRevealed(revealed)
     }
@@ -684,8 +813,8 @@ final class OverlayFrameController {
         outline?.setShown(viewedPart != nil && (isNear || viewedPartTimer != nil || showsViewportHandle))
         if let layout {
             outline?.place(
-                frame: layout.windowFrame, captureRect: layout.captureRect, viewedPart: viewedPart,
-                drawsFrameLine: isFitted)
+                frame: layout.windowFrame, captureRect: layout.captureRect, innerRect: layout.innerRect,
+                viewedPart: viewedPart, drawsFrameLine: isFitted, bandColor: bandColor)
         }
         view.viewportHandleRect = viewportHandle
     }
@@ -716,8 +845,12 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
             settings.update { $0.showsViewportHandle.toggle() }
             return
         }
+        if target == .marginsButton {
+            toggleMargins()
+            return
+        }
         if target == .viewportHandle {
-            drag = Drag(target: .viewportHandle, startMouse: point, startRect: captureRect)
+            drag = Drag(target: .viewportHandle, startMouse: point, startRect: frameRect)
             onViewportHandleDragBegan?()
             updateReveal()
             return
@@ -737,7 +870,7 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
         }
         if target == .moreButtons {
             buttonsExpanded = true
-            apply(captureRect, persist: false)
+            apply(frameRect, persist: false)
             return
         }
         if target == .raiseViewer {
@@ -752,8 +885,8 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
         // the hit test decided.
         // Otherwise the window only receives presses on its drawn pixels, and anything outside the
         // area that isn't a handle moves it. Inside, a press on no target does nothing.
-        guard let target = target ?? (lock == nil && !captureRect.contains(point) ? .move : nil) else { return }
-        drag = Drag(target: target, startMouse: point, startRect: captureRect)
+        guard let target = target ?? (lock == nil && !frameRect.contains(point) ? .move : nil) else { return }
+        drag = Drag(target: target, startMouse: point, startRect: frameRect)
         updateReveal()
     }
 
@@ -800,7 +933,8 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
                     rect, handle: handle, ratio: ratio, scale: scale(of: fitted), minimumSize: minimum, lead: lead)
             }
             applyEdited(rect, snap: .edges, persist: false)
-        case .pin, .pinMenu, .viewportButton, .moreButtons, .raiseViewer, .pickWindow, .viewportHandle:
+        case .pin, .pinMenu, .viewportButton, .moreButtons, .raiseViewer, .pickWindow, .viewportHandle,
+            .marginsButton:
             break
         }
     }
@@ -822,7 +956,7 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
     /// Not the viewport handle, and nothing else inside the area: the app underneath keeps the keyboard.
     func overlayView(_ view: CaptureOverlayView, takesKeyForPressAt point: CGPoint) -> Bool {
         let target = overlayView(view, hitTargetAt: point)
-        return target != .viewportHandle && (target != nil || !captureRect.contains(point))
+        return target != .viewportHandle && (target != nil || !frameRect.contains(point))
     }
 
     func overlayViewMouseUp(_ view: CaptureOverlayView) {
@@ -831,7 +965,7 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
         // The viewport handle moved the Viewer, not the area.
         if ended.target != .viewportHandle {
             rememberMagnetPlacement()
-            settings.update { $0[keyPath: kind.savedRect] = captureRect }
+            settings.update { $0[keyPath: kind.savedRect] = frameRect }
         }
         mouseMovedAnywhere()
     }
@@ -862,14 +996,28 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
         default: return false
         }
         // One step is one pixel of the display the area is on (docs/design.md §3).
-        let scale = converter?.owningDisplay(for: GlobalRect(rect: captureRect))?.scale ?? 1
+        let scale = converter?.owningDisplay(for: GlobalRect(rect: frameRect))?.scale ?? 1
         let flags = event.modifierFlags
         let step = (flags.contains(.shift) ? 10 : 1) / scale
         let resize = flags.contains(.option)
         if let lock, !lock.allowsNudge(resizing: resize) { return false }
-        let next = CaptureAreaEditing.nudged(captureRect, key: key, step: step, resize: resize)
+        let next = CaptureAreaEditing.nudged(frameRect, key: key, step: step, resize: resize)
         applyEdited(next, snap: resize ? .edges : .move, persist: true)
         rememberMagnetPlacement()
         return true
     }
+}
+
+extension Settings {
+    /// The margins' values, colour and opacity, which the Capture Area is laid out and drawn with
+    /// while they are on.
+    fileprivate var marginsLook: MarginsLook {
+        MarginsLook(margins: captureAreaMargins, color: marginsColor, opacity: marginsOpacity)
+    }
+}
+
+private struct MarginsLook: Equatable {
+    var margins: CaptureMargins
+    var color: SettingsColor
+    var opacity: Double
 }

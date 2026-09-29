@@ -1055,3 +1055,120 @@ struct SavedPinTests {
         #expect(try savedPin(#"{"captureAreaLocked": 2, "captureAreaPinned": "on"}"#) == nil)
     }
 }
+
+/// The margins button in the tab row while the area is fitted to its magnet's window, and the margins
+/// panel below the position box while the margins are on.
+struct OverlayMarginsLayoutTests {
+    private let box = CGSize(width: 84, height: 76)
+    private let expandedPanel = CGSize(width: 196, height: 182)
+    private let capture = CGRect(x: 100, y: 300, width: 400, height: 300)
+
+    private func layout(
+        _ capture: CGRect, expanded: Bool = false, viewportHandleOn: Bool = false, panel: CGSize = .zero,
+        inner: CGRect? = nil
+    ) -> OverlayLayout {
+        OverlayLayout(
+            captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, positionSize: box,
+            buttonsExpanded: expanded, viewportHandleOn: viewportHandleOn, marginsButton: true, innerRect: inner,
+            marginsPanelSize: panel, marginsPanelWidestWidth: expandedPanel.width)
+    }
+
+    @Test(arguments: [
+        (false, false, [OverlayHitTarget.marginsButton, .moreButtons]),
+        (false, true, [.marginsButton, .viewportButton, .moreButtons]),
+        (true, false, [.marginsButton, .viewportButton, .raiseViewer, .pickWindow]),
+    ])
+    func theMarginsButtonComesRightAfterThePinsMenu(
+        expanded: Bool, viewportHandleOn: Bool, row: [OverlayHitTarget]
+    ) {
+        let l = layout(capture, expanded: expanded, viewportHandleOn: viewportHandleOn)
+        #expect(l.rowButtons == row)
+        #expect(l.marginsButtonRect.minX == l.pinMenuRect.maxX + 4)
+        #expect(l.marginsButtonRect.size == CGSize(width: 22, height: 22))
+        let mid = CGPoint(x: l.marginsButtonRect.midX, y: l.marginsButtonRect.midY)
+        #expect(l.hitTarget(at: mid, lock: .magnet, fitted: true) == .marginsButton)
+        #expect(l.button(at: mid) == .marginsButton)
+        #expect(l.isInHoverZone(mid))
+        #expect(l.windowFrame.contains(l.marginsButtonRect))
+    }
+
+    @Test func withoutTheMarginsButtonTheRowIsAsBefore() {
+        let plain = OverlayLayout(
+            captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, positionSize: box)
+        #expect(plain.marginsButtonRect.isNull)
+        #expect(plain.marginsPanelRect.isNull)
+        #expect(plain.innerRect == capture)
+        #expect(plain.rowButtons == [.moreButtons])
+    }
+
+    @Test func theStudioFrameHasNoMarginsButton() {
+        let l = OverlayLayout(
+            captureRect: capture, screenFrame: screen, tabWidth: 180, labelWidth: 60, lockButtons: false,
+            marginsButton: true)
+        #expect(l.rowButtons == [.pickWindow])
+        #expect(l.marginsButtonRect.isNull)
+    }
+
+    @Test func thePanelSitsBelowTheBoxOnItsEdgeNextToTheFrame() {
+        let collapsed = layout(capture, panel: box)
+        // Right of the frame, the column's top level with the frame's top (600).
+        #expect(collapsed.positionRect == CGRect(x: 512, y: 524, width: 84, height: 76))
+        #expect(collapsed.marginsPanelRect == CGRect(x: 512, y: 444, width: 84, height: 76))
+        let expanded = layout(capture, panel: expandedPanel)
+        #expect(expanded.positionRect == collapsed.positionRect)
+        #expect(expanded.marginsPanelRect == CGRect(x: 512, y: 338, width: 196, height: 182))
+        for l in [collapsed, expanded] {
+            #expect(l.windowFrame.contains(l.marginsPanelRect))
+            #expect(l.isInHoverZone(CGPoint(x: l.marginsPanelRect.midX, y: l.marginsPanelRect.midY)))
+        }
+    }
+
+    @Test func leftOfTheFrameThePanelKeepsToTheBoxsRightEdge() {
+        // The expanded panel wouldn't fit right of the frame, so the column goes left, collapsed too:
+        // expanding never moves the box.
+        let right = CGRect(x: 1000, y: 300, width: 250, height: 300)
+        let collapsed = layout(right, panel: box)
+        let expanded = layout(right, panel: expandedPanel)
+        #expect(collapsed.positionRect.maxX == CGFloat(1000 - 12))
+        #expect(collapsed.marginsPanelRect.maxX == CGFloat(1000 - 12))
+        #expect(expanded.positionRect == collapsed.positionRect)
+        #expect(expanded.marginsPanelRect.maxX == CGFloat(1000 - 12))
+        #expect(expanded.marginsPanelRect.width == 196)
+    }
+
+    @Test func theColumnStaysOnScreenBelowAFrameNearTheBottom() {
+        let low = CGRect(x: 100, y: 10, width: 400, height: 150)
+        let l = layout(low, panel: expandedPanel)
+        #expect(l.marginsPanelRect.minY == 6)
+        #expect(l.positionRect.minY == l.marginsPanelRect.maxY + 4)
+    }
+
+    @Test func theColumnAvoidsARectAtNegativeCoordinates() {
+        // On a display left of the main one, with a rect to avoid right of the frame: the box and the
+        // panel go left of the frame, clear of it, the panel on the box's right edge.
+        let display = CGRect(x: -2560, y: -180, width: 2560, height: 1440)
+        let frame = CGRect(x: -1500, y: 200, width: 400, height: 300)
+        let avoided = CGRect(x: -1090, y: 100, width: 300, height: 500)
+        let l = OverlayLayout(
+            captureRect: frame, screenFrame: display, tabWidth: 180, labelWidth: 60, positionSize: box,
+            positionAvoiding: avoided, marginsButton: true, marginsPanelSize: expandedPanel,
+            marginsPanelWidestWidth: expandedPanel.width)
+        #expect(l.positionRect.maxX == frame.minX - 12)
+        #expect(l.marginsPanelRect.maxX == frame.minX - 12)
+        #expect(l.positionRect.maxY == frame.maxY)
+        #expect(l.marginsPanelRect.maxY == l.positionRect.minY - 4)
+        #expect(!l.positionRect.intersects(avoided))
+        #expect(!l.marginsPanelRect.intersects(avoided))
+    }
+
+    @Test func theViewportHandleStaysInsideTheInnerRect() throws {
+        // The part fills the inner rect's top: the pill goes below it, inside the inner rect, not in
+        // the band above it.
+        let inner = CGRect(x: 150, y: 350, width: 300, height: 200)
+        let l = layout(capture, inner: inner)
+        let part = CGRect(x: 200, y: 450, width: 100, height: 100)
+        let handle = try #require(l.viewportHandleRect(for: part))
+        #expect(inner.contains(handle))
+        #expect(handle.maxY == part.minY - 2)
+    }
+}

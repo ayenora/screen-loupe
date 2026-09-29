@@ -148,6 +148,10 @@ final class ColorPanelTarget: NSObject {
         }
     }
 
+    /// The panel is bound to `onChange`: shown by `show(from:)`, and not closed nor taken by another
+    /// well since.
+    var isActive: Bool { well.isActive }
+
     /// Binds the panel to `onChange`, starting from `color` when there is one, and shows it.
     func show(from color: NSColor?) {
         if let color { well.color = color }

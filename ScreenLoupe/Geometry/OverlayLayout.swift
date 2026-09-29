@@ -29,13 +29,16 @@ enum OverlayHitTarget: Hashable, Sendable {
     case moreButtons
     /// The handle on the outline of the part the Viewer shows: dragging it pans the Viewer.
     case viewportHandle
+    /// The button right after the pin's ▾ that turns the margins on and off, while the area is fitted
+    /// to its magnet's window.
+    case marginsButton
 
     /// Whether a press with this click count does anything. A button after the pin's ▾ takes only a
     /// single click: expanding or collapsing the row puts another button where "»" was, which the
     /// second click of a double click would otherwise press.
     func takesPress(clickCount: Int) -> Bool {
         switch self {
-        case .viewportButton, .moreButtons, .raiseViewer, .pickWindow: clickCount <= 1
+        case .viewportButton, .moreButtons, .raiseViewer, .pickWindow, .marginsButton: clickCount <= 1
         default: true
         }
     }
@@ -110,6 +113,8 @@ struct OverlayMetrics: Sendable {
     var buttonNameGap: CGFloat = 4
     /// The position box beside the frame, outside the band and handles.
     var positionGap: CGFloat = 12
+    /// Between the position box and the margins panel below it.
+    var marginsPanelGap: CGFloat = 4
     var screenMargin: CGFloat = 6
     /// How close to the line the cursor has to come for the handles and the tab to appear.
     var hoverReach: CGFloat = 14
@@ -144,22 +149,36 @@ struct OverlayLayout: Equatable, Sendable {
     var pickRect: CGRect
     /// The "»" that stands in for the collapsed buttons, after the pin's ▾ or the viewport button.
     var moreRect: CGRect
+    /// The margins button, right after the pin's ▾, while the margins can be turned on.
+    var marginsButtonRect: CGRect
     /// The L T R B box: right of the frame, or left of it when there is no room on the right; never
     /// over the rect it avoids (the studio's palette) while there is room elsewhere beside it.
     var positionRect: CGRect
+    /// The margins panel below the position box, on the box's edge next to the frame; `.null` while
+    /// the margins are off.
+    var marginsPanelRect: CGRect
+    /// The rect that is captured: `captureRect` less the margins, or `captureRect` itself.
+    var innerRect: CGRect
     /// A short notice beside the tab, away from the buttons; empty when there is none.
     var noticeRect: CGRect
-    /// The overlay window's frame: the frame, its band and handles, the tab, the label, the box and
-    /// the notice.
+    /// The overlay window's frame: the frame, its band and handles, the tab, the label, the box, the
+    /// margins panel and the notice.
     var windowFrame: CGRect
 
+    /// `captureRect` is the frame's rect. `marginsButton`: the margins can be turned on, and their
+    /// button shows. `innerRect`: what is captured, inside the frame; `nil` for the frame's rect.
+    /// `marginsPanelSize`: the margins panel as it is now, `.zero` while the margins are off;
+    /// `marginsPanelWidestWidth`: its expanded width, which picks the box's side, so expanding never
+    /// moves it.
     init(
         captureRect: CGRect, screenFrame: CGRect, tabWidth: CGFloat, labelWidth: CGFloat,
         positionSize: CGSize = .zero, positionAvoiding: CGRect = .null, noticeWidth: CGFloat = 0,
         lockButtons: Bool = true, buttonsExpanded: Bool = false, viewportHandleOn: Bool = false,
-        metrics m: OverlayMetrics = .standard
+        marginsButton: Bool = false, innerRect: CGRect? = nil, marginsPanelSize: CGSize = .zero,
+        marginsPanelWidestWidth: CGFloat = 0, metrics m: OverlayMetrics = .standard
     ) {
         self.captureRect = captureRect
+        self.innerRect = innerRect ?? captureRect
         let r = captureRect
         let screen = screenFrame
 
@@ -179,15 +198,16 @@ struct OverlayLayout: Equatable, Sendable {
             r.midX - tabWidth / 2, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - tabWidth)
         let tab = CGRect(x: tabX.rounded(), y: tabY.rounded(), width: tabWidth, height: m.tabHeight)
         tabRect = tab
-        // The pin with its ▾, then the viewport, raise and pick buttons, away from the tab. Collapsed,
-        // "»" stands in for the raise and pick buttons, and for the viewport button unless its mode is
-        // on: the filled button is the only sign of the mode. Without the lock buttons, the pick button
-        // alone. Right of the tab, or left of it, the pin next to the tab, when the expanded row
+        // The pin with its ▾, then the margins button while it shows, the viewport, raise and pick
+        // buttons, away from the tab. Collapsed, "»" stands in for the raise and pick buttons, and for
+        // the viewport button unless its mode is on: the filled button is the only sign of the mode.
+        // The margins button never goes behind it. Without the lock buttons, the pick button alone. Right of the tab, or left of it, the pin next to the tab, when the expanded row
         // wouldn't fit on the right: decided on the expanded row, so expanding never flips sides.
         let button = m.tabHeight + m.pinGap
         let split = lockButtons ? m.tabHeight + m.pinMenuWidth + m.pinGap : 0
+        let margins: [OverlayHitTarget] = lockButtons && marginsButton ? [.marginsButton] : []
         let expandedRow: [OverlayHitTarget] =
-            lockButtons ? [.viewportButton, .raiseViewer, .pickWindow] : [.pickWindow]
+            lockButtons ? margins + [.viewportButton, .raiseViewer, .pickWindow] : [.pickWindow]
         let onRight =
             tab.maxX + m.pinGap + split + CGFloat(expandedRow.count - 1) * button + m.tabHeight
             <= screen.maxX - m.screenMargin
@@ -200,7 +220,7 @@ struct OverlayLayout: Equatable, Sendable {
         }
         let row: [OverlayHitTarget] =
             !lockButtons || buttonsExpanded
-            ? expandedRow : viewportHandleOn ? [.viewportButton, .moreButtons] : [.moreButtons]
+            ? expandedRow : margins + (viewportHandleOn ? [.viewportButton, .moreButtons] : [.moreButtons])
         rowButtons = row
         let rect = { (target: OverlayHitTarget) in row.firstIndex(of: target).map(slot) ?? .null }
         if lockButtons {
@@ -214,6 +234,7 @@ struct OverlayLayout: Equatable, Sendable {
         raiseRect = rect(.raiseViewer)
         pickRect = rect(.pickWindow)
         moreRect = rect(.moreButtons)
+        marginsButtonRect = rect(.marginsButton)
 
         // Notice: left of the tab, or past the last button when the tab is at the screen's left edge.
         // With the buttons left of the tab, past the last button on that side.
@@ -240,35 +261,47 @@ struct OverlayLayout: Equatable, Sendable {
             r.maxX - labelWidth, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - labelWidth)
         labelRect = CGRect(x: labelX.rounded(), y: labelY.rounded(), width: labelWidth, height: m.labelHeight)
 
-        // Position box: its top level with the frame's top, kept on screen: right of the frame, or
-        // left of it when the right has no room. Where that covers `positionAvoiding`, the first of
-        // the frame's other side and beyond the avoided rect, away from the frame, that has room and
-        // covers nothing.
-        let boxY = Self.clamp(
-            r.maxY - positionSize.height, lower: screen.minY + m.screenMargin,
-            upper: screen.maxY - m.screenMargin - positionSize.height)
+        // Position box, with the margins panel below it while the margins are on: a column whose top
+        // is level with the frame's top, kept on screen: right of the frame, or left of it when the
+        // right has no room. Where that covers `positionAvoiding`, the first of the frame's other side
+        // and beyond the avoided rect, away from the frame, that has room and covers nothing. The box
+        // and the panel keep to the column's edge next to the frame.
+        let hasPanel = marginsPanelSize != .zero
+        let columnWidth = hasPanel ? max(positionSize.width, marginsPanelWidestWidth) : positionSize.width
+        let columnHeight = positionSize.height + (hasPanel ? m.marginsPanelGap + marginsPanelSize.height : 0)
+        let columnY = Self.clamp(
+            r.maxY - columnHeight, lower: screen.minY + m.screenMargin,
+            upper: screen.maxY - m.screenMargin - columnHeight)
         let fits = { (x: CGFloat) in
-            x >= screen.minX + m.screenMargin && x + positionSize.width <= screen.maxX - m.screenMargin
+            x >= screen.minX + m.screenMargin && x + columnWidth <= screen.maxX - m.screenMargin
         }
         let isClear = { (x: CGFloat) in
-            !CGRect(x: x, y: boxY, width: positionSize.width, height: positionSize.height)
-                .intersects(positionAvoiding)
+            !CGRect(x: x, y: columnY, width: columnWidth, height: columnHeight).intersects(positionAvoiding)
         }
         let rightX = r.maxX + m.positionGap
-        let leftX = r.minX - m.positionGap - positionSize.width
-        var boxX = rightX + positionSize.width <= screen.maxX - m.screenMargin ? rightX : leftX
-        if !isClear(boxX) {
+        let leftX = r.minX - m.positionGap - columnWidth
+        var columnX = rightX + columnWidth <= screen.maxX - m.screenMargin ? rightX : leftX
+        if !isClear(columnX) {
             // Beyond the avoided rect: on its side away from the frame.
             let avoided = positionAvoiding
             let beyond =
-                avoided.midX < r.midX
-                ? avoided.minX - m.positionGap - positionSize.width : avoided.maxX + m.positionGap
-            boxX = [rightX, leftX, beyond].first { fits($0) && isClear($0) } ?? boxX
+                avoided.midX < r.midX ? avoided.minX - m.positionGap - columnWidth : avoided.maxX + m.positionGap
+            columnX = [rightX, leftX, beyond].first { fits($0) && isClear($0) } ?? columnX
         }
-        boxX = Self.clamp(
-            boxX, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - positionSize.width)
+        columnX = Self.clamp(
+            columnX, lower: screen.minX + m.screenMargin, upper: screen.maxX - m.screenMargin - columnWidth)
+        // Left of the frame, the column's right edge is the one next to it.
+        let alignsRight = columnX + columnWidth / 2 < r.midX
+        let x = { (width: CGFloat) in (alignsRight ? columnX + columnWidth - width : columnX).rounded() }
         positionRect = CGRect(
-            x: boxX.rounded(), y: boxY.rounded(), width: positionSize.width, height: positionSize.height)
+            x: x(positionSize.width), y: (columnY + columnHeight - positionSize.height).rounded(),
+            width: positionSize.width, height: positionSize.height)
+        marginsPanelRect =
+            hasPanel
+            ? CGRect(
+                x: x(marginsPanelSize.width), y: columnY.rounded(), width: marginsPanelSize.width,
+                height: marginsPanelSize.height)
+            : .null
 
         var frame =
             r.insetBy(dx: -m.windowPadding, dy: -m.windowPadding)
@@ -281,6 +314,8 @@ struct OverlayLayout: Equatable, Sendable {
             .union(raiseRect.insetBy(dx: -8, dy: -8))
             .union(pickRect.insetBy(dx: -8, dy: -8))
             .union(moreRect.insetBy(dx: -8, dy: -8))
+            .union(marginsButtonRect.insetBy(dx: -8, dy: -8))
+            .union(marginsPanelRect.insetBy(dx: -8, dy: -8))
         if noticeWidth > 0 {
             frame = frame.union(noticeRect.insetBy(dx: -8, dy: -8))
         }
@@ -326,7 +361,7 @@ struct OverlayLayout: Equatable, Sendable {
     private var buttons: [(target: OverlayHitTarget, rect: CGRect)] {
         [
             (.pin, pinRect), (.pinMenu, pinMenuRect), (.viewportButton, viewportRect), (.raiseViewer, raiseRect),
-            (.pickWindow, pickRect), (.moreButtons, moreRect),
+            (.pickWindow, pickRect), (.moreButtons, moreRect), (.marginsButton, marginsButtonRect),
         ]
     }
 
@@ -359,12 +394,12 @@ struct OverlayLayout: Equatable, Sendable {
 
     /// The viewport handle for `viewedPart`, the part of the area the Viewer shows, never over it:
     /// `viewportHandleGap` outside it, above and centred on it, else below, else left, else right,
-    /// wherever it first fits inside the captured rect, kept within the rect along that side. `nil`
-    /// when it fits nowhere: the part leaves too little of the area around it.
+    /// wherever it first fits inside the captured rect (`innerRect`), kept within the rect along that
+    /// side. `nil` when it fits nowhere: the part leaves too little of the area around it.
     func viewportHandleRect(for viewedPart: CGRect, metrics m: OverlayMetrics = .standard) -> CGRect? {
         let size = m.viewportHandleSize
         let gap = m.viewportHandleGap
-        let r = captureRect
+        let r = innerRect
         let x = Self.clamp(viewedPart.midX - size.width / 2, lower: r.minX, upper: r.maxX - size.width)
         let y = Self.clamp(viewedPart.midY - size.height / 2, lower: r.minY, upper: r.maxY - size.height)
         let candidates = [
@@ -381,6 +416,7 @@ struct OverlayLayout: Equatable, Sendable {
         if tabRect.contains(point) || labelRect.contains(point) || positionRect.contains(point)
             || pinRect.contains(point) || pinMenuRect.contains(point) || viewportRect.contains(point)
             || raiseRect.contains(point) || pickRect.contains(point) || moreRect.contains(point)
+            || marginsButtonRect.contains(point) || marginsPanelRect.contains(point)
         {
             return true
         }

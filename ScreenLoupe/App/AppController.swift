@@ -102,6 +102,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.pickWindow()
     }
 
+    /// Window › Capture Area Margins, as the frame's margins button: only while the area is fitted to
+    /// its magnet's window.
+    @objc func toggleCaptureAreaMargins(_ sender: Any?) {
+        builtWindows?.captureArea.toggleMargins()
+    }
+
     /// View › Show Viewport Handle and the global shortcut; the Capture Area's viewport button turns
     /// the same setting.
     @objc func toggleViewportHandle(_ sender: Any?) {
@@ -361,6 +367,9 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleViewportHandle(_:)):
             menuItem.state = settings.settings.showsViewportHandle ? .on : .off
             return true
+        case #selector(toggleCaptureAreaMargins(_:)):
+            menuItem.state = builtWindows?.captureArea.areMarginsOn == true ? .on : .off
+            return builtWindows?.captureArea.areMarginsAvailable == true
         case #selector(toggleViewerAlwaysOnTop(_:)):
             menuItem.state = settings.settings.viewerAlwaysOnTop ? .on : .off
             return true
