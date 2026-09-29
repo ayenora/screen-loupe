@@ -554,7 +554,7 @@ final class StudioController {
     /// The chosen window's outline, while one is chosen and the studio shows.
     private let oneWindowOutline = OneWindowOutlinePanel()
     private var oneWindowWatch = OneWindowWatch()
-    /// Reads the chosen window's place every `OneWindowWatch.readInterval`, while one is chosen and
+    /// Reads the chosen window's place every `WindowMagnet.readInterval`, while one is chosen and
     /// the studio shows, and only then.
     private var oneWindowTimer: Timer?
     private var oneWindowSpaceObserver: NSObjectProtocol?
@@ -629,7 +629,7 @@ final class StudioController {
         guard oneWindowTimer == nil else { return }
         oneWindowWatch = OneWindowWatch()
         oneWindowConverter = converter
-        let timer = Timer(timeInterval: OneWindowWatch.readInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: WindowMagnet.readInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.readOneWindow() }
         }
         // Also while a menu is open or a window is dragged.

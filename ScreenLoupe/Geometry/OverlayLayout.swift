@@ -92,6 +92,8 @@ enum TabPlacement: Equatable, Sendable {
 struct OverlayMetrics: Sendable {
     /// The line is drawn this far outside the captured rect, so every captured pixel stays visible.
     var lineWidth: CGFloat = 1
+    /// The contrasting halo just outside the line, so it reads on any background.
+    var haloWidth: CGFloat = 1
     /// The translucent move band outside the line, shown on hover.
     var bandWidth: CGFloat = 5
     var handleSize: CGFloat = 8

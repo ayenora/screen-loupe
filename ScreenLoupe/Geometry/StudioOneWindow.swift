@@ -54,12 +54,10 @@ enum OneWindowMode: Equatable, Sendable {
 
 /// Reads of the chosen window's place, about 60 a second while the studio shows (docs/design.md,
 /// Screenshot studio): where its outline goes, and when One Window lets the window go. The magnet's
-/// rules (`WindowMagnet.holds`, `readsToLetGo`): a window closed, minimised, hidden with its app or
-/// on another Space reads as not held, and two such reads in a row let it go.
+/// rules (`WindowMagnet.holds`, `readsToLetGo`) at its pace (`WindowMagnet.readInterval`): a window
+/// closed, minimised, hidden with its app or on another Space reads as not held, and two such reads
+/// in a row let it go.
 struct OneWindowWatch: Equatable, Sendable {
-    /// Between two reads: the magnet's pace, so `WindowMagnet.readsToLetGo` lets go as soon.
-    static let readInterval: TimeInterval = 1.0 / 60
-
     enum Outcome: Equatable, Sendable {
         /// On screen, at this frame in AppKit global coordinates: the outline goes there.
         case shows(CGRect)
@@ -95,9 +93,6 @@ struct OneWindowOutline: Equatable, Sendable {
     var label: CGRect
     var labelInside: Bool
 
-    /// The halo's width outside the line, as the frame draws it.
-    static let halo: CGFloat = 1
-
     /// The outline of a window at `window`, a line of `lineWidth` points and a label of `labelSize`,
     /// kept on `screen` (the visible frame of the window's display): the label never covers the
     /// menu bar or leaves the screen sideways.
@@ -110,7 +105,7 @@ struct OneWindowOutline: Equatable, Sendable {
         let clampedX = min(max(x, screen.minX + m.screenMargin), screen.maxX - m.screenMargin - labelSize.width)
         label = CGRect(
             x: clampedX.rounded(), y: y.rounded(), width: labelSize.width, height: labelSize.height)
-        panel = line.insetBy(dx: -Self.halo, dy: -Self.halo).union(label)
+        panel = line.insetBy(dx: -m.haloWidth, dy: -m.haloWidth).union(label)
     }
 }
 

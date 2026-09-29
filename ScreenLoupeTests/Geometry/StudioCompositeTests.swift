@@ -46,20 +46,20 @@ struct StudioCompositeTests {
 
     @Test func anImageInTheDisplaysSpaceIsKeptAsItIs() {
         let image = capture(width: 3, height: 2, space: displayP3, picture)
-        let result = StudioComposite.composited(image, in: displayP3)
+        let result = StudioComposite.converted(image, to: displayP3)
         #expect(result === image)
     }
 
     @Test func anUntaggedImageIsTaggedWithTheDisplaysSpaceUnchanged() {
         let image = capture(width: 3, height: 2, space: displayP3, picture).copy(colorSpace: sRGB)!
-        let result = StudioComposite.composited(image, in: sRGB)!
+        let result = StudioComposite.converted(image, to: sRGB)!
         #expect(result.colorSpace == sRGB)
         #expect(pixels(result, in: sRGB)[0] == picture[0])
     }
 
     @Test func anImageInAnotherSpaceIsConvertedIntoTheDisplays() {
         let image = capture(width: 1, height: 1, space: sRGB, [[0, 0, 255, 255]])
-        let result = StudioComposite.composited(image, in: displayP3)!
+        let result = StudioComposite.converted(image, to: displayP3)!
         #expect(result.colorSpace == displayP3)
         // sRGB red in Display P3 is about (234, 51, 35).
         let pixel = pixels(result, in: displayP3)[0]
@@ -75,7 +75,7 @@ struct StudioCompositeTests {
             (index % width + index / width) % 2 == 0 ? [0, 0, 0, 255] : [255, 255, 255, 255]
         }
         let image = capture(width: width, height: height, space: sRGB, board)
-        let result = StudioComposite.composited(image, in: displayP3)!
+        let result = StudioComposite.converted(image, to: displayP3)!
         #expect(result.width == width && result.height == height)
         #expect(pixels(result, in: displayP3) == board)
     }

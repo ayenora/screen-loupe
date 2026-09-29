@@ -1071,7 +1071,7 @@ struct SavedPinTests {
 /// panel below the position box while the margins are on.
 struct OverlayMarginsLayoutTests {
     private let box = CGSize(width: 84, height: 76)
-    private let expandedPanel = CGSize(width: 196, height: 182)
+    private let expandedPanel = CGSize(width: 196, height: 184)
     private let capture = CGRect(x: 100, y: 300, width: 400, height: 300)
 
     private func layout(
@@ -1127,7 +1127,7 @@ struct OverlayMarginsLayoutTests {
         #expect(collapsed.marginsPanelRect == CGRect(x: 512, y: 444, width: 84, height: 76))
         let expanded = layout(capture, panel: expandedPanel)
         #expect(expanded.positionRect == collapsed.positionRect)
-        #expect(expanded.marginsPanelRect == CGRect(x: 512, y: 338, width: 196, height: 182))
+        #expect(expanded.marginsPanelRect == CGRect(x: 512, y: 336, width: 196, height: 184))
         for l in [collapsed, expanded] {
             #expect(l.windowFrame.contains(l.marginsPanelRect))
             #expect(l.isInHoverZone(CGPoint(x: l.marginsPanelRect.midX, y: l.marginsPanelRect.midY)))

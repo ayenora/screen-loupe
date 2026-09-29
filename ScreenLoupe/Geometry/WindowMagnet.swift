@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// A window of another app as the window list reports it.
 struct ScreenWindow: Equatable, Sendable {
@@ -111,6 +112,9 @@ enum WindowMagnet {
         guard let window else { return false }
         return window.isOnScreen && window.isOrdinaryAndVisible
     }
+
+    /// Between two reads of the window list, while the magnet holds a window or One Window watches one.
+    static let readInterval: TimeInterval = 1.0 / 60
 
     /// Consecutive reads that don't hold the window before the magnet lets go, about 33 ms at 60 Hz:
     /// one odd read doesn't drop it.

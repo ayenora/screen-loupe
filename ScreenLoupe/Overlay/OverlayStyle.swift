@@ -103,8 +103,9 @@ enum OverlayStyle {
     /// coordinates, so every captured pixel stays visible.
     static func drawLine(around rect: CGRect, style: FrameStyle, appearance: NSAppearance) {
         let width = style.lineWidth
-        let halo = NSBezierPath(rect: rect.insetBy(dx: -width - 0.5, dy: -width - 0.5))
-        halo.lineWidth = 1
+        let haloWidth = OverlayMetrics.standard.haloWidth
+        let halo = NSBezierPath(rect: rect.insetBy(dx: -width - haloWidth / 2, dy: -width - haloWidth / 2))
+        halo.lineWidth = haloWidth
         self.halo(for: appearance).setStroke()
         halo.stroke()
         let line = NSBezierPath(rect: rect.insetBy(dx: -width / 2, dy: -width / 2))

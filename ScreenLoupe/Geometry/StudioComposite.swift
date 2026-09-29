@@ -52,7 +52,7 @@ enum StudioComposite {
 
     /// `image` in `space`: kept when already tagged with it, tagged when untagged, converted
     /// otherwise, so the pixels and the saved profile agree. `nil` when no context can be made.
-    static func composited(_ image: CGImage, in space: CGColorSpace) -> CGImage? {
+    static func converted(_ image: CGImage, to space: CGColorSpace) -> CGImage? {
         let tagged = Self.tagged(image, with: space)
         if tagged.colorSpace == space { return tagged }
         guard
@@ -89,7 +89,7 @@ enum StudioComposite {
 
     /// A lone window's picture: `window` (already cut to its visible pixels) centred in a picture of
     /// `frame` pixels (`OneWindowPicture.pictureSize`) in `space` (`OneWindowPicture.centredOrigin`),
-    /// drawn at its own size without interpolation, colour-matched into `space` as `composited` does.
+    /// drawn at its own size without interpolation, colour-matched into `space` as `converted` does.
     /// Over `fill`, the result is opaque; without one, the rest is transparent and the window's
     /// pixels, its shadow's alpha among them, are copied unchanged. `nil` when no context can be
     /// made or the window is larger than the frame.

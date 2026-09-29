@@ -68,8 +68,9 @@ private final class OutlineLineView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        let halo = NSBezierPath(rect: line.insetBy(dx: -OneWindowOutline.halo / 2, dy: -OneWindowOutline.halo / 2))
-        halo.lineWidth = OneWindowOutline.halo
+        let haloWidth = OverlayMetrics.standard.haloWidth
+        let halo = NSBezierPath(rect: line.insetBy(dx: -haloWidth / 2, dy: -haloWidth / 2))
+        halo.lineWidth = haloWidth
         OverlayStyle.halo(for: effectiveAppearance).setStroke()
         halo.stroke()
         let path = NSBezierPath(rect: line.insetBy(dx: lineWidth / 2, dy: lineWidth / 2))

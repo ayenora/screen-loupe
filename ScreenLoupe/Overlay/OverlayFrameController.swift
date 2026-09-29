@@ -426,7 +426,7 @@ final class OverlayFrameController {
         }
         updateFitted()
         guard magnetTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: WindowMagnet.readInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.followMagnetWindow() }
         }
         // Also while a menu is open or a window is dragged.

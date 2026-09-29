@@ -41,7 +41,7 @@ enum StudioCapture {
         let image = try await withTimeout(seconds: callTimeout) {
             try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
         }
-        return await composited(image, in: NSScreen.colorSpace(forDisplay: display.displayID)) ?? image
+        return await converted(image, to: NSScreen.colorSpace(forDisplay: display.displayID)) ?? image
     }
 
     /// One picture of `size` pixels at the display's native resolution, in BGRA, never scaled to fit.
@@ -55,10 +55,10 @@ enum StudioCapture {
         return configuration
     }
 
-    /// `StudioComposite.composited`, off the main actor: converting a large picture takes a while.
+    /// `StudioComposite.converted`, off the main actor: converting a large picture takes a while.
     @concurrent
-    private nonisolated static func composited(_ image: CGImage, in space: CGColorSpace) async -> CGImage? {
-        StudioComposite.composited(image, in: space)
+    private nonisolated static func converted(_ image: CGImage, to space: CGColorSpace) async -> CGImage? {
+        StudioComposite.converted(image, to: space)
     }
 
     struct WindowCaptureError: LocalizedError {
