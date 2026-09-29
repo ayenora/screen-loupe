@@ -1,6 +1,6 @@
 # Screen Loupe — Roadmap
 
-What comes after the current version. Every item is measured against the principles in [product.md](product.md): work in place, nothing moves on its own, pixel-true, out of the way. Nothing here is committed until it moves into product.md.
+What comes after the current version. Every item is measured against the app's principles: work in place, nothing moves on its own, pixel-true, out of the way. Nothing here is committed until it ships.
 
 ## Next
 
@@ -39,7 +39,7 @@ Ordered by how much each strengthens the core experience.
 
 ### Each needs its own decision
 
-- **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not in scope". It uses Original Cursor in the Capture (product.md, Crosshair and cursor), so a recorded animation shows the pointer that drives it.
+- **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not planned". It uses Original Cursor in the Capture, so a recorded animation shows the pointer that drives it.
 - **Act through the Viewer.** Clicks and scrolls in the Viewer go to the real spot on screen, making the Viewer a true zoomed monitor. Needs the Accessibility permission to post events and has to feel safe; a bigger design question than the rest.
 
 ### Technical, only if a need shows up
@@ -48,4 +48,4 @@ Ordered by how much each strengthens the core experience.
 
 ## Not planned
 
-The line in product.md, "Not in scope", holds: no OCR, annotations, drawing, image editing, a screenshot library, cloud sync, accounts, telemetry, subscriptions or AI features, and no web technologies in the app.
+No OCR, annotations, drawing, image editing, a screenshot library, cloud sync, accounts, telemetry, subscriptions or AI features, and no web technologies in the app.

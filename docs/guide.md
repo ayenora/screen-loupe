@@ -36,6 +36,8 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 
 ## The Viewer
 
+![The Viewer at 2000% with the ruler and the pixel grid, beside the Simulator with the Capture Area over it](images/01-zoom-ruler-grid.png)
+
 - **Zoom:** the toolbar's presets Fit, 1×, 2×, 4×, 8× and 16× (100% to 1600%), pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom field. Pinch, the wheel, and `+` / `-` with the pointer over the Viewer keep the point under the pointer in place; a preset or a typed zoom brings the middle of what you see to the middle of the Viewer. Presets, `+` / `-` and Reset Zoom glide there in a fifth of a second, or change at once with Reduce Motion on.
 - **Pan:** drag, or scroll with two fingers.
 - **Nothing moves on its own.** Moving or resizing the frame keeps the Viewer's zoom and framing; Fit applies only when you ask for it.
@@ -64,6 +66,8 @@ To copy just a part of the view:
 
 ## Tools
 
+![The Color Meter with the crosshair on a pixel](images/02-color-meter.png)
+
 - **Color Meter** (eyedropper button): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a pixel to pin its colour.
 - **Ruler** (⌘R): a corner ruler in screen pixels. Drag the line or a length label to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan.
 - **Pixel grid:** lines on the pixel boundaries from 800% on.
@@ -72,6 +76,8 @@ To copy just a part of the view:
 - **Open Image** (File › Open Image…, ⌘O, or the menu bar item): look at an image file — a screenshot, a design export, a photo — with the same tools: zoom, ruler, Color Meter (with opacity for transparent pixels), references, Copy and Save. Its colours stay in its own colour profile. It becomes a row in Recent Captures and stays in the Viewer, also with References open, until Escape goes back to live.
 - **Dropping images:** drag image files from Finder onto the Viewer. With References open they become reference layers; with Recent Captures open they open for inspection; otherwise a menu asks which.
 - **Pasting an image:** ⌘V in the Viewer takes an image from the clipboard — a design tool's Copy as PNG, a screenshot, image files copied in Finder — the same way as a drop. Edit › Paste as Reference and Paste for Inspection skip the question.
+
+![A design export laid over a web page in Difference: matching pixels turn black](images/03-reference-layers.png)
 
 ## Screenshot studio
 

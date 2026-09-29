@@ -35,8 +35,6 @@ The app collects no data and sends nothing anywhere: [privacy policy](https://ay
 ## Documentation
 
 - [Guide](docs/guide.md) — how to use the app
-- [Product](docs/product.md) — who it is for, principles, features
-- [Technical design](docs/design.md) — pipeline, coordinate systems, architecture, risks, verification
 - [Roadmap](docs/roadmap.md) — what comes next
 
 ## Requirements
