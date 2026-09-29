@@ -42,9 +42,11 @@ final class WindowManager {
         }
         viewer.onShowCapture = { [weak self] in
             guard let self else { return }
-            if viewer.isShowingCapture { magnetHoldEvent(.recentCaptureShown) }
-            // A delayed freeze is for the live view it counted over.
-            if viewer.isShowingCapture { cancelFreezeCountdown() }
+            if viewer.isShowingCapture {
+                magnetHoldEvent(.recentCaptureShown)
+                // A delayed freeze is for the live view it counted over.
+                cancelFreezeCountdown()
+            }
             trackCursor()
             updateViewedPart()
         }
@@ -147,16 +149,21 @@ final class WindowManager {
     /// Tells the frame which part of the area the Viewer shows (docs/product.md, Capture Area), placed
     /// with the geometry of the frame the Viewer shows, so it matches the image even while the area
     /// is dragged ahead of the next frame. While the Viewer holds a frame as the magnet moves the
-    /// area, on the area where it is (`MagnetHold.viewedPartGeometry`). Only of the live view: a still picture (frozen, a recent capture) is of another
-    /// moment, the area may have moved since, and a closed Viewer or one asking for permission shows
-    /// nothing.
+    /// area, on the area where it is (`MagnetHold.viewedPartGeometry`). Only of the live view
+    /// (`showsLiveView`).
     private func updateViewedPart() {
-        guard isViewerOpen, viewer.showsCapture, capture.frameStore.still == nil, let geometry = viewedPartGeometry
-        else {
+        guard showsLiveView, let geometry = viewedPartGeometry else {
             captureArea.viewedPart = nil
             return
         }
         captureArea.viewedPart = DisplayCoordinateConverter.viewedPart(of: zoomPan.presented, in: geometry)?.rect
+    }
+
+    /// Whether the Viewer shows the live view of the area: a still picture (frozen, a recent capture)
+    /// is of another moment, the area may have moved since, and a closed Viewer or one asking for
+    /// permission shows nothing.
+    private var showsLiveView: Bool {
+        isViewerOpen && viewer.showsCapture && capture.frameStore.still == nil
     }
 
     /// The geometry the outline of the viewed part is placed with: the shown frame's, or during a
@@ -183,9 +190,7 @@ final class WindowManager {
     /// step. A view changed meanwhile by something else (a zoom, a resize) is taken as the new start.
     /// Only while the outline shows, on the geometry it is placed with.
     private func dragViewedPart(by delta: CGVector) {
-        guard var drag = viewedPartDrag, isViewerOpen, viewer.showsCapture, capture.frameStore.still == nil,
-            let geometry = viewedPartGeometry
-        else { return }
+        guard var drag = viewedPartDrag, showsLiveView, let geometry = viewedPartGeometry else { return }
         if zoomPan.state != drag.last {
             drag.start = zoomPan.state
             drag.startDelta = drag.lastDelta

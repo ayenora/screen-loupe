@@ -3,8 +3,7 @@ import SwiftUI
 
 /// The Background list beside the palette (docs/product.md, Screenshot studio): the screen, a few
 /// colours and a colour of one's own, calm gradients, an image, and whether a One Window picture
-/// keeps the window's shadow. Shown in `StudioListPanel`, as
-/// the Size list is.
+/// keeps the window's shadow. Shown in `StudioListPanel`, as the Size list is.
 struct StudioBackgroundList: View {
     let current: StudioBackground
     let choose: (StudioBackground) -> Void
@@ -18,7 +17,7 @@ struct StudioBackgroundList: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            SizeRow(title: "Screen", isChecked: current == .screen) { choose(.screen) }
+            StudioListRow(title: "Screen", isChecked: current == .screen) { choose(.screen) }
             header("Color", naming: StudioBackground.colors.map(\.name) + ["Custom Color…"])
             HStack(spacing: 8) {
                 ForEach(StudioBackground.colors.indices, id: \.self) { index in
@@ -36,7 +35,7 @@ struct StudioBackgroundList: View {
                     AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, StudioListLook.contentInset)
             header("Gradient", naming: StudioBackground.gradients.map(\.name))
             HStack(spacing: 8) {
                 ForEach(StudioBackground.gradients.indices, id: \.self) { index in
@@ -50,14 +49,14 @@ struct StudioBackgroundList: View {
                     }
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, StudioListLook.contentInset)
             Divider().padding(.vertical, 4)
-            SizeRow(title: imageTitle, isChecked: isImage, action: chooseImage)
+            StudioListRow(title: imageTitle, isChecked: isImage, action: chooseImage)
             Divider().padding(.vertical, 4)
-            SizeRow(title: "Window Shadow", isChecked: windowShadow, action: toggleWindowShadow)
+            StudioListRow(title: "Window Shadow", isChecked: windowShadow, action: toggleWindowShadow)
         }
-        .padding(6)
-        .frame(width: 240)
+        .padding(StudioListLook.padding)
+        .frame(width: StudioListLook.width)
     }
 
     private var isImage: Bool {
@@ -73,13 +72,15 @@ struct StudioBackgroundList: View {
 
     /// `Color`, or `Color · White` while the pointer is on one of `names`.
     private func header(_ title: String, naming names: [String]) -> some View {
-        Text(hovered.flatMap { names.contains($0) ? "\(title) · \($0)" : nil } ?? title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
+        StudioListLook.header(hovered.flatMap { names.contains($0) ? "\(title) · \($0)" : nil } ?? title)
     }
+}
+
+/// A swatch's size and corners, and its ring's width just outside it.
+private enum SwatchLook {
+    static let side: CGFloat = 26
+    static let radius: CGFloat = 5
+    static let ring: CGFloat = 2
 }
 
 /// A square of colour, ringed in the accent while it is the background.
@@ -95,14 +96,16 @@ private struct Swatch<Fill: View>: View {
     var body: some View {
         Button(action: action) {
             fill()
-                .frame(width: 26, height: 26)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
-                .padding(2)
+                .frame(width: SwatchLook.side, height: SwatchLook.side)
+                .clipShape(RoundedRectangle(cornerRadius: SwatchLook.radius))
+                .overlay(RoundedRectangle(cornerRadius: SwatchLook.radius).strokeBorder(.separator))
+                .padding(SwatchLook.ring)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7)
+                    // Around the swatch, its corners concentric with the swatch's.
+                    RoundedRectangle(cornerRadius: SwatchLook.radius + SwatchLook.ring)
                         .strokeBorder(
-                            isChecked ? Color.accentColor : isHovered ? Color.secondary : .clear, lineWidth: 2)
+                            isChecked ? Color.accentColor : isHovered ? Color.secondary : .clear,
+                            lineWidth: SwatchLook.ring)
                 )
                 .contentShape(Rectangle())
         }

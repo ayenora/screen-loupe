@@ -43,6 +43,9 @@ final class RulerController {
     static let labelAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: NSColor.white,
     ]
+    /// A label's pill, in points: its height, and the space each side of the text.
+    static let labelHeight: CGFloat = 18
+    static let labelPadding: CGFloat = 6
 
     /// Source pixels per point of the captured display, for the lengths in points.
     var sourceScale: () -> CGFloat = { 1 }
@@ -180,7 +183,7 @@ final class RulerController {
     /// In points.
     private static func pillSize(_ text: String) -> CGSize {
         let size = (text as NSString).size(withAttributes: labelAttributes)
-        return CGSize(width: size.width.rounded(.up) + 12, height: 18)
+        return CGSize(width: size.width.rounded(.up) + 2 * labelPadding, height: labelHeight)
     }
 
     /// On whole points around `center` (points), returned in drawable pixels.

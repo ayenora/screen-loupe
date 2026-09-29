@@ -17,9 +17,9 @@ struct ReferencesPanel: View {
                 Text("References").font(.system(size: 13 * s, weight: .bold))
                 Spacer()
                 PanelButton(title: "Paste", scale: s) { references.onPaste?() }
-                    .disabled(references.stack.layers.count >= ReferenceStack.limit)
+                    .disabled(!references.stack.canAdd)
                 PanelButton(title: "Add…", scale: s) { references.addFromFiles() }
-                    .disabled(references.stack.layers.count >= ReferenceStack.limit)
+                    .disabled(!references.stack.canAdd)
             }
             .padding(.horizontal, 14 * s)
             .padding(.top, 12 * s)

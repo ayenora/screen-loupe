@@ -19,11 +19,12 @@ enum OverlayHitTarget: Hashable, Sendable {
     case pin
     /// The ▾ attached to the pin: the menu of locks.
     case pinMenu
-    /// The button beside the pin that brings the Viewer forward.
+    /// The button after the viewport button that brings the Viewer forward.
     case raiseViewer
     /// The button after it that picks a window for the area to take.
     case pickWindow
-    /// The button after the pin's ▾ that turns the viewport handle on and off.
+    /// The button after the pin's ▾, or after the margins button while it shows, that turns the
+    /// viewport handle on and off.
     case viewportButton
     /// The "»" after the pin's ▾ that shows the buttons collapsed behind it.
     case moreButtons
@@ -120,14 +121,17 @@ struct OverlayMetrics: Sendable {
     var hoverReach: CGFloat = 14
     /// Room around the frame kept inside the overlay window for the band, handles and the tab.
     var windowPadding: CGFloat = 40
+    /// Room kept around each part beside the frame inside the overlay window, so nothing drawn at a
+    /// part's edge, such as the tab's shadow, is cut off.
+    var partPadding: CGFloat = 8
 
     static let standard = OverlayMetrics()
 }
 
 /// Where every part of the Capture Area frame goes, in AppKit global coordinates. A button that isn't
 /// shown is `.null`, so nothing hit-tests or hovers there and the window doesn't make room for it. The
-/// Screenshot studio's frame is laid out the same way without the lock buttons: its pin, ▾, viewport,
-/// raise and "»" buttons are `.null`, and the pick button sits beside the tab.
+/// Screenshot studio's frame is laid out the same way without the lock buttons: its pin, ▾, margins,
+/// viewport, raise and "»" buttons are `.null`, and the pick button sits beside the tab.
 struct OverlayLayout: Equatable, Sendable {
     var captureRect: CGRect
     var tabRect: CGRect
@@ -201,8 +205,9 @@ struct OverlayLayout: Equatable, Sendable {
         // The pin with its ▾, then the margins button while it shows, the viewport, raise and pick
         // buttons, away from the tab. Collapsed, "»" stands in for the raise and pick buttons, and for
         // the viewport button unless its mode is on: the filled button is the only sign of the mode.
-        // The margins button never goes behind it. Without the lock buttons, the pick button alone. Right of the tab, or left of it, the pin next to the tab, when the expanded row
-        // wouldn't fit on the right: decided on the expanded row, so expanding never flips sides.
+        // The margins button never goes behind it. Without the lock buttons, the pick button alone.
+        // Right of the tab, or left of it, the pin next to the tab, when the expanded row wouldn't
+        // fit on the right: decided on the expanded row, so expanding never flips sides.
         let button = m.tabHeight + m.pinGap
         let split = lockButtons ? m.tabHeight + m.pinMenuWidth + m.pinGap : 0
         let margins: [OverlayHitTarget] = lockButtons && marginsButton ? [.marginsButton] : []
@@ -303,23 +308,16 @@ struct OverlayLayout: Equatable, Sendable {
                 height: marginsPanelSize.height)
             : .null
 
-        var frame =
-            r.insetBy(dx: -m.windowPadding, dy: -m.windowPadding)
-            .union(tabRect.insetBy(dx: -8, dy: -8))
-            .union(labelRect.insetBy(dx: -8, dy: -8))
-            .union(positionRect.insetBy(dx: -8, dy: -8))
-            .union(pinRect.insetBy(dx: -8, dy: -8))
-            .union(pinMenuRect.insetBy(dx: -8, dy: -8))
-            .union(viewportRect.insetBy(dx: -8, dy: -8))
-            .union(raiseRect.insetBy(dx: -8, dy: -8))
-            .union(pickRect.insetBy(dx: -8, dy: -8))
-            .union(moreRect.insetBy(dx: -8, dy: -8))
-            .union(marginsButtonRect.insetBy(dx: -8, dy: -8))
-            .union(marginsPanelRect.insetBy(dx: -8, dy: -8))
-        if noticeWidth > 0 {
-            frame = frame.union(noticeRect.insetBy(dx: -8, dy: -8))
-        }
-        windowFrame = frame.integral
+        // A `.null` part adds nothing; an empty notice rect would add its origin.
+        let parts = [
+            tabRect, labelRect, positionRect, pinRect, pinMenuRect, viewportRect, raiseRect, pickRect, moreRect,
+            marginsButtonRect, marginsPanelRect, noticeWidth > 0 ? noticeRect : .null,
+        ]
+        windowFrame =
+            parts.reduce(r.insetBy(dx: -m.windowPadding, dy: -m.windowPadding)) {
+                $0.union($1.insetBy(dx: -m.partPadding, dy: -m.partPadding))
+            }
+            .integral
     }
 
     /// Where each handle is drawn: centred on the line.
@@ -413,10 +411,8 @@ struct OverlayLayout: Equatable, Sendable {
 
     /// Whether the cursor is close enough to the frame to reveal the handles and the tab.
     func isInHoverZone(_ point: CGPoint, metrics m: OverlayMetrics = .standard) -> Bool {
-        if tabRect.contains(point) || labelRect.contains(point) || positionRect.contains(point)
-            || pinRect.contains(point) || pinMenuRect.contains(point) || viewportRect.contains(point)
-            || raiseRect.contains(point) || pickRect.contains(point) || moreRect.contains(point)
-            || marginsButtonRect.contains(point) || marginsPanelRect.contains(point)
+        if button(at: point) != nil
+            || [tabRect, labelRect, positionRect, marginsPanelRect].contains(where: { $0.contains(point) })
         {
             return true
         }
@@ -434,6 +430,13 @@ struct OverlayLayout: Equatable, Sendable {
 /// Moving and resizing the Capture Area. Global coordinates, y up; results are not snapped.
 enum CaptureAreaEditing {
     static let minimumSize = CGSize(width: 64, height: 64)
+
+    /// `rect` grown to `minimumSize` where it is smaller, keeping its origin: a saved or picked rect.
+    static func atLeastMinimum(_ rect: CGRect) -> CGRect {
+        CGRect(
+            origin: rect.origin,
+            size: CGSize(width: max(rect.width, minimumSize.width), height: max(rect.height, minimumSize.height)))
+    }
 
     /// `rect` with the edges `handle` controls moved by `delta`. The opposite edges stay put and the
     /// size never drops below `minimumSize`.

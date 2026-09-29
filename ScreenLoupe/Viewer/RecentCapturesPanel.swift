@@ -4,8 +4,8 @@ import SwiftUI
 /// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
 /// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
 /// newest first — square thumbnail, "Snapshot" or the image file's name, its size, its date and time,
-/// and Delete. Clicking a row shows it in the Viewer. Every size but the camera button's is multiplied by `captures.scale`, so the
-/// panel grows with the column.
+/// and Delete. Clicking a row shows it in the Viewer. Every size but the camera button's is
+/// multiplied by `captures.scale`, so the panel grows with the column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
 
@@ -76,10 +76,7 @@ private struct LiveRow: View {
             Image(systemName: "viewfinder")
                 .font(.system(size: 20 * s, weight: .regular))
                 .foregroundStyle(isShown ? Color.accentColor : .secondary)
-                .frame(width: 50 * s, height: 50 * s)
-                .background(Color.secondary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 4 * s))
-                .overlay(RoundedRectangle(cornerRadius: 4 * s).strokeBorder(Color(nsColor: .separatorColor)))
+                .thumbnailTile(scale: s)
             VStack(alignment: .leading, spacing: 2 * s) {
                 Text("Live").font(.system(size: 12 * s, weight: .semibold))
                 if let size = captures.liveSize {
@@ -208,16 +205,24 @@ private struct CaptureRow: View {
             if let image = capture.thumbnail {
                 // A tiny kept crop is magnified, so its pixels stay sharp as in the Viewer; a larger
                 // one is scaled down smoothly.
-                let fit = 50 * s / CGFloat(max(image.width, image.height)) * displayScale
+                let fit = RecentCaptures.thumbnailSide * s / CGFloat(max(image.width, image.height)) * displayScale
                 Image(decorative: image, scale: 1).resizable().interpolation(fit > 1 ? .none : .medium)
                     .scaledToFit()
             } else {
                 Color.secondary.opacity(0.2)
             }
         }
-        .frame(width: 50 * s, height: 50 * s)
-        .background(Color.secondary.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 4 * s))
-        .overlay(RoundedRectangle(cornerRadius: 4 * s).strokeBorder(Color(nsColor: .separatorColor)))
+        .thumbnailTile(scale: s)
+    }
+}
+
+extension View {
+    /// A row's square tile, a capture's thumbnail or the Live row's placeholder:
+    /// `RecentCaptures.thumbnailSide` at `scale`, on a faint fill with a hairline border.
+    fileprivate func thumbnailTile(scale s: CGFloat) -> some View {
+        frame(width: RecentCaptures.thumbnailSide * s, height: RecentCaptures.thumbnailSide * s)
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 4 * s))
+            .overlay(RoundedRectangle(cornerRadius: 4 * s).strokeBorder(Color(nsColor: .separatorColor)))
     }
 }

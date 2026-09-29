@@ -54,12 +54,12 @@ enum StudioPlacement {
         return CGPoint(x: x.rounded(), y: y.rounded())
     }
 
-    /// Between the palette and the Size list.
+    /// Between the palette and its Size, Timer or Background list.
     static let popoverGap: CGFloat = 6
 
-    /// The Size list's origin: right of `palette`, towards the frame it sits left of, or left of it
-    /// when there is no room on the right, its top level with `anchorTop` (the Size button's top);
-    /// always inside `visibleFrame`, vertically.
+    /// A list's origin: right of `palette`, towards the frame it sits left of, or left of it when
+    /// there is no room on the right, its top level with `anchorTop` (the top of the button that
+    /// opened it); always inside `visibleFrame`, vertically.
     static func popoverOrigin(
         size: CGSize, beside palette: CGRect, anchorTop: CGFloat, in visibleFrame: CGRect
     )

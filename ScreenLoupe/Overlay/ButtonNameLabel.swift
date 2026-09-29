@@ -85,6 +85,8 @@ private final class ButtonNamePanel: NSPanel {
 
     func show(_ text: String, in rect: CGRect) {
         label.text = text
+        // The same name as last time is drawn again too: the label fill's opacity may have changed.
+        label.needsDisplay = true
         setFrame(rect, display: true)
     }
 }

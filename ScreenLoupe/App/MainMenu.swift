@@ -112,9 +112,7 @@ enum MainMenu {
             item.tag = seconds
             item.target = target
         }
-        let laterItem = submenuItem(later)
-        laterItem.title = later.title
-        menu.addItem(laterItem)
+        menu.addItem(submenuItem(later))
         let snapshot = menu.addItem(
             withTitle: "Take Snapshot", action: #selector(AppController.takeSnapshot(_:)), keyEquivalent: "t")
         snapshot.target = target
@@ -157,9 +155,7 @@ enum MainMenu {
         let sizes = NSMenu(title: "Size")
         sizes.identifier = studioSizeMenu
         sizes.delegate = target
-        let sizesItem = submenuItem(sizes)
-        sizesItem.title = sizes.title
-        menu.addItem(sizesItem)
+        menu.addItem(submenuItem(sizes))
         let fit = menu.addItem(
             withTitle: "Fit to Window…", action: #selector(AppController.fitStudioToWindow(_:)), keyEquivalent: "")
         fit.target = target
@@ -174,18 +170,12 @@ enum MainMenu {
             item.tag = delay.rawValue
             item.target = target
         }
-        let delaysItem = submenuItem(delays)
-        delaysItem.title = delays.title
-        menu.addItem(delaysItem)
+        menu.addItem(submenuItem(delays))
         let output = outputMenu(target: target)
-        let outputItem = submenuItem(output)
-        outputItem.title = output.title
-        menu.addItem(outputItem)
+        menu.addItem(submenuItem(output))
         menu.addItem(.separator())
         let background = backgroundMenu(target: target)
-        let backgroundItem = submenuItem(background)
-        backgroundItem.title = background.title
-        menu.addItem(backgroundItem)
+        menu.addItem(submenuItem(background))
         // Retitled Stop One Window while a window is chosen.
         let oneWindow = menu.addItem(
             withTitle: "Capture One Window…", action: #selector(AppController.toggleStudioOneWindow(_:)),
@@ -347,8 +337,10 @@ enum MainMenu {
         }
     #endif
 
+    /// An item that opens `submenu`, titled as it is.
     private static func submenuItem(_ submenu: NSMenu) -> NSMenuItem {
         let item = NSMenuItem()
+        item.title = submenu.title
         item.submenu = submenu
         return item
     }

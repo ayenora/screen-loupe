@@ -115,6 +115,23 @@ struct WindowMagnetTests {
         #expect(WindowMagnet.holds(window(1, CGRect(x: 0, y: 0, width: 1440, height: 900))))
     }
 
+    @Test func anOrdinaryWindowIsOneOnTheNormalLayerThatShowsWhereverItIs() {
+        #expect(back.isOrdinaryAndVisible)
+        // Whether it is on screen is the list's to say, not this.
+        var offScreen = back
+        offScreen.isOnScreen = false
+        #expect(offScreen.isOrdinaryAndVisible)
+        var floating = back
+        floating.layer = 3
+        var transparent = back
+        transparent.alpha = 0
+        var empty = back
+        empty.frame.size.height = 0
+        for window in [floating, transparent, empty] {
+            #expect(!window.isOrdinaryAndVisible)
+        }
+    }
+
     @Test func oneBadReadDoesNotLetGoTwoInARowDo() {
         #expect(!WindowMagnet.letsGo(afterBadReads: 1))
         #expect(WindowMagnet.letsGo(afterBadReads: 2))

@@ -288,7 +288,9 @@ final class ViewerOverlayView: NSView {
         let text = label.text as NSString
         let textSize = text.size(withAttributes: RulerController.labelAttributes)
         text.draw(
-            at: CGPoint(x: rect.minX + 6, y: rect.minY + ((rect.height - textSize.height) / 2).rounded()),
+            at: CGPoint(
+                x: rect.minX + RulerController.labelPadding,
+                y: rect.minY + ((rect.height - textSize.height) / 2).rounded()),
             withAttributes: RulerController.labelAttributes)
     }
 }

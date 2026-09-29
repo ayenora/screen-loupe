@@ -10,10 +10,10 @@ struct StudioTimerList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(StudioDelay.allCases, id: \.self) { delay in
-                SizeRow(title: delay.title, isChecked: delay == current) { choose(delay) }
+                StudioListRow(title: delay.title, isChecked: delay == current) { choose(delay) }
             }
         }
-        .padding(6)
+        .padding(StudioListLook.padding)
         .frame(width: 120)
     }
 }

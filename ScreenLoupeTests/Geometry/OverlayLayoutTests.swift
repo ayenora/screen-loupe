@@ -228,6 +228,17 @@ struct CaptureAreaEditingTests {
         #expect(r == CGRect(x: 90, y: 100, width: 210, height: 105))
     }
 
+    @Test(arguments: [
+        (CGRect(x: 100, y: 100, width: 20, height: 30), CGRect(x: 100, y: 100, width: 64, height: 64)),
+        (CGRect(x: -500, y: -40, width: 20, height: 300), CGRect(x: -500, y: -40, width: 64, height: 300)),
+        (CGRect(x: 10, y: 10, width: 300, height: 10), CGRect(x: 10, y: 10, width: 300, height: 64)),
+        (CGRect(x: 10, y: 10, width: 64, height: 64), CGRect(x: 10, y: 10, width: 64, height: 64)),
+        (CGRect(x: 10, y: 10, width: 800, height: 600), CGRect(x: 10, y: 10, width: 800, height: 600)),
+    ])
+    func aSavedOrPickedRectGrowsToTheMinimumKeepingItsOrigin(rect: CGRect, expected: CGRect) {
+        #expect(CaptureAreaEditing.atLeastMinimum(rect) == expected)
+    }
+
     @Test func resizingStopsAtTheMinimumSize() {
         let narrow = CaptureAreaEditing.resized(rect, handle: .right, by: CGVector(dx: -500, dy: 0))
         #expect(narrow == CGRect(x: 100, y: 100, width: 64, height: 100))

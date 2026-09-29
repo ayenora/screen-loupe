@@ -54,17 +54,18 @@ final class ViewedPartOverlay: NSPanel {
         bandColor: NSColor?
     ) {
         setFrame(frame, display: false)
+        let local = { (rect: CGRect) in rect.offsetBy(dx: -frame.minX, dy: -frame.minY) }
         frameLine.isHidden = !drawsFrameLine
-        if drawsFrameLine { frameLine.captureRect = captureRect.offsetBy(dx: -frame.minX, dy: -frame.minY) }
+        if drawsFrameLine { frameLine.captureRect = local(captureRect) }
         band.isHidden = bandColor == nil
         if let bandColor {
             band.color = bandColor
-            band.outer = captureRect.offsetBy(dx: -frame.minX, dy: -frame.minY)
-            band.inner = innerRect.offsetBy(dx: -frame.minX, dy: -frame.minY)
+            band.outer = local(captureRect)
+            band.inner = local(innerRect)
         }
         guard isShown, let viewedPart else { return }
-        outline.captureRect = innerRect.offsetBy(dx: -frame.minX, dy: -frame.minY)
-        outline.viewedRect = viewedPart.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        outline.captureRect = local(innerRect)
+        outline.viewedRect = local(viewedPart)
     }
 
     /// Fades the outline in or out; `place` then draws it where it is.

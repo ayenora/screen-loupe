@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// The window the Screenshot studio's One Window mode captures.
 struct OneWindowChoice: Equatable, Sendable {
@@ -56,6 +57,9 @@ enum OneWindowMode: Equatable, Sendable {
 /// rules (`WindowMagnet.holds`, `readsToLetGo`): a window closed, minimised, hidden with its app or
 /// on another Space reads as not held, and two such reads in a row let it go.
 struct OneWindowWatch: Equatable, Sendable {
+    /// Between two reads: the magnet's pace, so `WindowMagnet.readsToLetGo` lets go as soon.
+    static let readInterval: TimeInterval = 1.0 / 60
+
     enum Outcome: Equatable, Sendable {
         /// On screen, at this frame in AppKit global coordinates: the outline goes there.
         case shows(CGRect)

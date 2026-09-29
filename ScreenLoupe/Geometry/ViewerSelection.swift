@@ -93,7 +93,7 @@ enum ViewRegion {
     /// zoom, viewport ÷ zoom can come out just over or under a whole pixel. `nil` when it covers none
     /// of the image.
     static func sourceRect(of region: CGRect, in state: ZoomPanState) -> CGRect? {
-        let tolerance: CGFloat = 1e-6
+        let tolerance = ZoomPanState.floatStep
         let a = state.sourcePoint(forViewportPoint: CGPoint(x: region.minX, y: region.minY))
         let b = state.sourcePoint(forViewportPoint: CGPoint(x: region.maxX, y: region.maxY))
         let minX = (a.x + tolerance).rounded(.down)

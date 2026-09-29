@@ -1,8 +1,26 @@
 import AppKit
 import SwiftUI
 
-/// A row of the Size list or the Background list, highlighted under the pointer as a menu item is.
-struct SizeRow: View {
+/// The look the palette's lists share: their inset, the width of the Size and Background lists, and
+/// a section's header.
+enum StudioListLook {
+    static let padding: CGFloat = 6
+    static let width: CGFloat = 240
+    /// Beside a header, and beside a row of swatches or fields.
+    static let contentInset: CGFloat = 8
+
+    @MainActor static func header(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, contentInset)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+    }
+}
+
+/// A row of the Size, Timer or Background list, highlighted under the pointer as a menu item is.
+struct StudioListRow: View {
     let title: String
     let isChecked: Bool
     let action: () -> Void
@@ -29,7 +47,7 @@ struct SizeRow: View {
     }
 }
 
-/// The Size list or the Background list beside the palette: a non-activating panel in the
+/// The Size, Timer or Background list beside the palette: a non-activating panel in the
 /// pop-over's look. A click on an entry works without activating the app; a click in a text field
 /// makes only this panel key, so typing reaches it while the app the user works in stays active
 /// and none of this app's other windows come forward. Closed by an entry, Escape, the button that
@@ -39,6 +57,8 @@ final class StudioListPanel: NSPanel {
     /// Called whenever the list is ordered out, by any of the ways that close it.
     var onClose: (() -> Void)?
     private var monitors: [Any] = []
+    /// The pop-over's corners.
+    private static let cornerRadius: CGFloat = 10
 
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -65,7 +85,7 @@ final class StudioListPanel: NSPanel {
         background.material = .popover
         background.blendingMode = .behindWindow
         background.state = .active
-        background.maskImage = StudioPalette.roundedMask(radius: 10)
+        background.maskImage = StudioPalette.roundedMask(radius: Self.cornerRadius)
         host.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(host)
         NSLayoutConstraint.activate([

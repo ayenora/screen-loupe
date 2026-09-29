@@ -12,18 +12,29 @@ struct FrameTabColors: Equatable {
     var blue: Double
     var textIsWhite: Bool
 
+    /// The tab's share of the accent.
+    static let tabShare = 0.78
+    /// The darkest the tab goes for white text, and the step down to it.
+    static let darkestShare = 0.70
+    static let shareStep = 0.02
+    /// WCAG 2's AA ratio for normal text.
+    static let minimumContrast = 4.5
+
     init(accentRed: Double, green accentGreen: Double, blue accentBlue: Double) {
+        func tab(_ share: Double) -> (Double, Double, Double) {
+            (accentRed * share, accentGreen * share, accentBlue * share)
+        }
         // 78%, 76%, … 70%.
-        for step in 0...4 {
-            let factor = 0.78 - 0.02 * Double(step)
-            let tab = (accentRed * factor, accentGreen * factor, accentBlue * factor)
-            if Self.contrastWithWhite(tab) >= 4.5 {
-                (red, green, blue) = tab
+        let steps = Int(((Self.tabShare - Self.darkestShare) / Self.shareStep).rounded())
+        for step in 0...steps {
+            let darkened = tab(Self.tabShare - Self.shareStep * Double(step))
+            if Self.contrastWithWhite(darkened) >= Self.minimumContrast {
+                (red, green, blue) = darkened
                 textIsWhite = true
                 return
             }
         }
-        (red, green, blue) = (accentRed * 0.78, accentGreen * 0.78, accentBlue * 0.78)
+        (red, green, blue) = tab(Self.tabShare)
         textIsWhite = false
     }
 

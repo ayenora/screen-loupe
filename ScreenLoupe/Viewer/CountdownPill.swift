@@ -26,9 +26,13 @@ struct CountdownPill {
             .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .bold), .foregroundColor: NSColor.white,
         ])
 
+    /// Between the ring and the text, and after the text.
+    private static let textGap: CGFloat = 8
+    private static let trailing: CGFloat = 14
+
     /// The pill's width before rounding up, to centre it by.
     func exactWidth(for text: String) -> CGFloat {
-        inset + ring + 8 + (text as NSString).size(withAttributes: textAttributes).width + 14
+        inset + ring + Self.textGap + (text as NSString).size(withAttributes: textAttributes).width + Self.trailing
     }
 
     func size(for text: String) -> CGSize {
@@ -61,7 +65,7 @@ struct CountdownPill {
             withAttributes: digitAttributes)
         let textSize = (text as NSString).size(withAttributes: textAttributes)
         (text as NSString).draw(
-            at: CGPoint(x: pill.minX + inset + ring + 8, y: (pill.midY - textSize.height / 2).rounded()),
+            at: CGPoint(x: pill.minX + inset + ring + Self.textGap, y: (pill.midY - textSize.height / 2).rounded()),
             withAttributes: textAttributes)
     }
 }

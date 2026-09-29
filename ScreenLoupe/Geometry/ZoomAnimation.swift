@@ -110,10 +110,4 @@ struct ZoomAnimation: Equatable, Sendable {
         guard r != 1 else { return nil }
         return CGPoint(x: (to.offset.x - r * from.offset.x) / (1 - r), y: (to.offset.y - r * from.offset.y) / (1 - r))
     }
-
-    /// A new command at `time`: a glide to `target` from wherever this one shows then, so nothing
-    /// jumps.
-    func retargeted(to target: ZoomPanState, at time: TimeInterval, throughFill: Bool = false) -> ZoomAnimation {
-        ZoomAnimation(from: state(at: time), to: target, start: time, duration: duration, throughFill: throughFill)
-    }
 }

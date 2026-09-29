@@ -119,8 +119,10 @@ enum StudioCountdown: Equatable, Sendable {
 
     /// Where the countdown shows, in AppKit global points: where the frame's notice does — left of
     /// the tab and its button (`tab`), or right of them when the display (`screen`) has no room on
-    /// the left — centred on the tab's row and kept on the display.
-    static func pillRect(size: CGSize, tab: CGRect, screen: CGRect, gap: CGFloat = 4, margin: CGFloat = 6) -> CGRect {
+    /// the left — centred on the tab's row and kept on the display, with the notice's gap and margin.
+    static func pillRect(size: CGSize, tab: CGRect, screen: CGRect, metrics m: OverlayMetrics = .standard) -> CGRect {
+        let gap = m.pinGap
+        let margin = m.screenMargin
         var x = tab.minX - gap - size.width
         if x < screen.minX + margin { x = tab.maxX + gap }
         x = min(max(x, screen.minX + margin), screen.maxX - margin - size.width)

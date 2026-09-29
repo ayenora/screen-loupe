@@ -483,8 +483,7 @@ struct ZoomAnimationTests {
         let first = Self.smallImageAtTheLeftTo16x()
         let turn = Self.time(fraction)
         let shown = first.state(at: turn)
-        let second = first.retargeted(to: shown.zoomedAboutImage(to: 2), at: turn, throughFill: true)
-        #expect(second.throughFill)
+        let second = ZoomAnimation(from: shown, to: shown.zoomedAboutImage(to: 2), start: turn, throughFill: true)
         #expect(second.state(at: turn) == shown)
         let before = first.state(at: turn - 0.0001)
         let after = second.state(at: turn + 0.0001)
@@ -540,27 +539,19 @@ struct ZoomAnimationTests {
     // MARK: Retargeting
 
     @Test func retargetingMidwayDoesNotJump() {
-        // 1× → 16×, and at a third of the way 1× again: it turns back from where it shows.
+        // 1× → 16×, and at a third of the way 1× again: a new glide from where the first shows, as
+        // `ZoomPanController` starts one.
         let first = Self.preset(1, 16)
         let turn = Self.time(0.35)
         let shown = first.state(at: turn)
         let back = shown.zoomed(to: 1, around: Self.center)
-        let second = first.retargeted(to: back, at: turn)
-        #expect(second.from == shown)
-        #expect(second.to == back)
+        let second = ZoomAnimation(from: shown, to: back, start: turn)
         #expect(second.state(at: turn) == shown)
         // Continuous across the turn: a millisecond either side is a sliver of zoom apart.
         let before = first.state(at: turn - 0.001).zoom
         let after = second.state(at: turn + 0.001).zoom
         #expect(abs(after - before) / shown.zoom < 0.05)
         #expect(second.state(at: turn + ZoomAnimation.duration) == back)
-    }
-
-    @Test func retargetingKeepsTheDuration() {
-        let first = ZoomAnimation(from: Self.preset(1, 16).from, to: Self.preset(1, 16).to, start: 5, duration: 0.5)
-        let second = first.retargeted(to: first.from, at: 5.2)
-        #expect(second.start == 5.2)
-        #expect(second.duration == 0.5)
     }
 
     // MARK: Range

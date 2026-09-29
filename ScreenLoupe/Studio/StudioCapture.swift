@@ -25,19 +25,16 @@ enum StudioCapture {
     ) async throws
         -> CGImage
     {
+        // The desktop's levels too: the backdrop sits just above the desktop icons, and the filter
+        // keeps it only when it is listed.
         let content = try await withTimeout(seconds: callTimeout) {
             try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         }
         guard let display = content.displays.first(where: { $0.displayID == geometry.display.id }) else {
             throw NoDisplayError()
         }
-        let configuration = SCStreamConfiguration()
+        let configuration = Self.configuration(size: geometry.outputSize)
         configuration.sourceRect = geometry.sourceRect.rect
-        configuration.width = geometry.outputSize.width
-        configuration.height = geometry.outputSize.height
-        configuration.captureResolution = .best
-        configuration.scalesToFit = false
-        configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.showsCursor = pointer
         let filter = filter(
             for: display, in: content, including: Set(includedWindows.map { CGWindowID($0) }))
@@ -45,6 +42,17 @@ enum StudioCapture {
             try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
         }
         return await composited(image, in: NSScreen.colorSpace(forDisplay: display.displayID)) ?? image
+    }
+
+    /// One picture of `size` pixels at the display's native resolution, in BGRA, never scaled to fit.
+    private static func configuration(size: PixelSize) -> SCStreamConfiguration {
+        let configuration = SCStreamConfiguration()
+        configuration.width = size.width
+        configuration.height = size.height
+        configuration.captureResolution = .best
+        configuration.scalesToFit = false
+        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        return configuration
     }
 
     /// `StudioComposite.composited`, off the main actor: converting a large picture takes a while.
@@ -84,12 +92,7 @@ enum StudioCapture {
         // Room to spare around the window for its shadow: ScreenCaptureKit scales a window down to
         // fit the output but never up, so the window with its shadow comes at its own size.
         let output = OneWindowPicture.captureSize(window: windowPixels, scale: display.scale)
-        let configuration = SCStreamConfiguration()
-        configuration.width = output.width
-        configuration.height = output.height
-        configuration.captureResolution = .best
-        configuration.scalesToFit = false
-        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        let configuration = Self.configuration(size: output)
         // The pointer isn't a part of the window: One Window leaves it out.
         configuration.showsCursor = false
         configuration.backgroundColor = CGColor.clear

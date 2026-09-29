@@ -205,7 +205,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         let selected: Int
         if zoomPan.isFit {
             selected = 0
-        } else if let index = ZoomPanState.presets.firstIndex(where: { abs($0 - state.zoom) < 0.0001 }) {
+        } else if let index = ZoomPanState.presets.firstIndex(where: { abs($0 - state.zoom) < ZoomPanState.sameZoom }) {
             selected = index + 1
         } else {
             selected = -1

@@ -288,12 +288,10 @@ final class OverlayFrameController {
     }
 
     private func initialRect() -> CGRect {
-        if var saved = settings.settings[keyPath: kind.savedRect],
+        if let saved = settings.settings[keyPath: kind.savedRect],
             converter?.owningDisplay(for: GlobalRect(rect: saved)) != nil
         {
-            let minimum = CaptureAreaEditing.minimumSize
-            saved.size = CGSize(width: max(saved.width, minimum.width), height: max(saved.height, minimum.height))
-            return saved
+            return CaptureAreaEditing.atLeastMinimum(saved)
         }
         return defaultRect()
     }
@@ -342,7 +340,8 @@ final class OverlayFrameController {
         case .largerThanDisplay:
             showNotice("Larger than the display")
         case .smallerThanMinimum:
-            showNotice("Smaller than 64 × 64 pt")
+            let minimum = CaptureAreaEditing.minimumSize
+            showNotice("Smaller than \(SizeText.points(minimum)) pt")
         }
         return false
     }
@@ -360,10 +359,7 @@ final class OverlayFrameController {
     func pickWindow(onPicked: @escaping () -> Void) {
         pick(hint: "Click to fit the \(kind.name) · Esc to cancel", fits: true) { [weak self] picked in
             guard let self else { return }
-            let minimum = CaptureAreaEditing.minimumSize
-            var rect = picked.frame
-            rect.size = CGSize(width: max(rect.width, minimum.width), height: max(rect.height, minimum.height))
-            applyEdited(rect, snap: .edges, persist: true)
+            applyEdited(CaptureAreaEditing.atLeastMinimum(picked.frame), snap: .edges, persist: true)
             if magnet != nil { attach(to: picked) }
             show()
             onPicked()
@@ -473,11 +469,17 @@ final class OverlayFrameController {
             }
             isFollowingWindow = false
             magnetMoved = true
-        } else if magnetMoved {
-            // Saved once the window stops, not on every step of its move.
-            magnetMoved = false
-            settings.update { $0[keyPath: kind.savedRect] = frameRect }
+        } else {
+            saveFollowedRect()
         }
+    }
+
+    /// Saves the rect the area followed its window to: once the window stops, not on every step of
+    /// its move, or when the magnet stops.
+    private func saveFollowedRect() {
+        guard magnetMoved else { return }
+        magnetMoved = false
+        settings.update { $0[keyPath: kind.savedRect] = frameRect }
     }
 
     /// The window is gone: the area stays where it is, the magnet turns off and a notice says why.
@@ -500,10 +502,7 @@ final class OverlayFrameController {
         spaceObserver = nil
         magnet = nil
         updateFitted()
-        if magnetMoved {
-            magnetMoved = false
-            settings.update { $0[keyPath: kind.savedRect] = frameRect }
-        }
+        saveFollowedRect()
         onMagnetStopped?()
     }
 
@@ -1011,9 +1010,8 @@ extension OverlayFrameController: CaptureOverlayViewDelegate {
         default: return false
         }
         // One step is one pixel of the display the area is on (docs/design.md §3).
-        let scale = converter?.owningDisplay(for: GlobalRect(rect: frameRect))?.scale ?? 1
         let flags = event.modifierFlags
-        let step = (flags.contains(.shift) ? 10 : 1) / scale
+        let step = (flags.contains(.shift) ? 10 : 1) / scale(of: frameRect)
         let resize = flags.contains(.option)
         if let lock, !lock.allowsNudge(resizing: resize) { return false }
         let next = CaptureAreaEditing.nudged(frameRect, key: key, step: step, resize: resize)

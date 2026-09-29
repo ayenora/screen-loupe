@@ -7,11 +7,12 @@ import UniformTypeIdentifiers
 /// Image) and reference layers (References). Called off the main actor: a large file takes a while
 /// to decode.
 enum ImageFileLoader {
-    /// The image files Open Image and references take: every type ImageIO reads, but not PDF.
-    static var openableTypes: [UTType] {
+    /// The image files Open Image and references take: every type ImageIO reads, but not PDF. Read
+    /// once: menu validation asks for them each time the menu opens.
+    static let openableTypes: [UTType] = {
         let identifiers = CGImageSourceCopyTypeIdentifiers() as? [String] ?? []
         return identifiers.compactMap { UTType($0) }.filter { !$0.conforms(to: .pdf) }
-    }
+    }()
 
     /// The file's first frame, upright as its EXIF orientation says, and past `ImageBudget` just its
     /// top-left part. `nil` when ImageIO can't read it.

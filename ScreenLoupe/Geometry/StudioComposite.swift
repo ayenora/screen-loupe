@@ -53,17 +53,27 @@ enum StudioComposite {
     /// `image` in `space`: kept when already tagged with it, tagged when untagged, converted
     /// otherwise, so the pixels and the saved profile agree. `nil` when no context can be made.
     static func composited(_ image: CGImage, in space: CGColorSpace) -> CGImage? {
-        let tagged = image.colorSpace == nil ? image.copy(colorSpace: space) ?? image : image
+        let tagged = Self.tagged(image, with: space)
         if tagged.colorSpace == space { return tagged }
         guard
-            let context = CGContext(
-                data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
-                space: space,
-                bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+            let context = Self.context(
+                PixelSize(width: image.width, height: image.height), space: space, alpha: .noneSkipFirst)
         else { return nil }
         context.interpolationQuality = .none
         context.draw(tagged, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return context.makeImage()
+    }
+
+    /// `image`, tagged with `space` when it has no colour space of its own.
+    private static func tagged(_ image: CGImage, with space: CGColorSpace) -> CGImage {
+        image.colorSpace == nil ? image.copy(colorSpace: space) ?? image : image
+    }
+
+    /// An 8-bit BGRA bitmap context of `size` pixels in `space`.
+    private static func context(_ size: PixelSize, space: CGColorSpace, alpha: CGImageAlphaInfo) -> CGContext? {
+        CGContext(
+            data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+            bitmapInfo: alpha.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
     }
 
     /// The backdrop's picture: `fill` over `size` pixels, opaque, in `space` — the display's, so
@@ -71,22 +81,18 @@ enum StudioComposite {
     /// Window's background is (`StudioFill.draw`), so a colour is the same pixels in both. `nil`
     /// when the size is empty or no context can be made.
     static func filled(_ fill: StudioFill, size: PixelSize, space: CGColorSpace) -> CGImage? {
-        guard size.width > 0, size.height > 0,
-            let context = CGContext(
-                data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0,
-                space: space,
-                bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard size.width > 0, size.height > 0, let context = Self.context(size, space: space, alpha: .noneSkipFirst)
         else { return nil }
         fill.draw(in: context, size: CGSize(width: size.width, height: size.height))
         return context.makeImage()
     }
 
     /// A lone window's picture: `window` (already cut to its visible pixels) centred in a picture of
-    /// `frame` pixels (`OneWindowPicture.pictureSize`) in `space` (`OneWindowPicture.centredOrigin`), drawn at its own size without
-    /// interpolation, colour-matched into `space` as `composited` does. Over `fill`, the result is
-    /// opaque; without one, the rest is transparent and the window's pixels, its shadow's alpha
-    /// among them, are copied unchanged. `nil` when no context can be made or the window is larger
-    /// than the frame.
+    /// `frame` pixels (`OneWindowPicture.pictureSize`) in `space` (`OneWindowPicture.centredOrigin`),
+    /// drawn at its own size without interpolation, colour-matched into `space` as `composited` does.
+    /// Over `fill`, the result is opaque; without one, the rest is transparent and the window's
+    /// pixels, its shadow's alpha among them, are copied unchanged. `nil` when no context can be
+    /// made or the window is larger than the frame.
     static func centred(
         _ window: CGImage, in frame: PixelSize, space: CGColorSpace, over fill: StudioFill?
     )
@@ -94,12 +100,9 @@ enum StudioComposite {
     {
         let size = PixelSize(width: window.width, height: window.height)
         guard OneWindowPicture.fits(size, in: frame), frame.width > 0, frame.height > 0 else { return nil }
-        let tagged = window.colorSpace == nil ? window.copy(colorSpace: space) ?? window : window
-        let alpha: CGImageAlphaInfo = fill == nil ? .premultipliedFirst : .noneSkipFirst
+        let tagged = Self.tagged(window, with: space)
         guard
-            let context = CGContext(
-                data: nil, width: frame.width, height: frame.height, bitsPerComponent: 8, bytesPerRow: 0,
-                space: space, bitmapInfo: alpha.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+            let context = Self.context(frame, space: space, alpha: fill == nil ? .premultipliedFirst : .noneSkipFirst)
         else { return nil }
         fill?.draw(in: context, size: CGSize(width: frame.width, height: frame.height))
         let origin = OneWindowPicture.centredOrigin(of: size, in: frame)
@@ -130,8 +133,7 @@ enum StudioComposite {
     /// The largest width and the largest height, in pixels, of `displays`: a backdrop, or a
     /// picture, on any of them is no larger.
     static func largestPicture(on displays: [DisplayInfo]) -> PixelSize {
-        PixelSize(
-            width: displays.map { Int(($0.globalFrame.width * $0.scale).rounded()) }.max() ?? 0,
-            height: displays.map { Int(($0.globalFrame.height * $0.scale).rounded()) }.max() ?? 0)
+        let sizes = displays.map(StudioBackdrop.pixelSize(of:))
+        return PixelSize(width: sizes.map(\.width).max() ?? 0, height: sizes.map(\.height).max() ?? 0)
     }
 }

@@ -491,8 +491,7 @@ final class StudioController {
             case .failed(let hides):
                 if hides { hideBackdrop() }
                 if unreadable {
-                    NSSound.beep()
-                    frame.showNotice("Background image can't be read")
+                    beep(Notice.backgroundUnreadable)
                 } else {
                     log.error("The backdrop couldn't be drawn.")
                 }
@@ -555,8 +554,8 @@ final class StudioController {
     /// The chosen window's outline, while one is chosen and the studio shows.
     private let oneWindowOutline = OneWindowOutlinePanel()
     private var oneWindowWatch = OneWindowWatch()
-    /// Reads the chosen window's place about 60 times a second, while one is chosen and the studio
-    /// shows, and only then.
+    /// Reads the chosen window's place every `OneWindowWatch.readInterval`, while one is chosen and
+    /// the studio shows, and only then.
     private var oneWindowTimer: Timer?
     private var oneWindowSpaceObserver: NSObjectProtocol?
     /// The displays as they were when the reads started, or at their last change.
@@ -623,13 +622,14 @@ final class StudioController {
             oneWindowTimer = nil
             oneWindowSpaceObserver.map(NSWorkspace.shared.notificationCenter.removeObserver)
             oneWindowSpaceObserver = nil
+            oneWindowConverter = nil
             oneWindowOutline.hide()
             return
         }
         guard oneWindowTimer == nil else { return }
         oneWindowWatch = OneWindowWatch()
         oneWindowConverter = converter
-        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: OneWindowWatch.readInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.readOneWindow() }
         }
         // Also while a menu is open or a window is dragged.
@@ -740,7 +740,7 @@ final class StudioController {
             countdownTimer?.invalidate()
             countdownTimer = nil
         }
-        if outcome == .frameOffDisplay { frame.showNotice("Frame is not wholly on one display") }
+        if outcome == .frameOffDisplay { frame.showNotice(Notice.notOnOneDisplay) }
         updateCountdownPanel()
         // Gone from the screen first; the filter leaves it out of the picture anyway.
         if case .fire(let shot) = outcome { take(shot) }
@@ -779,10 +779,7 @@ final class StudioController {
         take { [weak self] image, pointScale in
             let written = await Self.write(image, pointScale: pointScale, output: output, forPasteboard: shot != .save)
             guard let self, isVisible else { return }
-            guard let written else {
-                NSSound.beep()
-                return frame.showNotice("Capture failed")
-            }
+            guard let written else { return beep(Notice.captureFailed) }
             if shot != .save { copy(written) }
             if shot != .copy { save(written, as: output.format) }
         }
@@ -832,7 +829,7 @@ final class StudioController {
         case .notOnOneDisplay:
             // A picture holds one display's pixels: a frame reaching onto another display, or off
             // every display, would give a smaller picture than the frame says.
-            frame.showNotice("Frame is not wholly on one display")
+            frame.showNotice(Notice.notOnOneDisplay)
             return
         case .take: break
         }
@@ -857,14 +854,25 @@ final class StudioController {
             } catch  where ScreenCaptureManager.isPermissionError(error) {
                 onNeedsPermission?(true)
             } catch is BackgroundImageUnreadable {
-                NSSound.beep()
-                frame.showNotice("Background image can't be read")
+                beep(Notice.backgroundUnreadable)
             } catch {
                 log.error("Studio capture failed: \(error.localizedDescription, privacy: .public)")
-                NSSound.beep()
-                frame.showNotice("Capture failed")
+                beep(Notice.captureFailed)
             }
         }
+    }
+
+    /// The notices beside the frame's tab said from more than one place.
+    private enum Notice {
+        static let notOnOneDisplay = "Frame is not wholly on one display"
+        static let backgroundUnreadable = "Background image can't be read"
+        static let captureFailed = "Capture failed"
+    }
+
+    /// A failure: a beep, and `notice` beside the frame's tab.
+    private func beep(_ notice: String) {
+        NSSound.beep()
+        frame.showNotice(notice)
     }
 
     /// One Window's picture of `chosen` (`StudioCapture.window`), or `nil` when the window turns out

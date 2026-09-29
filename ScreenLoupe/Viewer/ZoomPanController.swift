@@ -126,7 +126,7 @@ final class ZoomPanController {
     private func initialState() -> ZoomPanState {
         guard !fitsFirstViewport, let restoredZoom, state.viewportSize != .zero else { return state.fitted() }
         var next = state
-        next.zoom = min(max(restoredZoom, ZoomPanState.zoomRange.lowerBound), ZoomPanState.zoomRange.upperBound)
+        next.zoom = ZoomPanState.clampedZoom(restoredZoom)
         return next.centered()
     }
 

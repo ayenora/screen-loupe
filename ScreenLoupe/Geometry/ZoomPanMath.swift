@@ -10,6 +10,11 @@ struct ZoomPanState: Equatable, Sendable {
     /// Steps for `+`/`-` and for snapping keyboard zoom.
     static let ladder: [CGFloat] = [0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64]
     static let zoomRange: ClosedRange<CGFloat> = 0.05...64
+    /// Zooms closer than this are the same zoom: a preset, a ladder step or Fit reached through
+    /// float arithmetic.
+    static let sameZoom: CGFloat = 0.0001
+    /// A float step: an edge this close to a pixel boundary, or a slack this small, is on it.
+    static let floatStep: CGFloat = 1e-6
 
     var zoom: CGFloat
     /// Where source pixel (0, 0) lands in the viewport. Whole pixels, so pixel edges stay crisp.
@@ -59,7 +64,7 @@ struct ZoomPanState: Equatable, Sendable {
     /// none of it. An edge a float step short of the image's edge reaches it: at Fit, viewport ÷ zoom
     /// can come out just under the image's size.
     var visibleSourceRect: CGRect? {
-        let tolerance: CGFloat = 1e-6
+        let tolerance = Self.floatStep
         let topLeft = sourcePoint(forViewportPoint: .zero)
         let bottomRight = sourcePoint(forViewportPoint: CGPoint(x: viewportSize.width, y: viewportSize.height))
         let minX = topLeft.x < tolerance ? 0 : topLeft.x
@@ -88,14 +93,19 @@ struct ZoomPanState: Equatable, Sendable {
 
     /// Whether the zoom is the one that fits the whole image, as the Fit preset does.
     var isFit: Bool {
-        abs(zoom - fitZoom) < 0.0001
+        abs(zoom - fitZoom) < Self.sameZoom
     }
 
     /// Zoom that fits the whole image into the viewport.
     var fitZoom: CGFloat {
         guard contentSize.width > 0, contentSize.height > 0 else { return 1 }
         let fit = min(viewportSize.width / contentSize.width, viewportSize.height / contentSize.height)
-        return min(max(fit, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        return Self.clampedZoom(fit)
+    }
+
+    /// `zoom` kept within `zoomRange`.
+    static func clampedZoom(_ zoom: CGFloat) -> CGFloat {
+        min(max(zoom, zoomRange.lowerBound), zoomRange.upperBound)
     }
 
     /// The centre of the part of the image the viewport shows: the image's own centre when it shows
@@ -111,7 +121,7 @@ struct ZoomPanState: Equatable, Sendable {
     /// A zoom around the pointer (a wheel, a pinch, `+`/`-` over the Viewer): the source point under
     /// `anchor` (a viewport point) stays in place, and the image is only kept in view as any pan is.
     func zoomed(to newZoom: CGFloat, around anchor: CGPoint) -> ZoomPanState {
-        let target = min(max(newZoom, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        let target = Self.clampedZoom(newZoom)
         var next = self
         next.offset = CGPoint(
             x: anchor.x - (anchor.x - offset.x) * target / zoom,
@@ -128,7 +138,7 @@ struct ZoomPanState: Equatable, Sendable {
     /// larger one it is kept against the edges as any pan is, which can stop that point short of the
     /// centre. An image that covers the viewport shows its centre there already: a zoom around it.
     func zoomedAboutImage(to newZoom: CGFloat) -> ZoomPanState {
-        let target = min(max(newZoom, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        let target = Self.clampedZoom(newZoom)
         let anchor = visibleImageCenter
         let center = CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
         var next = self
@@ -151,9 +161,9 @@ struct ZoomPanState: Equatable, Sendable {
     /// The next ladder step above (`direction > 0`) or below the current zoom.
     func steppedZoom(direction: Int) -> CGFloat {
         if direction > 0 {
-            return Self.ladder.first { $0 > zoom + 0.0001 } ?? Self.zoomRange.upperBound
+            return Self.ladder.first { $0 > zoom + Self.sameZoom } ?? Self.zoomRange.upperBound
         }
-        return Self.ladder.last { $0 < zoom - 0.0001 } ?? Self.zoomRange.lowerBound
+        return Self.ladder.last { $0 < zoom - Self.sameZoom } ?? Self.zoomRange.lowerBound
     }
 
     /// Fit: the zoom that shows the whole image, centred.
@@ -180,7 +190,7 @@ struct ZoomPanState: Equatable, Sendable {
     /// past the edges.
     private static func centeredAxis(content: CGFloat, viewport: CGFloat) -> CGFloat {
         let slack = viewport - content
-        return (abs(slack) < 1e-6 ? 0 : slack / 2).rounded(.down)
+        return (abs(slack) < floatStep ? 0 : slack / 2).rounded(.down)
     }
 
     /// The Capture Area was resized to `size` and its top-left corner moved by `originShift` source

@@ -9,6 +9,10 @@ struct ScreenWindow: Equatable, Sendable {
     var layer: Int
     var isOnScreen: Bool
     var alpha: Double
+
+    /// An ordinary window that shows: on the normal layer, not transparent, not empty. What the window
+    /// picker, ⌘-snapping and the magnet take.
+    var isOrdinaryAndVisible: Bool { layer == 0 && alpha > 0 && !frame.isEmpty }
 }
 
 /// Picking a window, and the magnet that keeps the Capture Area on one (docs/product.md, Capture
@@ -105,7 +109,7 @@ enum WindowMagnet {
     /// with its app or on another Space comes back empty too, or marked off screen.
     static func holds(_ window: ScreenWindow?) -> Bool {
         guard let window else { return false }
-        return window.isOnScreen && window.layer == 0 && window.alpha > 0 && !window.frame.isEmpty
+        return window.isOnScreen && window.isOrdinaryAndVisible
     }
 
     /// Consecutive reads that don't hold the window before the magnet lets go, about 33 ms at 60 Hz:

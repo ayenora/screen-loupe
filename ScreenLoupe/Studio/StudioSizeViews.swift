@@ -30,26 +30,21 @@ struct StudioSizeList: View {
                 Text("px").foregroundStyle(.secondary)
             }
             .textFieldStyle(.roundedBorder)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, StudioListLook.contentInset)
             .onSubmit(applyTyped)
             Divider().padding(.vertical, 4)
-            SizeRow(title: "Custom Size…", isChecked: false, action: editCustomSizes)
+            StudioListRow(title: "Custom Size…", isChecked: false, action: editCustomSizes)
         }
-        .padding(6)
-        .frame(width: 240)
+        .padding(StudioListLook.padding)
+        .frame(width: StudioListLook.width)
     }
 
     private func section(_ title: String, _ sizes: [(size: PixelSize, title: String, isPreset: Bool)]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
+            StudioListLook.header(title)
             ForEach(sizes.indices, id: \.self) { index in
                 let entry = sizes[index]
-                SizeRow(
+                StudioListRow(
                     title: entry.title,
                     isChecked: StudioSizes.isChecked(entry.size, isPresetEntry: entry.isPreset, current: current)
                 ) { apply(entry.size) }
@@ -73,6 +68,11 @@ struct StudioSizeList: View {
 struct CustomSizesView: View {
     let store: SettingsStore
     let done: () -> Void
+
+    /// A slot's row in the bordered list, and the list's insets above and below them: every slot
+    /// shows, without scrolling.
+    private static let rowHeight: CGFloat = 34
+    private static let listInsets: CGFloat = 6
 
     @State private var ids = (0..<StudioSizes.slotCount).map { _ in UUID() }
     @State private var drafts: [UUID: SlotDraft] = [:]
@@ -103,7 +103,7 @@ struct CustomSizesView: View {
             }
             .listStyle(.bordered)
             .scrollDisabled(true)
-            .frame(height: CGFloat(StudioSizes.slotCount) * 34 + 6)
+            .frame(height: CGFloat(StudioSizes.slotCount) * Self.rowHeight + Self.listInsets)
             HStack {
                 Spacer()
                 Button("Done") {

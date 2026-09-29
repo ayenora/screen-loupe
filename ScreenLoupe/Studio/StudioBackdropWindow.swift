@@ -79,12 +79,14 @@ final class ScreenRefresh: NSObject {
     private var remaining: Int
     private var continuation: CheckedContinuation<Void, Never>?
     private var link: CADisplayLink?
+    /// The longest wait, for a display that doesn't refresh.
+    private static let longestWait: TimeInterval = 0.25
 
     private init(_ count: Int) {
         remaining = count
     }
 
-    /// Returns after `count` refreshes of `screen`, or a quarter second at most.
+    /// Returns after `count` refreshes of `screen`, or `longestWait` at most.
     static func wait(_ count: Int, on screen: NSScreen) async {
         let waiter = ScreenRefresh(count)
         await withCheckedContinuation { continuation in
@@ -93,7 +95,7 @@ final class ScreenRefresh: NSObject {
             let link = screen.displayLink(target: waiter, selector: #selector(refreshed))
             waiter.link = link
             link.add(to: .main, forMode: .common)
-            let timer = Timer(timeInterval: 0.25, repeats: false) { _ in
+            let timer = Timer(timeInterval: longestWait, repeats: false) { _ in
                 MainActor.assumeIsolated { waiter.finish() }
             }
             RunLoop.main.add(timer, forMode: .common)

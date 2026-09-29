@@ -27,10 +27,10 @@ extension Settings {
 /// Captures (docs/product.md, References and Recent Captures). With two open only one is expanded
 /// and fills the height; the other is a strip in its place that expands it when clicked.
 ///
-/// Dragging the left edge (`SidePanelEdge`, a 5 pt strip) widens the column within `SidePanel.widthRange`, and everything in it grows
-/// in proportion: each panel multiplies its own fonts, sizes and spacings by `scale`. No drawing
-/// transform is involved, so clicks land where things are drawn. The Color Meter scrolls when the
-/// column is short.
+/// Dragging the left edge (`SidePanelEdge`) widens the column within `SidePanel.widthRange`, and
+/// everything in it grows in proportion: each panel multiplies its own fonts, sizes and spacings by
+/// `scale`. No drawing transform is involved, so clicks land where things are drawn. The Color Meter
+/// scrolls when the column is short.
 final class SidePanelStack: NSView {
     var onExpand: ((SidePanel) -> Void)?
     /// Called with the new width when a drag of the left edge ends.

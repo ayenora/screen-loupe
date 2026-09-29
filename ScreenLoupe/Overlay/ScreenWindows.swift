@@ -12,8 +12,7 @@ enum ScreenWindows {
         let ownPID = ProcessInfo.processInfo.processIdentifier
         return list.compactMap { info in
             guard (info[kCGWindowOwnerPID as String] as? pid_t) != ownPID,
-                let window = window(info, converter: converter),
-                window.layer == 0, window.alpha > 0, !window.frame.isEmpty
+                let window = window(info, converter: converter), window.isOrdinaryAndVisible
             else { return nil }
             return window
         }

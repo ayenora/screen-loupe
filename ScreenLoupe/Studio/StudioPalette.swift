@@ -414,6 +414,12 @@ private final class PaletteButton: NSButton {
     /// Whether the pointer is on the button where it takes the mouse, as the palette was last told.
     private var isHovered = false
 
+    /// The toolbar's near-white symbol on the accent fill.
+    private static let onAccentWhite: CGFloat = 0.9375
+    /// A disabled toggle that is on, faded as the toolbar's: its accent fill, and its symbol.
+    private static let disabledAccentAlpha: CGFloat = 0.5
+    private static let disabledOnAccentAlpha: CGFloat = 0.55
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     /// Only inside its slot in the group and the group's rounded outline, `point` in the superview's
@@ -442,13 +448,15 @@ private final class PaletteButton: NSButton {
         case .none: break
         case .pressed: ToolbarLook.current.drawFill(.systemFill, in: slot)
         case .accent(let enabled):
-            ToolbarLook.current.drawFill(.controlAccentColor.withAlphaComponent(enabled ? 1 : 0.5), in: slot)
+            ToolbarLook.current.drawFill(
+                .controlAccentColor.withAlphaComponent(enabled ? 1 : Self.disabledAccentAlpha), in: slot)
         }
         let tint: NSColor =
             switch look.symbol {
             case .label: .labelColor
             case .tertiary: .tertiaryLabelColor
-            case .onAccent(let enabled): NSColor(white: 0.9375, alpha: enabled ? 1 : 0.55)
+            case .onAccent(let enabled):
+                NSColor(white: Self.onAccentWhite, alpha: enabled ? 1 : Self.disabledOnAccentAlpha)
             }
         // Unchanged, setting it would ask for another draw.
         if contentTintColor != tint { contentTintColor = tint }

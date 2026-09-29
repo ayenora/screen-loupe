@@ -47,9 +47,14 @@ struct RecentCapture: Identifiable {
 @Observable
 final class RecentCaptures {
     static let limit = RecentCaptureRules.limit
-    /// A thumbnail's box in pixels: 2× the panel's largest square thumbnail, 50 pt at the widest
-    /// column's scale (320 / 250), 64 pt.
-    nonisolated private static let thumbnailBox = CGSize(width: 128, height: 128)
+    /// The side of a row's square thumbnail in the panel, in points at scale 1 (`RecentCapturesPanel`).
+    nonisolated static let thumbnailSide: CGFloat = 50
+    /// A thumbnail's box in pixels: the largest thumbnail the panel shows, at the widest column's
+    /// scale, at 2×.
+    nonisolated private static let thumbnailBox: CGSize = {
+        let side = thumbnailSide * SidePanel.widthRange.upperBound / SidePanel.widthRange.lowerBound * 2
+        return CGSize(width: side, height: side)
+    }()
 
     /// Newest first.
     private(set) var captures: [RecentCapture] = []

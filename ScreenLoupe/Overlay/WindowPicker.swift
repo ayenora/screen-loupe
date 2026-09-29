@@ -159,11 +159,15 @@ private final class PickerView: NSView {
         let text = hint as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: OverlayStyle.tabFont, .foregroundColor: NSColor.white]
         let size = text.size(withAttributes: attributes)
+        // A capsule, the text inset on either side.
+        let height: CGFloat = 24
+        let inset: CGFloat = 10
         let pill = CGRect(
-            x: (hovered.midX - size.width / 2 - 10).rounded(), y: (hovered.midY - 12).rounded(),
-            width: (size.width + 20).rounded(.up), height: 24)
+            x: (hovered.midX - size.width / 2 - inset).rounded(), y: (hovered.midY - height / 2).rounded(),
+            width: (size.width + inset * 2).rounded(.up), height: height)
         OverlayStyle.labelFill.setFill()
-        NSBezierPath(roundedRect: pill, xRadius: 12, yRadius: 12).fill()
-        text.draw(at: CGPoint(x: pill.minX + 10, y: pill.midY - size.height / 2), withAttributes: attributes)
+        NSBezierPath(roundedRect: pill, xRadius: height / 2, yRadius: height / 2).fill()
+        text.draw(
+            at: CGPoint(x: pill.minX + inset, y: (pill.midY - size.height / 2).rounded()), withAttributes: attributes)
     }
 }
