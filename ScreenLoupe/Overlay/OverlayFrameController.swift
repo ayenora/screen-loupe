@@ -186,7 +186,6 @@ final class OverlayFrameController {
     private var noticeTimer: Timer?
     private var hasBeenShown = false
 
-    private static let defaultSize = CGSize(width: 320, height: 200)
     /// The rect with nothing kept, from the main display's visible frame; `nil` for the Capture
     /// Area's own default.
     private let makeDefaultRect: ((CGRect) -> CGRect)?
@@ -303,11 +302,27 @@ final class OverlayFrameController {
         let screen =
             (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
         if let makeDefaultRect { return makeDefaultRect(screen) }
-        let size = Self.defaultSize
+        let size = CaptureAreaReset.defaultSize
         // Left of centre, so the Viewer fits beside it on first launch (docs/design.md §7, acceptance step 3).
         let centerX = screen.minX + screen.width * 0.3
         return CGRect(
             x: centerX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height)
+    }
+
+    /// Reset Capture Area (docs/product.md, Capture Area): the size of first launch, centred on the
+    /// visible frame of the display the area is on, or the main display's while it is on none; the
+    /// magnet or the pin turns off, so the area moves again, and the area shows. A running window
+    /// picker ends as a cancel first.
+    func reset() {
+        stopPickingWindow()
+        settings.update { $0.captureAreaLocked = false }
+        let display = converter?.owningDisplay(for: GlobalRect(rect: frameRect))
+        guard
+            let screen = display.flatMap({ NSScreen.screen(forDisplay: $0.id) }) ?? NSScreen.main
+                ?? NSScreen.screens.first
+        else { return }
+        apply(CaptureAreaReset.rect(centredIn: screen.visibleFrame, scale: screen.backingScaleFactor), persist: true)
+        show()
     }
 
     // MARK: Sizes

@@ -23,6 +23,7 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 - **Arrow keys** move it by one pixel (Shift: ten); with Option they resize it. Click the frame first.
 - **Snap with ⌘:** hold ⌘ while moving or resizing, and an edge near a window's or a display's edge snaps onto it.
 - **Fit to a window:** the window button behind » beside the tab, Window › Fit Capture Area to Window…, or ⌃⌥⌘W. Point at a window — it is tinted — and click: the frame takes exactly that window. The click doesn't reach the app, so nothing is tapped. Escape cancels.
+- **Reset:** Window › Reset Capture Area, or the menu bar item, brings a frame stretched over a large window back to its first-launch size, centred on its display, and turns the magnet and the pin off so it moves again.
 - **Pin** (the pin beside the tab) locks the frame against stray drags; a click turns it on or off, and its ▾ chooses how:
   - **Pinned:** the frame neither moves nor resizes.
   - **Fixed Position:** it can't be moved, but its handles still resize it — handy while a reference is aligned.

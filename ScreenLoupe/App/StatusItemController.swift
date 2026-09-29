@@ -13,6 +13,7 @@ final class StatusItemController {
         menu.addItem(Self.item("Show Capture Area", #selector(AppController.toggleCaptureArea(_:)), target))
         menu.addItem(
             Self.item("Fit Capture Area to Window…", #selector(AppController.pickWindowForCaptureArea(_:)), target))
+        menu.addItem(Self.item("Reset Capture Area", #selector(AppController.resetCaptureArea(_:)), target))
         menu.addItem(Self.item("Keep Viewer on Top", #selector(AppController.toggleViewerAlwaysOnTop(_:)), target))
         menu.addItem(Self.item("Show Screenshot Studio", #selector(AppController.toggleScreenshotStudio(_:)), target))
         menu.addItem(.separator())

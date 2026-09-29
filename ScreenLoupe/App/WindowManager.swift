@@ -222,6 +222,13 @@ final class WindowManager {
         }
     }
 
+    /// Window › Reset Capture Area; a closed Viewer opens to show it, as for Fit to Window.
+    func resetCaptureArea() {
+        captureArea.reset()
+        if !isViewerOpen { showViewer() }
+        trackCursor()
+    }
+
     /// The open panel is up, as a sheet on the Viewer or on its own; Open Image waits for it.
     private(set) var isChoosingImage = false
 

@@ -102,6 +102,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.pickWindow()
     }
 
+    @objc func resetCaptureArea(_ sender: Any?) {
+        windows.resetCaptureArea()
+    }
+
     /// Window › Capture Area Margins, as the frame's margins button: only while the area is fitted to
     /// its magnet's window.
     @objc func toggleCaptureAreaMargins(_ sender: Any?) {
