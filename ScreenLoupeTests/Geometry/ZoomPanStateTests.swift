@@ -218,6 +218,165 @@ struct ZoomPanStateTests {
         #expect(state.visibleSourceRect == nil)
     }
 
+    // MARK: Centring after a zoom
+
+    @Test func zoomingOutAShiftedImageBelowTheViewportCentresIt() {
+        // 500×200 at 4× (2000×800) in 1000×600, showing its right part; 1× around the centre is
+        // 500×200, smaller on both axes. Anchored alone it would land at x 125, off centre.
+        let state = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: -1000, y: -100), contentSize: CGSize(width: 500, height: 200),
+            viewportSize: CGSize(width: 1000, height: 600))
+        let zoomed = state.zoomed(to: 1, around: CGPoint(x: 500, y: 300))
+        #expect(zoomed.zoom == 1)
+        #expect(zoomed.offset == CGPoint(x: 250, y: 200))
+    }
+
+    @Test(arguments: [
+        // Shown at the bottom: 1.5× is still taller than the viewport, so it stays against the bottom.
+        (CGFloat(-1600), CGFloat(-350)),
+        // Shown in between: the source point at the centre stays there.
+        (-520, -70),
+        // Shown at the top: stays against the top.
+        (0, 0),
+    ])
+    func zoomingOutBelowTheViewportOnOneAxisCentresOnlyThatAxis(offsetY: CGFloat, expectedY: CGFloat) {
+        // 500×500 at 4× (2000×2000) in 1000×400, showing its right part; 1.5× is 750×750: narrower
+        // than the viewport, still taller.
+        let state = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: -1000, y: offsetY), contentSize: CGSize(width: 500, height: 500),
+            viewportSize: CGSize(width: 1000, height: 400))
+        let zoomed = state.zoomed(to: 1.5, around: CGPoint(x: 500, y: 200))
+        #expect(zoomed.offset == CGPoint(x: 125, y: expectedY))
+    }
+
+    @Test(arguments: [CGPoint(x: 317, y: 211), CGPoint(x: 5, y: 590), CGPoint(x: 795, y: 3)])
+    func wheelZoomWhileLargerKeepsThePointerPixelExactly(pointer: CGPoint) {
+        // 200×100 at 8× (1600×800) in 800×600, 12× around the pointer: larger both before and after,
+        // and nothing reaches an edge, so the offset is the anchored one, rounded to whole pixels.
+        let state = ZoomPanState(
+            zoom: 8, offset: CGPoint(x: -400, y: -100), contentSize: CGSize(width: 200, height: 100),
+            viewportSize: CGSize(width: 800, height: 600))
+        let zoomed = state.zoomed(to: 12, around: pointer)
+        let anchored = CGPoint(
+            x: pointer.x - (pointer.x - state.offset.x) * 1.5, y: pointer.y - (pointer.y - state.offset.y) * 1.5)
+        #expect(anchored.x <= 0 && anchored.x >= 800 - 2400 && anchored.y <= 0 && anchored.y >= 600 - 1200)
+        #expect(zoomed.offset == CGPoint(x: anchored.x.rounded(), y: anchored.y.rounded()))
+    }
+
+    @Test(arguments: [CGPoint(x: 0, y: 0), CGPoint(x: 317, y: 211), CGPoint(x: 799, y: 599), CGPoint(x: 400, y: 300)])
+    func wheelZoomThatEndsSmallerCentresWhereverThePointerIs(pointer: CGPoint) {
+        // 200×100 at 8× in 800×600, shown at its top-left corner; 2× is 400×200, smaller on both axes.
+        let state = ZoomPanState(
+            zoom: 8, offset: .zero, contentSize: CGSize(width: 200, height: 100),
+            viewportSize: CGSize(width: 800, height: 600))
+        #expect(state.zoomed(to: 2, around: pointer).offset == CGPoint(x: 200, y: 200))
+    }
+
+    @Test(arguments: [CGPoint(x: 10, y: 10), CGPoint(x: 200, y: 150), CGPoint(x: 390, y: 290)])
+    func zoomingInASmallImageGrowsItFromTheCentre(pointer: CGPoint) {
+        // 100×50 centred at 1× in 400×300; 2× is 200×100, still smaller: centred, wherever the pointer.
+        let state = ZoomPanState(
+            zoom: 1, contentSize: CGSize(width: 100, height: 50), viewportSize: CGSize(width: 400, height: 300)
+        ).centered()
+        #expect(state.offset == CGPoint(x: 150, y: 125))
+        #expect(state.zoomed(to: 2, around: pointer).offset == CGPoint(x: 100, y: 100))
+    }
+
+    @Test func zoomingInAroundTheCentreGrowsFromItThenFillsTheViewport() {
+        // 100×50 at 1× in 400×300, zoomed in step by step around the centre: the image stays centred
+        // while it is smaller, and then the centre source pixel stays at the centre, the image covering
+        // the viewport on each larger axis.
+        var state = ZoomPanState(
+            zoom: 1, contentSize: CGSize(width: 100, height: 50), viewportSize: CGSize(width: 400, height: 300)
+        ).centered()
+        let center = CGPoint(x: 200, y: 150)
+        let expected: [(CGFloat, CGPoint)] = [
+            (2, CGPoint(x: 100, y: 100)), (4, CGPoint(x: 0, y: 50)), (8, CGPoint(x: -200, y: -50)),
+            (16, CGPoint(x: -600, y: -250)),
+        ]
+        for (zoom, offset) in expected {
+            state = state.zoomed(to: zoom, around: center)
+            #expect(state.offset == offset)
+            #expect(state.sourcePoint(forViewportPoint: center) == CGPoint(x: 50, y: 25))
+        }
+    }
+
+    @Test func zoomingInASmallImageNearAnEdgePinsItToTheWall() {
+        // 100×50 centred at 1× in 400×300, 8× (800×400) around a point by the image's top-left
+        // corner: anchored, the image would leave a gap at the left and top, so it stays against them.
+        let state = ZoomPanState(
+            zoom: 1, contentSize: CGSize(width: 100, height: 50), viewportSize: CGSize(width: 400, height: 300)
+        ).centered()
+        let zoomed = state.zoomed(to: 8, around: CGPoint(x: 160, y: 130))
+        #expect(zoomed.offset == .zero)
+        // The opposite corner: against the right and bottom.
+        #expect(state.zoomed(to: 8, around: CGPoint(x: 240, y: 170)).offset == CGPoint(x: -400, y: -100))
+    }
+
+    @Test(arguments: [CGPoint.zero, CGPoint(x: 400, y: 300), CGPoint(x: 37, y: 281)])
+    func zoomingToExactlyTheViewportSizeFillsItFromTheCorner(pointer: CGPoint) {
+        // 100×75 at 4× is exactly 400×300: no slack either way.
+        for from in [
+            ZoomPanState(
+                zoom: 8, offset: CGPoint(x: -400, y: -300), contentSize: CGSize(width: 100, height: 75),
+                viewportSize: CGSize(width: 400, height: 300)),
+            ZoomPanState(
+                zoom: 1, offset: CGPoint(x: 3, y: 220), contentSize: CGSize(width: 100, height: 75),
+                viewportSize: CGSize(width: 400, height: 300)),
+        ] {
+            let zoomed = from.zoomed(to: 4, around: pointer)
+            #expect(zoomed.scaledContentSize == zoomed.viewportSize)
+            #expect(zoomed.offset == .zero)
+        }
+    }
+
+    @Test(arguments: [
+        // Odd slack: 400 − 101 = 299 and 300 − 51 = 249, half rounded down.
+        (CGFloat(1), CGPoint(x: 149, y: 124)),
+        // 303×153: slack 97 and 147.
+        (CGFloat(3), CGPoint(x: 48, y: 73)),
+        // 252.5×127.5: slack 147.5 and 172.5, half of it 73.75 and 86.25.
+        (CGFloat(2.5), CGPoint(x: 73, y: 86)),
+    ])
+    func theCentredOffsetIsWholePixels(zoom: CGFloat, expected: CGPoint) {
+        let state = ZoomPanState(
+            zoom: 3.9, offset: CGPoint(x: -17, y: -3), contentSize: CGSize(width: 101, height: 51),
+            viewportSize: CGSize(width: 400, height: 300))
+        #expect(state.zoomed(to: zoom, around: CGPoint(x: 123.4, y: 56.7)).offset == expected)
+    }
+
+    @Test(arguments: [CGFloat(1), 2])
+    func zoomOutCentresTheSameOnA1xAndA2xDisplay(scale: CGFloat) {
+        // The same Capture Area and Viewer in points: on a 2× display both have twice the pixels.
+        // 300×200 at 4× (1200×800) in 1000×600, shown at its bottom-right; 2× is 600×400, centred.
+        let state = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: -200 * scale, y: -200 * scale),
+            contentSize: CGSize(width: 300 * scale, height: 200 * scale),
+            viewportSize: CGSize(width: 1000 * scale, height: 600 * scale))
+        let zoomed = state.zoomed(to: 2, around: CGPoint(x: 500 * scale, y: 300 * scale))
+        #expect(zoomed.offset == CGPoint(x: 200 * scale, y: 100 * scale))
+    }
+
+    @Test func panningASmallImageAfterAZoomStaysFree() {
+        // Centring is a zoom's: a pan afterwards moves a smaller image anywhere inside the viewport.
+        let zoomed = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: -1000, y: -100), contentSize: CGSize(width: 500, height: 200),
+            viewportSize: CGSize(width: 1000, height: 600)
+        ).zoomed(to: 1, around: CGPoint(x: 500, y: 300))
+        #expect(zoomed.panned(by: CGPoint(x: -200, y: 150)).offset == CGPoint(x: 50, y: 350))
+    }
+
+    @Test func resizingTheViewportKeepsASmallImageWhereItIs() {
+        // Not a zoom: a smaller image off centre stays where it is when the viewport grows.
+        var state = ZoomPanState(
+            zoom: 1, offset: CGPoint(x: 40, y: 20), contentSize: CGSize(width: 100, height: 50),
+            viewportSize: CGSize(width: 400, height: 300))
+        state.viewportSize = CGSize(width: 600, height: 500)
+        #expect(state.clamped().offset == CGPoint(x: 40, y: 20))
+        let resized = state.resizingContent(to: CGSize(width: 120, height: 50), originShift: .zero)
+        #expect(resized.offset == CGPoint(x: 40, y: 20))
+    }
+
     // MARK: Dragging the outline of the visible part
 
     /// 400×200 at 8× in an 800×400 viewport, showing 100×50 from (100, 50).

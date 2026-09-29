@@ -98,7 +98,9 @@ struct ZoomPanState: Equatable, Sendable {
         return min(max(fit, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
     }
 
-    /// Changes the zoom keeping the source point under `anchor` (a viewport point) in place.
+    /// Changes the zoom keeping the source point under `anchor` (a viewport point) in place. On an axis
+    /// where the image comes out no larger than the viewport it is centred instead; on a larger one it
+    /// is kept against the edges as any pan is.
     func zoomed(to newZoom: CGFloat, around anchor: CGPoint) -> ZoomPanState {
         let target = min(max(newZoom, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
         var next = self
@@ -107,7 +109,15 @@ struct ZoomPanState: Equatable, Sendable {
             y: anchor.y - (anchor.y - offset.y) * target / zoom
         )
         next.zoom = target
-        return next.clamped()
+        next = next.clamped()
+        let scaled = next.scaledContentSize
+        if scaled.width <= viewportSize.width {
+            next.offset.x = Self.centeredAxis(content: scaled.width, viewport: viewportSize.width)
+        }
+        if scaled.height <= viewportSize.height {
+            next.offset.y = Self.centeredAxis(content: scaled.height, viewport: viewportSize.height)
+        }
+        return next
     }
 
     /// The next ladder step above (`direction > 0`) or below the current zoom.
@@ -125,8 +135,9 @@ struct ZoomPanState: Equatable, Sendable {
         return next.centered()
     }
 
-    /// The image centred on both axes. Only on request (Fit, the first frame): centring on every
-    /// change would move the image by itself (docs/product.md, "Nothing moves unless you move it").
+    /// The image centred on both axes. Only on request (Fit, the first frame, and a zoom on an axis
+    /// where the image is no larger than the viewport): centring on a resize or a pan would move the
+    /// image by itself (docs/product.md, "Nothing moves unless you move it").
     func centered() -> ZoomPanState {
         var next = self
         next.offset = CGPoint(

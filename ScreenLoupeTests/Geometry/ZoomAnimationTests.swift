@@ -284,6 +284,60 @@ struct ZoomAnimationTests {
         #expect(Self.close(shown.offset.y, 20 - 40 * e, 1e-3))
     }
 
+    // MARK: Zooming out to a centred image
+
+    /// 500×200 at 4× (2000×800) in 1000×600, shown at its right part, then 1× (500×200) around the
+    /// centre: the target is centred on both axes.
+    private static func zoomOutToCentred(offsetX: CGFloat) -> ZoomAnimation {
+        let from = ZoomPanState(
+            zoom: 4, offset: CGPoint(x: offsetX, y: -100), contentSize: CGSize(width: 500, height: 200),
+            viewportSize: CGSize(width: 1000, height: 600))
+        return ZoomAnimation(from: from, to: from.zoomed(to: 1, around: CGPoint(x: 500, y: 300)), start: start)
+    }
+
+    @Test(arguments: [CGFloat(-1000), -500, 0])
+    func aGlideToACentredImageEndsExactlyAtTheModel(offsetX: CGFloat) {
+        let animation = Self.zoomOutToCentred(offsetX: offsetX)
+        #expect(animation.to.offset == CGPoint(x: 250, y: 200))
+        #expect(animation.state(at: Self.time(1)) == animation.to)
+        // No jump at the end: just before it the view is a fraction of a pixel from the model.
+        let last = animation.state(at: Self.time(0.999))
+        #expect(abs(last.offset.x - animation.to.offset.x) < 0.01)
+        #expect(abs(last.offset.y - animation.to.offset.y) < 0.01)
+        #expect(Self.close(last.zoom, animation.to.zoom, 1e-4))
+    }
+
+    @Test(arguments: [CGFloat(-1000), -500, 0])
+    func aGlideToACentredImageMovesEachEdgeOneWayAndWithinTheLimits(offsetX: CGFloat) {
+        // Every edge of the image moves one way, without jumps, and the view stays within the pan
+        // limits, although they switch from covering the viewport to staying inside it midway.
+        let animation = Self.zoomOutToCentred(offsetX: offsetX)
+        var previous = animation.state(at: Self.time(0))
+        var directions: [CGFloat] = [0, 0, 0, 0]
+        for step in 1...2000 {
+            let shown = animation.state(at: Self.time(Double(step) / 2000))
+            let limits = Self.limits(shown)
+            #expect(limits.x.contains(shown.offset.x) && limits.y.contains(shown.offset.y))
+            let edges = [
+                shown.offset.x, shown.offset.x + shown.scaledContentSize.width,
+                shown.offset.y, shown.offset.y + shown.scaledContentSize.height,
+            ]
+            let previousEdges = [
+                previous.offset.x, previous.offset.x + previous.scaledContentSize.width,
+                previous.offset.y, previous.offset.y + previous.scaledContentSize.height,
+            ]
+            for index in edges.indices {
+                let move = edges[index] - previousEdges[index]
+                // 2000 samples of a 2000 px image shrinking to 500: no step near a jump.
+                #expect(abs(move) < 5)
+                #expect(move * directions[index] >= -1e-9)
+                if abs(move) > 1e-9 { directions[index] = move }
+            }
+            previous = shown
+        }
+        #expect(previous == animation.to)
+    }
+
     // MARK: Time
 
     @Test func beforeTheStartItShowsTheOrigin() {
