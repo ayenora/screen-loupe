@@ -1,8 +1,8 @@
 import AppKit
 import Observation
 
-/// A picture kept by Take Snapshot, or an image file opened to inspect (docs/product.md, Recent
-/// Captures). A snapshot keeps the part of the Capture Area's frame the Viewer shows, or the
+/// A picture kept by Take Snapshot, or an image file opened to inspect. A snapshot keeps the part of the Capture Area's
+/// frame the Viewer shows, or the
 /// selection, at native resolution, so every tool works on real screen pixels when it is opened again.
 struct RecentCapture: Identifiable {
     let id = UUID()
@@ -13,7 +13,7 @@ struct RecentCapture: Identifiable {
     let date: Date
     /// The kept frame, or an image file, small, for the panel.
     let thumbnail: CGImage?
-    /// An image file (docs/product.md, Open Image), not a snapshot of the screen.
+    /// An image file, not a snapshot of the screen.
     let isFile: Bool
     /// How the Viewer shows it: as when it was taken, then as it was last left. `nil`: fitted to the
     /// Viewer, as an image file first shows.
@@ -41,8 +41,7 @@ struct RecentCapture: Identifiable {
 }
 
 /// The last snapshots of the Capture Area and images opened from files, kept in memory until the
-/// app quits, and which of them the Viewer shows in place of the live view (docs/product.md, Recent
-/// Captures).
+/// app quits, and which of them the Viewer shows in place of the live view.
 @MainActor
 @Observable
 final class RecentCaptures {

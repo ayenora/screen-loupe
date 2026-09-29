@@ -40,7 +40,7 @@ extension BackgroundColor {
 }
 
 /// Puts a studio picture into the display's colour space, draws the studio's backdrop, and lays a
-/// lone window over its background (docs/design.md, Screenshot studio).
+/// lone window over its background.
 enum StudioComposite {
     /// Whether `image` carries alpha, so a fill can show through where nothing was captured.
     static func hasAlpha(_ image: CGImage) -> Bool {

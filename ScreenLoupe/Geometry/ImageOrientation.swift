@@ -1,4 +1,4 @@
-/// How to turn an image stored with an EXIF orientation upright (docs/design.md §2): mirrored left
+/// How to turn an image stored with an EXIF orientation upright: mirrored left
 /// to right first, then turned clockwise by quarter turns. For an opened image and reference layers.
 struct ImageOrientation: Equatable, Sendable {
     var mirrored: Bool

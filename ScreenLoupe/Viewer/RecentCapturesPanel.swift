@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The Recent Captures panel at the right of the Viewer (docs/product.md, Recent Captures): the
+/// The Recent Captures panel at the right of the Viewer: the
 /// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
 /// newest first — square thumbnail, "Snapshot" or the image file's name, its size, its date and time,
 /// and Delete. Clicking a row shows it in the Viewer. Every size but the camera button's is

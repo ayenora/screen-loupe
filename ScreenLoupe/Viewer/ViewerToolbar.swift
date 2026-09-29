@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Viewer's toolbar (docs/product.md, Viewer): zoom presets and the current zoom on the left; Freeze
+/// The Viewer's toolbar: zoom presets and the current zoom on the left; Freeze
 /// with its menu of delays, the Select tool, the Ruler, the Grid toggle, the pointer toggle with its
 /// menu of styles, the Color Meter, References and Recent Captures toggles, Copy, Save and the
 /// keep-on-top pin on the right.
@@ -58,7 +58,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let presetTitles = ["Fit"] + ZoomPanState.presets.map { "\(Int($0))×" }
     private let presets = NSSegmentedControl(
         labels: presetTitles, trackingMode: .selectOne, target: nil, action: nil)
-    /// The current zoom in percent; typing a number and Return sets it (docs/product.md, Zoom and pan).
+    /// The current zoom in percent; typing a number and Return sets it.
     /// Leaving the field any other way drops what was typed.
     private let zoomLabel = NSTextField(string: "")
     /// The zoom the label last showed, to tell a zoom change from a pan.
@@ -277,8 +277,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         show(isOn, on: freezeButton)
     }
 
-    /// While a recent capture shows, Freeze and the pointer have nothing to act on (docs/product.md,
-    /// Recent Captures).
+    /// While a recent capture shows, Freeze and the pointer have nothing to act on.
     func setShowingCapture(_ isShowing: Bool) {
         for button in [freezeButton, freezeMenuButton, toggleButtons[.crosshair], pointerMenuButton] {
             button?.isEnabled = !isShowing

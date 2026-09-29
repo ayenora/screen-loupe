@@ -15,7 +15,7 @@ enum CaptureProblem: Equatable {
     case failed(reason: String, afterUserRetry: Bool)
 }
 
-/// Streams the Capture Area with ScreenCaptureKit into a `FrameStore` (docs/design.md §2.1).
+/// Streams the Capture Area with ScreenCaptureKit into a `FrameStore`.
 ///
 /// One stream captures one display, excluding every window of this app but the Screenshot studio's
 /// backdrop, which the Viewer shows like the desktop it covers. Moving or resizing the area
@@ -75,14 +75,14 @@ final class ScreenCaptureManager: NSObject {
         processUpdates()
     }
 
-    /// Whether the capture records the real pointer into its pixels (docs/product.md, Crosshair and
-    /// cursor: Original Cursor in the Capture). A running stream takes it with a configuration update.
+    /// Whether the capture records the real pointer into its pixels (Original Cursor in the Capture). A running
+    /// stream takes it with a configuration update.
     var showsCursor = false {
         didSet { if showsCursor != oldValue { processUpdates() } }
     }
 
-    /// The window of this app the stream keeps: the studio's backdrop while it shows (docs/design.md
-    /// §2.1). A running stream takes it with a filter update.
+    /// The window of this app the stream keeps: the studio's backdrop while it shows. A running stream takes it with a
+    /// filter update.
     var keptWindow: CGWindowID? {
         didSet {
             guard keptWindow != oldValue else { return }
@@ -293,8 +293,8 @@ final class ScreenCaptureManager: NSObject {
 
     /// The whole display minus every window of this app but `keptWindow`: the Capture Area frame and
     /// the Viewer never show up in the capture, wherever they are; the studio's backdrop does, as it
-    /// is on screen (docs/design.md §2.1). The app is excluded as a whole, or, when it isn't listed
-    /// (docs/design.md §6, risk 4), its windows are named one by one (`StudioFilter`).
+    /// is on screen. The app is excluded as a whole, or, when it isn't listed, its windows are named one by one
+    /// (`StudioFilter`).
     private func filter(for display: SCDisplay, in content: SCShareableContent) -> SCContentFilter {
         let pid = ProcessInfo.processInfo.processIdentifier
         let listed = content.windows.map { ListedWindow(id: $0.windowID, ownerPID: $0.owningApplication?.processID) }

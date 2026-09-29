@@ -1,4 +1,4 @@
-/// Which key combinations a global shortcut may use (docs/product.md, Settings › Shortcuts).
+/// Which key combinations a global shortcut may use.
 enum ShortcutRules {
     /// The modifiers of a combination.
     struct Modifiers: Equatable, Sendable {

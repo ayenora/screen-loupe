@@ -17,9 +17,9 @@ extension MTKView {
 /// arriving.
 ///
 /// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel (or a
-/// bare mouse wheel, per Settings), `+`/`-`; `0` fits (docs/product.md, Zoom and pan). With the Color Meter open the cursor is an eyedropper and a
+/// bare mouse wheel, per Settings), `+`/`-`; `0` fits. With the Color Meter open the cursor is an eyedropper and a
 /// click (without dragging) pins the colour under it. Option-drag copies a region; with the Select
-/// tool on a drag selects and Space-drag pans (docs/product.md, Screenshots).
+/// tool on a drag selects and Space-drag pans.
 final class ViewerView: MTKView {
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
@@ -249,7 +249,7 @@ final class ViewerView: MTKView {
     // MARK: Tools
 
     /// The corner ruler takes presses on its parts before the reference layers, and they before
-    /// panning (docs/product.md, Ruler and References). An Option-drag comes before all of them,
+    /// panning. An Option-drag comes before all of them,
     /// and the Select tool, while on, before the reference layers.
     var ruler: RulerController?
     var references: ReferencesController? {

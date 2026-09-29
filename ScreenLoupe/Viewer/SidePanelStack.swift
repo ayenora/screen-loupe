@@ -24,7 +24,7 @@ extension Settings {
 }
 
 /// The panels at the right of the Viewer, top down: the Color Meter, then References or Recent
-/// Captures (docs/product.md, References and Recent Captures). With two open only one is expanded
+/// Captures. With two open only one is expanded
 /// and fills the height; the other is a strip in its place that expands it when clicked.
 ///
 /// Dragging the left edge (`SidePanelEdge`) widens the column within `SidePanel.widthRange`, and

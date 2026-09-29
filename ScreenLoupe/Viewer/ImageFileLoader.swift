@@ -3,8 +3,8 @@ import CoreVideo
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Reads image files, and pasted image data, for the Viewer: an opened image (docs/product.md, Open
-/// Image) and reference layers (References). Called off the main actor: a large file takes a while
+/// Reads image files, and pasted image data, for the Viewer: an opened image and reference layers (References). Called
+/// off the main actor: a large file takes a while
 /// to decode.
 enum ImageFileLoader {
     /// The image files Open Image and references take: every type ImageIO reads, but not PDF. Read
@@ -72,7 +72,7 @@ enum ImageFileLoader {
         return vImageCreateCGImageFromBuffer(&turned, &format, nil, nil, flags, nil)?.takeRetainedValue()
     }
 
-    /// The image file at `url` as a picture of its own (docs/design.md §2): `image(at:)` copied once
+    /// The image file at `url` as a picture of its own: `image(at:)` copied once
     /// into a buffer like a recent capture's, one pixel per point, as straight (not premultiplied)
     /// BGRA in the image's own colour space (`CGColorSpace.rgbSpace(forImageIn:)`), so its values and
     /// its transparency stay as they are. More than 8 bits per component are rounded to 8. `nil`

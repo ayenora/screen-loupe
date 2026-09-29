@@ -1,7 +1,6 @@
 import CoreGraphics
 
 // Each coordinate system has its own type so the compiler refuses to mix them.
-// See docs/design.md §3 for the systems and how they relate.
 
 /// AppKit global coordinates: points, origin at the bottom-left of the primary display, y up.
 /// Secondary displays can have negative coordinates.

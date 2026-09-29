@@ -1,8 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// How long the Screenshot studio waits before Capture, Copy or Save take the picture
-/// (docs/product.md, Screenshot studio). Saved as its seconds; a value only another version knows
+/// How long the Screenshot studio waits before Capture, Copy or Save take the picture. Saved as its seconds; a value
+/// only another version knows
 /// decodes as off.
 enum StudioDelay: Int, Codable, CaseIterable, Sendable {
     case off = 0
@@ -32,7 +32,7 @@ enum StudioShot: Equatable, Sendable {
     }
 }
 
-/// The studio's countdown before a picture (docs/design.md, Screenshot studio): idle, or counting
+/// The studio's countdown before a picture: idle, or counting
 /// down to one shot. Times are seconds on a monotonic clock.
 enum StudioCountdown: Equatable, Sendable {
     case idle

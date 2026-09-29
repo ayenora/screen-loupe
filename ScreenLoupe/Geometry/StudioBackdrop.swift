@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// The Screenshot studio's backdrop (docs/design.md, Screenshot studio): a window covering the
+/// The Screenshot studio's backdrop: a window covering the
 /// whole display the studio's frame is on, above the wallpaper and the desktop icons and below
 /// every other window, showing the chosen background. The picture then is plain what the frame
 /// shows.

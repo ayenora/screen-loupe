@@ -45,7 +45,7 @@ enum OverlayHitTarget: Hashable, Sendable {
     }
 }
 
-/// What keeps the Capture Area in place while the pin is on (docs/product.md, Capture Area). Moving
+/// What keeps the Capture Area in place while the pin is on. Moving
 /// by the line and the arrow keys is blocked by every lock, by the tab by all but the magnet; Fit to
 /// Window works with any, as a deliberate command.
 enum CaptureAreaLock: String, Codable, CaseIterable, Sendable {
@@ -88,7 +88,7 @@ enum TabPlacement: Equatable, Sendable {
     case above, below, inside
 }
 
-/// Sizes of the frame's parts, in points (docs/design.md §4).
+/// Sizes of the frame's parts, in points.
 struct OverlayMetrics: Sendable {
     /// The line is drawn this far outside the captured rect, so every captured pixel stays visible.
     var lineWidth: CGFloat = 1

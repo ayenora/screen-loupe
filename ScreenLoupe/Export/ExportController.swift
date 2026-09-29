@@ -1,7 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// Copy and Save, of the view and of the source (docs/product.md, Screenshots): the images, the
+/// Copy and Save, of the view and of the source: the images, the
 /// clipboard, the save panel with the Settings › Screenshots choices, and the confirmations.
 @MainActor
 final class ExportController {

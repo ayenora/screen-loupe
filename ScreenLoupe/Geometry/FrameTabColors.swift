@@ -1,8 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// The frame tab's fill and whether its text and grip are white, from the frame's sRGB accent
-/// (docs/design.md §4, Capture Area frame). The tab is the accent at 78%. White goes on it when it
+/// The frame tab's fill and whether its text and grip are white, from the frame's sRGB accent. The tab is the accent at
+/// 78%. White goes on it when it
 /// reaches 4.5:1 there, or on a tab darkened in steps of 2% down to 70% of the accent: WCAG 2 rates
 /// black higher on mid oranges, where white reads better. Otherwise black goes on the 78% tab.
 struct FrameTabColors: Equatable {

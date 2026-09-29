@@ -1,7 +1,7 @@
 import CoreGraphics
 
 /// How the pixels of the picture the Viewer shows are laid out: a live frame, a frozen one or a
-/// recent capture (docs/design.md §2). Every tool counts pixels from the picture's top-left, so
+/// recent capture. Every tool counts pixels from the picture's top-left, so
 /// they all work on each of them alike.
 struct FrameLayout: Equatable, Sendable {
     /// The whole picture in pixels: the Capture Area, or the part a recent capture keeps of it.
@@ -32,7 +32,7 @@ extension FrameLayout {
     /// The picture cut to `rect`, whole pixels from its top-left: the picture becomes `rect` and the
     /// frame the part of it inside `rect`. `offset` is where that part starts in the frame, to copy
     /// from. `nil` when none of the frame is inside. For a snapshot of the part the Viewer shows or
-    /// of a selection (docs/product.md, Recent Captures).
+    /// of a selection.
     func cropped(toArea rect: CGRect) -> (layout: FrameLayout, offset: PixelSize)? {
         let image = CGRect(
             x: imageOrigin.x, y: imageOrigin.y, width: CGFloat(imageSize.width), height: CGFloat(imageSize.height))

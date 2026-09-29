@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Screenshot studio's palette (docs/product.md, Screenshot studio): the Viewer's toolbar turned
+/// The Screenshot studio's palette: the Viewer's toolbar turned
 /// upright — its buttons in groups on a thin utility window that can't be resized, dragged by any
 /// place but a button and parked anywhere, apart from the frame. Its close button hides the studio.
 ///
@@ -252,7 +252,7 @@ final class StudioPalette: NSPanel {
         button.isBordered = false
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
         button.imagePosition = .imageOnly
-        // At the symbol scale `NSToolbar` gives a `.toolbar`-bezel button's image (docs/design.md).
+        // At the symbol scale `NSToolbar` gives a `.toolbar`-bezel button's image.
         button.symbolConfiguration = NSImage.SymbolConfiguration(scale: .large)
         button.imageScaling = .scaleNone
         button.contentTintColor = .labelColor

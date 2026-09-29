@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// The glide of a zoom command (docs/product.md, Zoom and pan; docs/design.md §3): the model jumps
+/// The glide of a zoom command: the model jumps
 /// to `to` at once, and the Viewer shows `state(at:)`, which goes from `from` to `to` over
 /// `duration` seconds from `start`.
 ///

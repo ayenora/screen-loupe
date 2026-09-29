@@ -1,7 +1,7 @@
 import CoreGraphics
 
-/// The Capture Area's margins while it is fitted to its magnet's window (docs/product.md, Capture
-/// Area): four distances in points from the frame's edges inward. The frame stays on the window's
+/// The Capture Area's margins while it is fitted to its magnet's window: four distances in points from the frame's
+/// edges inward. The frame stays on the window's
 /// bounds; what is captured is the inner rect. Global coordinates, y up: the top margin is taken off
 /// `maxY`.
 struct CaptureMargins: Codable, Equatable, Sendable {

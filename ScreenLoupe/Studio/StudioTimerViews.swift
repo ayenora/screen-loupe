@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The Timer list beside the palette (docs/product.md, Screenshot studio): how long Capture, Copy
+/// The Timer list beside the palette: how long Capture, Copy
 /// and Save wait. Shown in `StudioListPanel`, as the Size list is.
 struct StudioTimerList: View {
     let current: StudioDelay

@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Where the Viewer's side column is resized (docs/design.md, References): only a strip along its
+/// Where the Viewer's side column is resized: only a strip along its
 /// left edge. A mouse-down anywhere else belongs to the panel under it, even where that panel takes
 /// no click and AppKit passes it up to the column.
 enum SidePanelEdge {

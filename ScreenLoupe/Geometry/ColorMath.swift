@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// One screen pixel's colour: the value as captured, in the display's colour space, and the same
-/// colour converted to sRGB for HEX/RGB (docs/design.md §4, Pixel Inspector).
+/// colour converted to sRGB for HEX/RGB.
 struct ColorSample: Equatable, Sendable {
     /// Components 0...1 in the display's colour space, as captured.
     var native: (red: Double, green: Double, blue: Double)
@@ -10,7 +10,7 @@ struct ColorSample: Equatable, Sendable {
     var nativeSpaceName: String
     /// Components 0...1 in sRGB, clamped: colours outside sRGB are clipped for HEX.
     var srgb: (red: Double, green: Double, blue: Double)
-    /// Opacity 0...1, straight: 1 for the screen, an opened image's own (docs/product.md, Open Image).
+    /// Opacity 0...1, straight: 1 for the screen, an opened image's own.
     var alpha: Double
 
     static func == (a: ColorSample, b: ColorSample) -> Bool {
@@ -126,8 +126,8 @@ struct ColorSample: Equatable, Sendable {
 }
 
 extension CGColorSpace {
-    /// The colour space an opened image's pixels are kept in, as 8-bit BGRA like a captured frame
-    /// (docs/design.md §2): the image's own when it is RGB, and a palette's RGB base for an indexed
+    /// The colour space an opened image's pixels are kept in, as 8-bit BGRA like a captured frame: the image's own when
+    /// it is RGB, and a palette's RGB base for an indexed
     /// one, so the values stay as they are; sRGB for anything else (gray, CMYK, an extended-range
     /// space of a float image, which 8 bits can't hold), which is converted.
     /// ImageIO already gives an image without a profile sRGB.

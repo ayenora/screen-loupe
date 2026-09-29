@@ -2,8 +2,8 @@ import AppKit
 import OSLog
 @preconcurrency import ScreenCaptureKit
 
-/// One screenshot of the Screenshot studio's frame with `SCScreenshotManager` (docs/design.md,
-/// Screenshot studio). Like the Viewer's stream it leaves out every window of the app — the studio's
+/// One screenshot of the Screenshot studio's frame with `SCScreenshotManager`. Like the Viewer's stream it leaves out
+/// every window of the app — the studio's
 /// frame, palette and hover label, menus, alerts — except the ones the caller names: the Viewer, the
 /// Capture Area frame and the studio's backdrop, which are captured like any other window on screen.
 /// So the picture is what the frame shows, the backdrop's background among it. Or, for One Window,
@@ -14,7 +14,7 @@ enum StudioCapture {
         var errorDescription: String? { "The display isn't available for capture." }
     }
 
-    /// How long a ScreenCaptureKit call may take, as for the stream (docs/design.md §2.1).
+    /// How long a ScreenCaptureKit call may take, as for the stream.
     private static let callTimeout: Double = 5
 
     /// The pixels of `geometry` at the display's native resolution, with the pointer when `pointer`
@@ -68,8 +68,8 @@ enum StudioCapture {
     /// One Window's picture: the window numbered `id` alone with `SCContentFilter(desktopIndependentWindow:)`,
     /// with or without its `shadow`, at its native pixels, centred in a picture of `frame` pixels,
     /// grown where the window with its shadow needs more (`OneWindowPicture.pictureSize`), in
-    /// `display`'s colour space, over `fill` or transparent without one (docs/design.md, Screenshot
-    /// studio). Never scaled: a window not on screen, or on a display of another scale, gives a
+    /// `display`'s colour space, over `fill` or transparent without one. Never scaled: a window not on screen, or on a
+    /// display of another scale, gives a
     /// `OneWindowProblem` before anything is captured.
     static func window(
         _ id: CGWindowID, frame: PixelSize, display: DisplayInfo, shadow: Bool, over fill: StudioFill?
@@ -147,7 +147,7 @@ enum StudioCapture {
     private static let log = Logger(category: "studio")
 
     /// The display minus every window of this app but `included` (`StudioFilter`): the app is
-    /// excluded as a whole, or, when it isn't listed (docs/design.md §6, risk 4), its windows are
+    /// excluded as a whole, or, when it isn't listed, its windows are
     /// named one by one.
     private static func filter(
         for display: SCDisplay, in content: SCShareableContent, including included: Set<CGWindowID>

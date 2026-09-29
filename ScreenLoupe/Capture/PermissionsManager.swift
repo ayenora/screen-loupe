@@ -1,7 +1,7 @@
 import AppKit
 import CoreGraphics
 
-/// Screen Recording permission (docs/product.md, Permissions).
+/// Screen Recording permission.
 @MainActor
 final class PermissionsManager {
     /// Whether the app may capture the screen. macOS may keep reporting `false` after the user

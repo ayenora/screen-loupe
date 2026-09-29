@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// What Recent Captures keeps and how its rows read (docs/product.md, Recent Captures).
+/// What Recent Captures keeps and how its rows read.
 enum RecentCaptureRules {
     /// How many rows the list keeps.
     static let limit = 8

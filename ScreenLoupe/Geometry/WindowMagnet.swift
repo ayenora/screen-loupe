@@ -16,8 +16,8 @@ struct ScreenWindow: Equatable, Sendable {
     var isOrdinaryAndVisible: Bool { layer == 0 && alpha > 0 && !frame.isEmpty }
 }
 
-/// Picking a window, and the magnet that keeps the Capture Area on one (docs/product.md, Capture
-/// Area). Global coordinates, y up; results are not snapped to pixels.
+/// Picking a window, and the magnet that keeps the Capture Area on one. Global coordinates, y up; results are not
+/// snapped to pixels.
 enum WindowMagnet {
     /// The frontmost of `windows`, listed front to back, that contains `point`.
     static func window(at point: CGPoint, in windows: [ScreenWindow]) -> ScreenWindow? {

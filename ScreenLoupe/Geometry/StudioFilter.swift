@@ -22,7 +22,7 @@ enum StudioFilter {
     }
 
     /// Excludes the app as a whole when it is listed, which also covers a window of the app that
-    /// appears while the picture is taken; otherwise (docs/design.md §6, risk 4) names every window
+    /// appears while the picture is taken; otherwise names every window
     /// to leave out.
     static func path(_ windows: [ListedWindow], ownPID: Int32, appIsListed: Bool, kept: Set<CGWindowID>) -> Path {
         appIsListed ? .excludingApp : .excludingWindows(excluded(windows, ownPID: ownPID, kept: kept))

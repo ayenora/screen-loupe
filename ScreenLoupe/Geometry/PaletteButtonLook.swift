@@ -1,4 +1,4 @@
-/// How a studio palette button draws (docs/design.md, Screenshot studio): the toolbar's on and
+/// How a studio palette button draws: the toolbar's on and
 /// pressed look. Pressed, with its list open or while its picker runs, a grey fill under the
 /// label-coloured symbol; a toggle that is on, the accent colour under a near-white symbol, both
 /// faded while the button is off, as the toolbar's are. A momentary button's `state` flips on every

@@ -1,6 +1,6 @@
 import AppKit
 
-/// Shown in the Viewer instead of the capture while Screen Recording access is missing (docs/product.md, Permissions).
+/// Shown in the Viewer instead of the capture while Screen Recording access is missing.
 final class PermissionView: NSView {
     private let permissions: PermissionsManager
 

@@ -4,7 +4,7 @@ import CoreGraphics
 ///
 /// Everything is in device pixels with a top-left origin, y down: source pixels of the captured
 /// image, and drawable pixels of the Viewer. `zoom` is drawable pixels per source pixel, so 8 means
-/// every source pixel covers exactly 8×8 drawable pixels (docs/design.md §3).
+/// every source pixel covers exactly 8×8 drawable pixels.
 struct ZoomPanState: Equatable, Sendable {
     static let presets: [CGFloat] = [1, 2, 4, 8, 16]
     /// Steps for `+`/`-` and for snapping keyboard zoom.
@@ -175,7 +175,7 @@ struct ZoomPanState: Equatable, Sendable {
 
     /// The image centred on both axes. Only on request (Fit, the first frame, and a zoom without a
     /// pointer on an axis where the image is no larger than the viewport): centring on a resize or a
-    /// pan would move the image by itself (docs/product.md, "Nothing moves unless you move it").
+    /// pan would move the image by itself.
     func centered() -> ZoomPanState {
         var next = self
         next.offset = CGPoint(

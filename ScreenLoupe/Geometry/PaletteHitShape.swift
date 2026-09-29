@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Where a studio palette button takes the mouse (docs/design.md, The palette): only where it shows,
+/// Where a studio palette button takes the mouse: only where it shows,
 /// inside its group's rounded outline. Its square corners outside that outline are the window's
 /// background, so a mouse-down there drags the palette.
 enum PaletteHitShape {

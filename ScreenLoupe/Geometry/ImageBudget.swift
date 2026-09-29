@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// The largest image the app makes or loads (docs/design.md §2.4): 4096 × 4096 pixels, about 16
+/// The largest image the app makes or loads: 4096 × 4096 pixels, about 16
 /// megapixels, and no side over Metal's texture limit. A copy, a saved file or a reference layer
 /// that would be bigger keeps its top-left corner and is cropped, never scaled.
 enum ImageBudget {

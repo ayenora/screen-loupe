@@ -88,8 +88,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: First launch
 
-    /// Puts a Viewer that has no saved frame beside the Capture Area rather than over it
-    /// (docs/design.md §7, acceptance step 3): right of it, else left, else below, else above; clamped to the screen.
+    /// Puts a Viewer that has no saved frame beside the Capture Area rather than over it: right of it, else left, else
+    /// below, else above; clamped to the screen.
     func placeOnFirstLaunch(beside area: CGRect) {
         guard !hasSavedFrame, let window else { return }
         let screen =
@@ -122,7 +122,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Copy View
 
-    /// What the Viewer shows, rendered offscreen (docs/design.md §2.4). `nil` without a frame.
+    /// What the Viewer shows, rendered offscreen. `nil` without a frame.
     func renderViewImage(showsGrid: Bool) -> CGImage? {
         content.viewerView.renderViewImage(showsGrid: showsGrid)
     }
@@ -153,7 +153,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Recent Captures
 
-    /// Whether a recent capture shows in place of the live view (docs/product.md, Recent Captures).
+    /// Whether a recent capture shows in place of the live view.
     var isShowingCapture: Bool { content.isShowingCapture }
 
     /// Called when a recent capture starts or stops showing.
@@ -187,8 +187,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Open Image
 
-    /// Shows an opened image in place of the live view, as a new recent capture (docs/product.md,
-    /// Open Image). Without Screen Recording access the content comes in for it first; it fits
+    /// Shows an opened image in place of the live view, as a new recent capture. Without Screen Recording access the
+    /// content comes in for it first; it fits
     /// once the content has its size.
     func showImage(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) {
         if showsPermissionView == true { showContent(true) }
@@ -198,7 +198,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Paste
 
     /// Pastes the clipboard's image where a drop would go, or where `chosen` says
-    /// (`ViewerContentView.paste`; docs/product.md, Dropping and pasting images).
+    /// (`ViewerContentView.paste`).
     func paste(as chosen: ImageDestination?) {
         content.paste(as: chosen)
     }
@@ -230,7 +230,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Sizes the window so the whole magnified Capture Area shows at the current zoom. The window
-    /// never grows beyond its screen; a bigger image still pans (docs/product.md, Viewer).
+    /// never grows beyond its screen; a bigger image still pans.
     func sizeToArea() {
         guard canSizeToArea, let window, let screen = window.screen else { return }
         let image = zoomPan.state.scaledContentSize
@@ -301,7 +301,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Swaps between the permission explanation and the capture when the permission state changes.
-    /// An opened image shows without access too (docs/product.md, Open Image).
+    /// An opened image shows without access too.
     func refreshContent() {
         let access = permissions.hasScreenRecordingAccess && !permissionDeniedByCapture
         let needsPermission = !access && !isShowingCapture

@@ -1,6 +1,6 @@
 import AppKit
 
-/// The outline of the part of the Capture Area the Viewer shows (docs/product.md, Capture Area), in
+/// The outline of the part of the Capture Area the Viewer shows, in
 /// a click-through panel of its own just below the frame's: the frame's panel takes presses on every
 /// drawn pixel, and the outline must never take one, also while it stays shown with the viewport
 /// handle. It also draws the frame's line while the magnet's area is fitted to its window, so the

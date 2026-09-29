@@ -3,7 +3,7 @@ import CoreVideo
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Capture Source images, the clipboard and PNG files (docs/product.md, Screenshots), and the
+/// Capture Source images, the clipboard and PNG files, and the
 /// studio's pictures on the clipboard. Capture View is rendered by the Viewer itself
 /// (`ViewerView.renderViewImage`).
 enum ScreenshotExporter {

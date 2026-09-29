@@ -1,7 +1,6 @@
 import CoreGraphics
 
-/// Where the Screenshot studio's frame and palette go when nothing is kept for them
-/// (docs/product.md, Screenshot studio). AppKit global coordinates, y up.
+/// Where the Screenshot studio's frame and palette go when nothing is kept for them. AppKit global coordinates, y up.
 enum StudioPlacement {
     /// The frame's size the first time, shrunk to fit its display.
     static let defaultFrameSize = CGSize(width: 1440, height: 900)

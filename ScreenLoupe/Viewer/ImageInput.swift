@@ -1,6 +1,6 @@
 import AppKit
 
-/// Images coming into the Viewer from outside (docs/product.md, Dropping and pasting images): image
+/// Images coming into the Viewer from outside: image
 /// files dropped or copied in Finder, or image data on the clipboard.
 enum ImageInput {
     case files([URL])

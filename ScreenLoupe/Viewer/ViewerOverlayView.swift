@@ -1,7 +1,7 @@
 import AppKit
 
 /// Drawn over the magnified image: the pointer on the pixel under the real cursor inside the
-/// Capture Area, which the capture itself doesn't show (docs/product.md, Crosshair and cursor).
+/// Capture Area, which the capture itself doesn't show.
 ///
 /// Only for the real cursor: when the mouse is over the Viewer, the mouse pointer already marks the
 /// spot. As a crosshair, lines run across the whole view through that pixel and a box outlines it;
@@ -295,12 +295,12 @@ final class ViewerOverlayView: NSView {
     }
 }
 
-/// Over the image while the view is frozen or a delayed freeze counts down (docs/product.md, Freeze
-/// frame): an accent border around the image area and a chip at its top — solid and "Frozen · Space
+/// Over the image while the view is frozen or a delayed freeze counts down: an accent border around the image area and
+/// a chip at its top — solid and "Frozen · Space
 /// to resume" when frozen, dashed with a shrinking ring and the seconds left while counting down.
 /// After a freeze from another app a second chip at the bottom says how it happened. A recent
-/// capture shown in place of the live view gets a purple border and its own chip (docs/product.md,
-/// Recent Captures). Never in Copy View, which draws the frame itself.
+/// capture shown in place of the live view gets a purple border and its own chip. Never in Copy View, which draws the
+/// frame itself.
 final class FrozenIndicatorView: NSView {
     enum State: Equatable {
         case hidden

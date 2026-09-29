@@ -1,6 +1,6 @@
 import AppKit
 
-/// Copying a part of the Viewer (docs/product.md, Screenshots): the Select tool's selection, snapped
+/// Copying a part of the Viewer: the Select tool's selection, snapped
 /// to source pixels, and the free region of an Option-drag. The math is `PixelSelection` and
 /// `ViewRegion`; points here are drawable pixels, y down, as in `ZoomPanState`.
 @MainActor
@@ -92,7 +92,7 @@ final class SelectionController {
     }
 
     /// The selection as set, to keep while another picture shows and bring back after: each recent
-    /// capture and the live view have their own (docs/product.md, Recent Captures). With the tool
+    /// capture and the live view have their own. With the tool
     /// off nothing comes back, as turning it off drops the selection.
     var keptSelection: CGRect? {
         get { stored }

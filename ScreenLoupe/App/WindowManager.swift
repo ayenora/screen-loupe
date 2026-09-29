@@ -127,7 +127,7 @@ final class WindowManager {
     // MARK: The real cursor over the Capture Area
 
     /// Follows the real cursor while the Viewer is open, so the crosshair and the Color Meter show
-    /// the pixel it points at inside the Capture Area (docs/product.md, Crosshair and cursor). The Capture Area
+    /// the pixel it points at inside the Capture Area. The Capture Area
     /// reports mouse moves while it is shown; without it there is nothing to point at.
     private func trackCursor() {
         // The real cursor points at a pixel of the live view or a frozen frame; at nothing in a
@@ -146,7 +146,7 @@ final class WindowManager {
 
     // MARK: The part the Viewer shows
 
-    /// Tells the frame which part of the area the Viewer shows (docs/product.md, Capture Area), placed
+    /// Tells the frame which part of the area the Viewer shows, placed
     /// with the geometry of the frame the Viewer shows, so it matches the image even while the area
     /// is dragged ahead of the next frame. While the Viewer holds a frame as the magnet moves the
     /// area, on the area where it is (`MagnetHold.viewedPartGeometry`). Only of the live view
@@ -237,7 +237,7 @@ final class WindowManager {
     /// The open panel is up, as a sheet on the Viewer or on its own; Open Image waits for it.
     private(set) var isChoosingImage = false
 
-    /// File › Open Image… (docs/product.md, Open Image): the chosen image is decoded off the main
+    /// File › Open Image…: the chosen image is decoded off the main
     /// thread, then shows in the Viewer, which opens for it. A file that can't be read changes
     /// nothing and says so.
     func openImage() {
@@ -304,7 +304,7 @@ final class WindowManager {
     // MARK: Freeze frame
 
     var isFrozen: Bool { capture.frameStore.isFrozen }
-    /// A delayed freeze is counting down (docs/product.md, Freeze frame).
+    /// A delayed freeze is counting down.
     var isFreezeCountingDown: Bool { freezeTimer != nil }
     private var freezeTimer: Timer?
 
@@ -439,7 +439,7 @@ final class WindowManager {
         zoomPan.fit()
     }
 
-    /// The zoom is kept between launches (docs/product.md, Kept between launches); the Viewer's frame is kept by AppKit.
+    /// The zoom is kept between launches; the Viewer's frame is kept by AppKit.
     /// Writes the project now, before the app quits.
     func saveProject() {
         project.saveNow()
@@ -474,7 +474,7 @@ final class WindowManager {
 }
 
 extension Settings {
-    /// Whether the stream records the real pointer (docs/product.md, Crosshair and cursor): Original
+    /// Whether the stream records the real pointer: Original
     /// Cursor in the Capture is chosen and shown, and the eyedropper is off.
     var capturesCursor: Bool {
         crosshairEnabled && pointerStyle == .capturedCursor && !sidePanelLayout.isMeterExpanded

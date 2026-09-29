@@ -10,7 +10,7 @@ enum SelectionHandle: CaseIterable, Sendable {
     var movesMaxY: Bool { self == .bottomLeft || self == .bottom || self == .bottomRight }
 }
 
-/// The Select tool's selection (docs/product.md, Screenshots): a rectangle of whole source pixels,
+/// The Select tool's selection: a rectangle of whole source pixels,
 /// from the Capture Area's top-left corner, so it stays on its pixels while the Viewer pans and zooms.
 enum PixelSelection {
     /// The whole pixels a drag from `start` to `end` (viewport points in drawable pixels) covers,
@@ -74,7 +74,7 @@ enum PixelSelection {
     }
 }
 
-/// The region an Option-drag copies (docs/product.md, Screenshots): free, in whole drawable pixels
+/// The region an Option-drag copies: free, in whole drawable pixels
 /// of the viewport, not snapped to source pixels.
 enum ViewRegion {
     /// The rectangle between two viewport points, rounded to whole pixels and kept inside the

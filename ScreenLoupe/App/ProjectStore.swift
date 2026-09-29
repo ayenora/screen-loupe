@@ -4,7 +4,7 @@ import OSLog
 import Observation
 import UniformTypeIdentifiers
 
-/// The working project (docs/product.md, Project): the reference layers, with copies of their
+/// The working project: the reference layers, with copies of their
 /// images, and the ruler. There is one, saved as you work and restored at launch.
 ///
 /// It lives in Application Support: `project.json` and the images beside it, so a reference keeps

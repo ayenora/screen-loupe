@@ -96,7 +96,7 @@ struct ViewerFrame: @unchecked Sendable {
 /// still frames the Viewer shows in place of it.
 ///
 /// The capture queue writes, the renderer and the exporters read. The lock guards every property;
-/// nothing else is shared (docs/design.md §2.2).
+/// nothing else is shared.
 final class FrameStore: @unchecked Sendable {
     private let lock = NSLock()
     private var frame: ViewerFrame?
@@ -110,7 +110,7 @@ final class FrameStore: @unchecked Sendable {
     private var frameIsCurrent = false
 
     /// Freezing keeps the live frame as a still, so the Viewer, the Color Meter and Copy/Save all
-    /// keep the frame that was showing (docs/product.md, Freeze frame). Setting it while frozen
+    /// keep the frame that was showing. Setting it while frozen
     /// keeps the frame frozen first; without a live frame there is nothing to freeze. Freezing
     /// during a hold freezes the held frame and ends the hold.
     var isFrozen: Bool {
@@ -145,8 +145,8 @@ final class FrameStore: @unchecked Sendable {
         }
     }
 
-    /// A recent capture, or an opened image, shown in place of the live frame (docs/product.md,
-    /// Recent Captures, Open Image). Above a frozen frame, which comes back when it goes.
+    /// A recent capture, or an opened image, shown in place of the live frame. Above a frozen frame, which comes back
+    /// when it goes.
     var shownCapture: ViewerFrame? {
         get { lock.withLock { capture } }
         set { lock.withLock { capture = newValue } }

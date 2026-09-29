@@ -1,7 +1,7 @@
 import AppKit
 import Observation
 
-/// State kept between launches (docs/product.md, Kept between launches) and the choices made in the Settings window. The
+/// State kept between launches and the choices made in the Settings window. The
 /// Viewer frame is kept by AppKit through its autosave name; everything else lives here.
 struct Settings: Codable, Equatable {
     /// Capture Area in AppKit global coordinates.
@@ -74,7 +74,7 @@ struct Settings: Codable, Equatable {
 
     // Settings › Viewer
     var viewerBackground = ViewerBackground.dark
-    /// The pixel grid shows from this zoom on (docs/product.md, Pixel grid: 800% by default).
+    /// The pixel grid shows from this zoom on (800% by default).
     var gridMinimumZoom: Double = 8
     var gridLines = GridLines.auto
     var crosshairColor = SettingsColor.orange
@@ -82,7 +82,7 @@ struct Settings: Codable, Equatable {
     var wheelZoomNeedsCommand = true
 
     // Settings › Screenshots
-    /// Off by default (docs/product.md, Pixel grid).
+    /// Off by default.
     var gridInCopyView = false
     var fileNameStyle = FileNameStyle.macOS
     var revealsSavedFile = false
@@ -207,8 +207,7 @@ enum SidePanel: String, Codable, Sendable {
     static let widthRange: ClosedRange<CGFloat> = 250...320
 }
 
-/// How the pointer inside the Capture Area shows in the Viewer (docs/product.md, Crosshair and
-/// cursor).
+/// How the pointer inside the Capture Area shows in the Viewer.
 enum PointerStyle: String, Codable, CaseIterable, Sendable {
     /// Lines through the pixel pointed at, drawn over the image.
     case crosshair

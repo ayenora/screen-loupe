@@ -61,7 +61,7 @@ enum MainMenu {
         return menu
     }
 
-    /// ⌘C copies what the Viewer shows; ⇧⌘C the Capture Area without zoom (docs/product.md, Screenshots).
+    /// ⌘C copies what the Viewer shows; ⇧⌘C the Capture Area without zoom.
     /// The standard items go to the first responder, so text fields cut, copy and paste as usual:
     /// ⌘C is `copy(_:)`, which a text field with the focus takes, and `AppController`, the app
     /// delegate, turns into Copy View otherwise; ⌘V, `paste(_:)`, likewise pastes an image into the
@@ -134,7 +134,7 @@ enum MainMenu {
         return menu
     }
 
-    /// The Screenshot studio (docs/product.md, Screenshot studio): everything its palette does, so it
+    /// The Screenshot studio: everything its palette does, so it
     /// works with the palette out of reach.
     private static func screenshotMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "Screenshot")

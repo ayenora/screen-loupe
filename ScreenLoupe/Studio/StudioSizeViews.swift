@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// The Screenshot studio's sizes (docs/product.md, Screenshot studio): the Size list beside the
+// The Screenshot studio's sizes: the Size list beside the
 // palette and the Custom Sizes window. The sizes and the slot rules are `StudioSizes`.
 
 /// The Size list: the presets, the custom sizes, a W × H row to type one, and Custom Size….

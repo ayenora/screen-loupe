@@ -197,7 +197,7 @@ final class ViewerContentView: NSStackView {
 
     // MARK: Dropped and pasted images
 
-    /// Where a dropped or pasted image goes (docs/product.md, Dropping and pasting images): `chosen`
+    /// Where a dropped or pasted image goes: `chosen`
     /// by Paste as Reference or Paste for Inspection, else by the open panel.
     private func placement(chosen: ImageDestination?) -> ImagePlacement {
         ImagePlacement.of(
@@ -394,8 +394,8 @@ final class ViewerContentView: NSStackView {
     /// Whether a recent capture shows in place of the live view.
     var isShowingCapture: Bool { captures.shownID != nil }
 
-    /// Keeps an image file as the newest recent capture and shows it in place of the live view
-    /// (docs/product.md, Open Image), fitted to the Viewer (`show`), with Recent Captures open.
+    /// Keeps an image file as the newest recent capture and shows it in place of the live view, fitted to the Viewer
+    /// (`show`), with Recent Captures open.
     /// `name` is its file's.
     func showImage(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) {
         showFile(RecentCaptures.file(frame, thumbnail: thumbnail, name: name))
@@ -416,7 +416,7 @@ final class ViewerContentView: NSStackView {
     /// Access to capture is the window controller's to check.
     var snapshotFrameSize: PixelSize? { frameStore.snapshotFrame?.layout.size }
 
-    /// Take Snapshot (docs/product.md, Recent Captures): keeps what the live view shows of the Capture
+    /// Take Snapshot: keeps what the live view shows of the Capture
     /// Area's frame — its selection, or else the part in the Viewer — as the newest recent capture,
     /// whatever the Viewer shows, without showing it (`RecentCaptureRules.snapshotArea`). It opens as
     /// the live view was when it was taken: at its zoom, with the kept pixels where they were, and

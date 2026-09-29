@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Where an image added to the Viewer goes (docs/product.md, Dropping and pasting images).
+/// Where an image added to the Viewer goes.
 enum ImageDestination: Equatable, Sendable {
     /// A reference layer on top (References).
     case references

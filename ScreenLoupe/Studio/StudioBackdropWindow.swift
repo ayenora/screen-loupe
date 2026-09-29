@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Screenshot studio's backdrop (docs/design.md, Screenshot studio; `StudioBackdrop`): a
+/// The Screenshot studio's backdrop (`StudioBackdrop`): a
 /// borderless window over a whole display, just above the desktop icons, showing the chosen
 /// background as one picture at the display's pixels. Click-through, never key, not in ⌘Tab or
 /// the Window menu, on every Space and still in Mission Control, like the desktop it covers.

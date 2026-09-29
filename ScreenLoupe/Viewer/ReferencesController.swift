@@ -1,7 +1,7 @@
 import AppKit
 import Observation
 
-/// The reference layers (docs/product.md, References): the stack kept in the project, the images,
+/// The reference layers: the stack kept in the project, the images,
 /// and the mouse in the Viewer. Points here are drawable pixels, y down, as in `ZoomPanState`.
 @MainActor
 @Observable
@@ -25,7 +25,7 @@ final class ReferencesController {
         didSet { if takesMouse != oldValue { onChange?() } }
     }
 
-    /// The panel's content scale, 1 at the side column's narrowest (docs/product.md, References).
+    /// The panel's content scale, 1 at the side column's narrowest.
     var scale: CGFloat = 1
 
     var stack: ReferenceStack { project.project.references }
@@ -141,7 +141,7 @@ final class ReferencesController {
         return failed
     }
 
-    /// The panel's Paste button (docs/product.md, Dropping and pasting images).
+    /// The panel's Paste button.
     @ObservationIgnored var onPaste: (() -> Void)?
 
     /// Writes pasted image data into the project and adds it as a layer on top, selected, one image

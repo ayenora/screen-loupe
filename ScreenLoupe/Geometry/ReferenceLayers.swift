@@ -8,7 +8,7 @@ enum ReferenceBlend: String, Codable, CaseIterable, Sendable {
     case difference
 }
 
-/// A design image laid over the live pixels (docs/product.md, References). Its place and size are
+/// A design image laid over the live pixels. Its place and size are
 /// source pixels, relative to the Capture Area's top-left corner, so it stays on the pixels it was
 /// aligned with while the Viewer pans and zooms.
 struct ReferenceLayer: Codable, Equatable, Identifiable, Sendable {

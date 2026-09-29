@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// The corner ruler in the Viewer (docs/product.md, Ruler): a corner and two arms, one horizontal
+/// The corner ruler in the Viewer: a corner and two arms, one horizontal
 /// and one vertical, each pointing either way. It measures in whole source pixels: the corner and
 /// the arm ends always sit on pixel boundaries.
 ///

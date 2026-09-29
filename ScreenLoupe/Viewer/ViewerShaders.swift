@@ -45,7 +45,7 @@ enum ViewerShaders {
         fragment float4 quadFragment(QuadVertex in [[stage_in]], texture2d<float> frame [[texture(0)]],
                                      constant FragmentUniforms &uniforms [[buffer(0)]]) {
             // Magnification is always nearest-neighbor, so source pixels stay crisp squares; zooming
-            // out below 1:1 is linearly filtered (docs/design.md §2.3).
+            // out below 1:1 is linearly filtered.
             constexpr sampler pixels(mag_filter::nearest, min_filter::linear, address::clamp_to_edge);
             float4 color = frame.sample(pixels, in.uv);
             // Premultiplied for source-over blending onto the background. A frame of the screen is

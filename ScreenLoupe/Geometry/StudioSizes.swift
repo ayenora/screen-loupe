@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// A size of the user's own for the Screenshot studio's frame, in whole pixels, with an optional
-/// name (docs/product.md, Screenshot studio).
+/// name.
 struct CustomSize: Codable, Equatable, Sendable {
     var name = ""
     var width: Int
@@ -34,7 +34,7 @@ enum StudioSizeFit: Equatable, Sendable {
     case smallerThanMinimum
 }
 
-/// The sizes the studio's frame can take, and applying one (docs/product.md, Screenshot studio).
+/// The sizes the studio's frame can take, and applying one.
 enum StudioSizes {
     static let appStore = [
         PixelSize(width: 1280, height: 800), PixelSize(width: 1440, height: 900),
@@ -186,7 +186,7 @@ enum ResizeRule: Equatable, Sendable {
     }
 }
 
-/// Aspect Lock (docs/product.md, Screenshot studio): resizing the studio's frame by a handle keeps
+/// Aspect Lock: resizing the studio's frame by a handle keeps
 /// a width-to-height ratio.
 enum AspectLock {
     /// Which side of a corner drag sets the size.

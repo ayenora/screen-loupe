@@ -1,9 +1,9 @@
 import AppKit
 import QuartzCore
 
-/// The Viewer's zoom and pan. All sizes and points are drawable pixels, y down (docs/design.md §3).
+/// The Viewer's zoom and pan. All sizes and points are drawable pixels, y down.
 ///
-/// Nothing here changes on its own (docs/product.md, "Nothing moves unless you move it"): resizing
+/// Nothing here changes on its own: resizing
 /// the window or the Capture Area keeps the zoom and the visible pixels in place. Fit is a command,
 /// applied once to the first frame and then only when asked for.
 ///
@@ -89,7 +89,7 @@ final class ZoomPanController {
     /// Whether the current zoom is the Fit zoom, for the toolbar.
     var isFit: Bool { state.isFit }
 
-    /// The zoom kept from the last session (docs/product.md, Kept between launches), applied to the first frame instead of Fit.
+    /// The zoom kept from the last session, applied to the first frame instead of Fit.
     var restoredZoom: CGFloat?
 
     private var hasContent: Bool { state.contentSize.width > 0 && state.contentSize.height > 0 }
@@ -135,7 +135,7 @@ final class ZoomPanController {
         command(state.fitted())
     }
 
-    /// Fit for a picture that opens fitted (docs/product.md, Open Image): now, at once, and once more
+    /// Fit for a picture that opens fitted: now, at once, and once more
     /// when the viewport is first known, if it isn't yet.
     func fitWhenShown() {
         fitsFirstViewport = state.viewportSize == .zero

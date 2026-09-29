@@ -8,7 +8,7 @@ struct OneWindowChoice: Equatable, Sendable {
     var appName: String
 }
 
-/// The Screenshot studio's One Window mode (docs/product.md, Screenshot studio): off, picking the
+/// The Screenshot studio's One Window mode: off, picking the
 /// window, or on for one window. Kept for the session only, never saved.
 enum OneWindowMode: Equatable, Sendable {
     case off
@@ -52,8 +52,8 @@ enum OneWindowMode: Equatable, Sendable {
     var isPicking: Bool { self == .picking }
 }
 
-/// Reads of the chosen window's place, about 60 a second while the studio shows (docs/design.md,
-/// Screenshot studio): where its outline goes, and when One Window lets the window go. The magnet's
+/// Reads of the chosen window's place, about 60 a second while the studio shows: where its outline goes, and when One
+/// Window lets the window go. The magnet's
 /// rules (`WindowMagnet.holds`, `readsToLetGo`) at its pace (`WindowMagnet.readInterval`): a window
 /// closed, minimised, hidden with its app or on another Space reads as not held, and two such reads
 /// in a row let it go.
@@ -81,7 +81,7 @@ struct OneWindowWatch: Equatable, Sendable {
     }
 }
 
-/// Where the chosen window's outline and its app's name go (docs/design.md, Screenshot studio), in
+/// Where the chosen window's outline and its app's name go, in
 /// AppKit global coordinates: the line just outside the window's frame, so it covers none of the
 /// window, and the label at the outline's top-left, above it, or inside its top-left corner when
 /// the screen has no room above.
@@ -134,7 +134,7 @@ struct PixelRect: Equatable, Sendable {
     var size: PixelSize { PixelSize(width: width, height: height) }
 }
 
-/// How a lone window's capture becomes a picture (docs/design.md, Screenshot studio): captured with
+/// How a lone window's capture becomes a picture: captured with
 /// room to spare, cut to its visible pixels, and centred on whole pixels in a picture of the frame's
 /// size, grown where the window with its shadow needs more, never scaled.
 enum OneWindowPicture {

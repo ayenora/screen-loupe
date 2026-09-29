@@ -1,4 +1,4 @@
-/// What of the clipboard a paste takes as its image (docs/product.md, Dropping and pasting images).
+/// What of the clipboard a paste takes as its image.
 enum ClipboardImageSource: Equatable, Sendable {
     /// Image files copied in Finder, taken as dropped ones.
     case files

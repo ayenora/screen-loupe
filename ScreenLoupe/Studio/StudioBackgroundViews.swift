@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Background list beside the palette (docs/product.md, Screenshot studio): the screen, a few
+/// The Background list beside the palette: the screen, a few
 /// colours and a colour of one's own, calm gradients, an image, and whether a One Window picture
 /// keeps the window's shadow. Shown in `StudioListPanel`, as the Size list is.
 struct StudioBackgroundList: View {

@@ -2,7 +2,7 @@ import CoreVideo
 import MetalKit
 import OSLog
 
-/// Draws the latest captured frame into the Viewer's `MTKView` (docs/design.md §2.3).
+/// Draws the latest captured frame into the Viewer's `MTKView`.
 ///
 /// The frame's IOSurface becomes a Metal texture through `CVMetalTextureCache` without a copy. The
 /// quad is placed in whole drawable pixels from `ZoomPanController`, so at integer zoom every source
@@ -10,7 +10,7 @@ import OSLog
 @MainActor
 final class ViewerRenderer: NSObject, MTKViewDelegate {
     var style = ViewerStyle()
-    /// The visible reference layers, bottom first (docs/product.md, References).
+    /// The visible reference layers, bottom first.
     var references: () -> [(layer: ReferenceLayer, image: CGImage)] = { [] }
     /// Called when a reference texture made off the main thread is ready to draw.
     var onTextureReady: (() -> Void)?
@@ -136,8 +136,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!)
     }
 
-    /// `scene` rendered offscreen by the same pipelines as the screen, for Copy View
-    /// (docs/design.md §2.4): what it shows is the Viewer, at any zoom, with the grid and the
+    /// `scene` rendered offscreen by the same pipelines as the screen, for Copy View: what it shows is the Viewer, at
+    /// any zoom, with the grid and the
     /// reference layers as drawn. Past `ImageBudget` just its top-left part is rendered. `nil`
     /// without a frame or a viewport.
     func renderImage(_ scene: Scene) -> CGImage? {

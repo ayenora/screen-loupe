@@ -1,6 +1,6 @@
 import Foundation
 
-/// When the studio palette (docs/product.md, The palette) and a frame's tab name the button under
+/// When the studio palette and a frame's tab name the button under
 /// the pointer, as the system's tooltips do: after a rest on the button, or at once while the
 /// pointer goes from button to button soon after a name showed.
 enum HoverLabelDelay {

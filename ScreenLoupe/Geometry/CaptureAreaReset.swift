@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Reset Capture Area (docs/product.md, Capture Area): the area back to the size it has on first
+/// Reset Capture Area: the area back to the size it has on first
 /// launch, centred on a display.
 enum CaptureAreaReset {
     /// The Capture Area's size on first launch and after a reset, in points.

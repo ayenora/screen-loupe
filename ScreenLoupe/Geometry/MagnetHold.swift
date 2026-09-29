@@ -1,8 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// While the magnet moves the Capture Area with its window, the Viewer holds the frame it showed
-/// (docs/product.md, Capture Area): the stream takes each new source rect a moment after the area
+/// While the magnet moves the Capture Area with its window, the Viewer holds the frame it showed: the stream takes each
+/// new source rect a moment after the area
 /// moved, so the live frames would land a pixel off one way or the other, which at a high zoom is
 /// a jump of many points. The held frame shows the window's content where it is, since the area
 /// moved with the window. The hold ends once the window has been still for `settle` and a frame of

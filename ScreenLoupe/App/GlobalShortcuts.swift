@@ -46,7 +46,7 @@ struct Shortcut: Codable, Hashable, Sendable {
     }
 }
 
-/// The global shortcuts (docs/product.md, Global shortcuts). A cleared shortcut is `nil`, saved as
+/// The global shortcuts. A cleared shortcut is `nil`, saved as
 /// `null`, so it stays cleared; a key missing from saved settings (an action added later) gets its
 /// default, unless a saved shortcut already has its keys (`ShortcutRules.newDefault`).
 struct Shortcuts: Codable, Equatable, Sendable {
@@ -146,7 +146,7 @@ enum ShortcutAction: CaseIterable, Sendable {
 }
 
 /// Registers the shortcuts with Carbon's `RegisterEventHotKey`, which works from any app and needs
-/// no Accessibility permission (docs/design.md §4).
+/// no Accessibility permission.
 @MainActor
 @Observable
 final class GlobalShortcuts {

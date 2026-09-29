@@ -1,7 +1,7 @@
 import CoreGraphics
 
-/// Snapping the Capture Area to window and display edges while ⌘ is held (docs/product.md, Capture
-/// Area). Global coordinates, y up; results are not snapped to pixels.
+/// Snapping the Capture Area to window and display edges while ⌘ is held. Global coordinates, y up; results are not
+/// snapped to pixels.
 enum EdgeSnapping {
     /// How close an edge has to come to a target's edge to snap to it, in points.
     static let reach: CGFloat = 8

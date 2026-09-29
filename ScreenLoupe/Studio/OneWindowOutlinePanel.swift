@@ -1,7 +1,7 @@
 import AppKit
 
-/// The green outline around the window One Window captures, with its app's name (docs/product.md,
-/// Screenshot studio; `OneWindowOutline`): click-through, never key, not in ⌘Tab or the Window
+/// The green outline around the window One Window captures, with its app's name (`OneWindowOutline`): click-through,
+/// never key, not in ⌘Tab or the Window
 /// menu, at the frames' level so it shows over the window. It is the app's window, so no capture
 /// and not the Viewer shows it.
 @MainActor

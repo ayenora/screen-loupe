@@ -1,7 +1,7 @@
 import AppKit
 
-/// The margins panel below the position box while the Capture Area's margins are on (docs/product.md,
-/// Capture Area): collapsed, the margins in four rows as the box shows its edges; expanded, a box
+/// The margins panel below the position box while the Capture Area's margins are on: collapsed, the margins in four
+/// rows as the box shows its edges; expanded, a box
 /// diagram with a field for each margin around the captured size, the band's colour swatches and its
 /// opacity. Drawn in the overlay's label style. Unlike the frame's other parts, it takes the mouse: a
 /// press anywhere on it collapsed expands it; expanded, its « collapses it and a swatch picks the

@@ -1,8 +1,7 @@
 import AppKit
 
 /// Picks a window for the Capture Area to take or to attach to, like Space in ⇧⌘4: the window under
-/// the pointer is tinted, a click takes it, Escape or a click on no window cancels (docs/product.md,
-/// Capture Area).
+/// the pointer is tinted, a click takes it, Escape or a click on no window cancels.
 ///
 /// A transparent panel over each display takes every click, so none reaches the app underneath and
 /// no Accessibility permission is needed.

@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 
-// The five tabs of the Settings window (docs/design.md §4, Settings).
+// The five tabs of the Settings window.
 
 struct GeneralSettingsView: View {
     let store: SettingsStore

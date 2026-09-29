@@ -76,7 +76,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         builtWindows?.saveProject()
     }
 
-    /// Closing the Viewer keeps the app running in the menu bar (docs/product.md, Menu bar and app mode).
+    /// Closing the Viewer keeps the app running in the menu bar.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -244,7 +244,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.viewer.selectWholeArea()
     }
 
-    /// View › Take Snapshot (⌘T; docs/product.md, Recent Captures).
+    /// View › Take Snapshot (⌘T).
     @objc func takeSnapshot(_ sender: Any?) {
         windows.viewer.takeSnapshot()
     }
@@ -267,8 +267,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.export.copySource()
     }
 
-    /// Edit › Paste (⌘V) when no text field has the focus: the clipboard's image goes into the Viewer
-    /// (docs/product.md, Dropping and pasting images). A text field with the focus pastes its text first.
+    /// Edit › Paste (⌘V) when no text field has the focus: the clipboard's image goes into the Viewer. A text field
+    /// with the focus pastes its text first.
     @objc func paste(_ sender: Any?) {
         windows.viewer.paste(as: nil)
     }
@@ -448,7 +448,7 @@ extension AppController: NSMenuItemValidation {
             let isFrozen = builtWindows?.isFrozen == true
             let isCounting = builtWindows?.isFreezeCountingDown == true
             menuItem.state = isFrozen || isCounting ? .on : .off
-            // A recent capture in the Viewer is still anyway (docs/product.md, Recent Captures).
+            // A recent capture in the Viewer is still anyway.
             guard builtWindows?.viewer.isShowingCapture != true else { return false }
             return isFrozen || isCounting || canExport
         case #selector(freezeNow(_:)), #selector(freezeAfterDelay(_:)):

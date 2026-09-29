@@ -4,7 +4,7 @@ import OSLog
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The Screenshot studio (docs/product.md, Screenshot studio): its frame, its palette, Capture,
+/// The Screenshot studio: its frame, its palette, Capture,
 /// Copy and Save, the frame's sizes and Aspect Lock, the timer, the background and its backdrop,
 /// the pointer, and One Window.
 /// Shown and hidden on its own, apart from the Viewer and the Capture Area.

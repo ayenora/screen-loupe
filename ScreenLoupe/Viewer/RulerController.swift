@@ -1,6 +1,6 @@
 import AppKit
 
-/// The corner ruler in the Viewer (docs/product.md, Ruler): its state, hit-testing and dragging.
+/// The corner ruler in the Viewer: its state, hit-testing and dragging.
 /// The geometry is `CornerRuler`; points here are drawable pixels, y down, as in `ZoomPanState`.
 @MainActor
 final class RulerController {

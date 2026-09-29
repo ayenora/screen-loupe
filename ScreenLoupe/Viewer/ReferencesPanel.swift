@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The References panel at the right of the Viewer (docs/product.md, References): the layers, top
+/// The References panel at the right of the Viewer: the layers, top
 /// first, one row each like layers in an image editor, and below them the settings of the selected
 /// layer. A row drags as a whole to reorder; the settings never drag anything.
 ///

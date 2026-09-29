@@ -2,9 +2,8 @@ import CoreGraphics
 import Foundation
 import ImageIO
 
-/// How the Screenshot studio's pictures are written, on the clipboard and in files (docs/product.md,
-/// Screenshot studio; docs/design.md, Screenshot studio): the format, the colour space and the
-/// scale. The Viewer's Copy and Save don't use it.
+/// How the Screenshot studio's pictures are written, on the clipboard and in files: the format, the colour space and
+/// the scale. The Viewer's Copy and Save don't use it.
 struct StudioOutput: Codable, Equatable, Sendable {
     enum Format: String, Codable, CaseIterable, Sendable {
         case png, jpeg, heic

@@ -51,7 +51,7 @@ struct BackgroundImage: Codable, Hashable, Sendable {
     var name: String
 }
 
-/// What the Screenshot studio shows under the windows (docs/product.md, Screenshot studio). Anything
+/// What the Screenshot studio shows under the windows. Anything
 /// but `screen` is shown by the backdrop over the whole display the frame is on (`StudioBackdrop`),
 /// above the wallpaper and the desktop icons, and laid under One Window's lone window.
 enum StudioBackground: Codable, Hashable, Sendable {

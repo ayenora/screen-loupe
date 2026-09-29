@@ -26,7 +26,7 @@ extension CaptureGeometry {
 }
 
 /// Tells a Capture Area resized by its left or top edge from one that moved, frame to frame, so the
-/// Viewer keeps showing the same pixels (docs/product.md, "Nothing moves unless you move it").
+/// Viewer keeps showing the same pixels.
 struct AreaResizeTracker {
     private var last: (display: CGDirectDisplayID, origin: CGPoint, size: PixelSize)?
 

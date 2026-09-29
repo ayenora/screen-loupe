@@ -1,6 +1,6 @@
 import AppKit
 
-/// The menu bar item (docs/product.md, Menu bar and app mode). The app keeps running from here when the Viewer is closed.
+/// The menu bar item. The app keeps running from here when the Viewer is closed.
 @MainActor
 final class StatusItemController {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
