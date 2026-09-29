@@ -73,14 +73,15 @@ final class ZoomPanController {
     }
 
     /// A zoom command: the model becomes `target` at once; the view glides there from where it shows
-    /// now, unless Reduce Motion is on or there is nothing shown yet.
-    private func command(_ target: ZoomPanState) {
+    /// now, unless Reduce Motion is on or there is nothing shown yet. `throughFill`: a zoom about the
+    /// image (`ZoomAnimation.throughFill`).
+    private func command(_ target: ZoomPanState, throughFill: Bool = false) {
         let from = presented
         state = target
         let glides =
             from != target && hasContent && state.viewportSize != .zero
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        animation = glides ? ZoomAnimation(from: from, to: target, start: Self.now()) : nil
+        animation = glides ? ZoomAnimation(from: from, to: target, start: Self.now(), throughFill: throughFill) : nil
         if glides { onAnimationStart?() }
         changed()
     }
@@ -145,13 +146,14 @@ final class ZoomPanController {
 
     /// A zoom command (a preset, a typed zoom, `+`/`-`): glides to `zoom`. Around `anchor`, the
     /// pointer (a viewport point), keeping the source point under it where it shows now; without one,
-    /// around the centre of the part of the image that shows, centring the image on an axis where it
-    /// comes out no larger than the viewport (`ZoomPanState.zoomedAboutImage`).
+    /// bringing the centre of the part of the image that shows to the viewport's centre, centring the
+    /// image on an axis where it comes out no larger than the viewport
+    /// (`ZoomPanState.zoomedAboutImage`).
     func setZoom(_ zoom: CGFloat, around anchor: CGPoint? = nil) {
         if let anchor {
             command(presented.zoomed(to: zoom, around: anchor))
         } else {
-            command(presented.zoomedAboutImage(to: zoom))
+            command(presented.zoomedAboutImage(to: zoom), throughFill: true)
         }
     }
 

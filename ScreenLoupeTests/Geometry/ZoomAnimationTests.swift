@@ -286,22 +286,46 @@ struct ZoomAnimationTests {
 
     // MARK: Zooming without a pointer
 
+    /// A zoom about the image from `from`, gliding as `ZoomPanController.setZoom` does without a pointer.
+    private static func aboutImage(_ from: ZoomPanState, to zoom: CGFloat) -> ZoomAnimation {
+        ZoomAnimation(from: from, to: from.zoomedAboutImage(to: zoom), start: start, throughFill: true)
+    }
+
     /// 500×200 at 4× (2000×800) in 1000×600, shown at its right part, then 1× about the image: the
     /// target is centred on both axes.
     private static func zoomOutToCentred(offsetX: CGFloat) -> ZoomAnimation {
         let from = ZoomPanState(
             zoom: 4, offset: CGPoint(x: offsetX, y: -100), contentSize: CGSize(width: 500, height: 200),
             viewportSize: CGSize(width: 1000, height: 600))
-        return ZoomAnimation(from: from, to: from.zoomedAboutImage(to: 1), start: start)
+        return aboutImage(from, to: 1)
     }
 
-    /// 100×50 at 1× in 400×300, centred and then dragged against the left edge, then 16× about the
-    /// image (the user's case): the image's centre, at viewport (50, 150), is the point to keep still.
-    private static func smallImageAtTheLeftTo16x() -> ZoomAnimation {
-        let from = ZoomPanState(
-            zoom: 1, contentSize: CGSize(width: 100, height: 50), viewportSize: CGSize(width: 400, height: 300)
-        ).centered().panned(by: CGPoint(x: -500, y: 0))
-        return ZoomAnimation(from: from, to: from.zoomedAboutImage(to: 16), start: start)
+    /// The user's case: 250×100 at 1× in 1000×600 (times `scale`, a 2× display), centred and then
+    /// dragged against the left edge, then 16× about the image: the image's centre, source (125, 50)
+    /// at viewport (125, 300), ends at the viewport's centre.
+    private static func smallImageAtTheLeft(scale: CGFloat = 1) -> ZoomPanState {
+        ZoomPanState(
+            zoom: 1, contentSize: CGSize(width: 250 * scale, height: 100 * scale),
+            viewportSize: CGSize(width: 1000 * scale, height: 600 * scale)
+        ).centered().panned(by: CGPoint(x: -1000 * scale, y: 0))
+    }
+
+    private static func smallImageAtTheLeftTo16x(scale: CGFloat = 1) -> ZoomAnimation {
+        aboutImage(smallImageAtTheLeft(scale: scale), to: 16)
+    }
+
+    /// Where source `point` shows over 2000 samples of the glide: it moves one way on each axis.
+    private static func expectMovesOneWay(_ point: CGPoint, in animation: ZoomAnimation) {
+        var previous = animation.from.viewportPoint(forSourcePoint: point)
+        var direction = CGPoint.zero
+        for step in 1...2000 {
+            let shown = animation.state(at: time(Double(step) / 2000)).viewportPoint(forSourcePoint: point)
+            let move = CGPoint(x: shown.x - previous.x, y: shown.y - previous.y)
+            #expect(move.x * direction.x >= -1e-9 && move.y * direction.y >= -1e-9)
+            if abs(move.x) > 1e-9 { direction.x = move.x }
+            if abs(move.y) > 1e-9 { direction.y = move.y }
+            previous = shown
+        }
     }
 
     /// Every edge of the image moves one way, without jumps (under `maxStep` pixels per 1/2000 of the
@@ -351,25 +375,124 @@ struct ZoomAnimationTests {
         Self.expectSmoothGlide(Self.zoomOutToCentred(offsetX: offsetX), maxStep: 5)
     }
 
-    @Test func aGlideAboutASmallImageAtTheLeftKeepsItsCentreStill() {
-        let animation = Self.smallImageAtTheLeftTo16x()
-        #expect(animation.from.offset == CGPoint(x: 0, y: 125))
-        #expect(animation.to.offset == CGPoint(x: -750, y: -250))
-        #expect(animation.anchor == CGPoint(x: 50, y: 150))
+    @Test(arguments: [CGFloat(1), 2])
+    func aGlideAboutASmallImageAtTheLeftBringsItsCentreToTheMiddleWithoutTurningBack(scale: CGFloat) {
+        let animation = Self.smallImageAtTheLeftTo16x(scale: scale)
+        let centre = CGPoint(x: 125 * scale, y: 50 * scale)
+        #expect(animation.from.offset == CGPoint(x: 0, y: 250 * scale))
+        #expect(animation.to.offset == CGPoint(x: -1500 * scale, y: -500 * scale))
         #expect(animation.state(at: Self.time(1)) == animation.to)
-        // Once the image covers the viewport (past 7× here) nothing holds it, and the image's centre
-        // stays at (50, 150).
-        for fraction in [0.8, 0.9, 0.99] {
-            let shown = animation.state(at: Self.time(fraction))
-            #expect(shown.zoom > 7)
-            #expect(
-                Self.close(shown.sourcePoint(forViewportPoint: CGPoint(x: 50, y: 150)), CGPoint(x: 50, y: 25), 1e-6))
+        #expect(animation.to.viewportPoint(forSourcePoint: centre) == CGPoint(x: 500 * scale, y: 300 * scale))
+        // The image's centre goes from (125, 300) to (500, 300) one way; it doesn't reach the middle
+        // at 4× and then fall back while the image is pinned to the right wall.
+        Self.expectMovesOneWay(centre, in: animation)
+        for step in 0...200 {
+            let shown = animation.state(at: Self.time(Double(step) / 200))
+            let point = shown.viewportPoint(forSourcePoint: centre)
+            #expect(point.x >= 125 * scale - 1e-9 && point.x <= 500 * scale + 1e-9)
+            // Vertically it is centred all the way: it fits up to 6×, and the 6× view is the centred one.
+            #expect(Self.close(point.y, 300 * scale))
+            if shown.zoom <= 4 {
+                // Up to 4× it spans the viewport at most: it grows against the left wall, where it was.
+                #expect(shown.offset.x == 0)
+            } else {
+                // From 4× it covers the viewport, its centre is at the middle, and it zooms about it.
+                #expect(Self.close(point.x, 500 * scale))
+            }
+        }
+        // Halfway the zoom is 4×, where it spans the viewport exactly.
+        let half = animation.state(at: Self.time(0.5))
+        #expect(Self.close(half.zoom, 4) && Self.close(half.offset.x, 0))
+    }
+
+    @Test(arguments: [CGFloat(1), 2])
+    func aGlideAboutASmallImageAtTheLeftHasNoJumps(scale: CGFloat) {
+        // 250 px growing to 4000 over 2000 samples: at most about 3 px a step.
+        Self.expectSmoothGlide(Self.smallImageAtTheLeftTo16x(scale: scale), maxStep: 5 * scale)
+    }
+
+    @Test(arguments: [
+        // 250.25×100.1: slack 749.75 and 499.9, half rounded down.
+        (CGFloat(1.001), CGPoint(x: 374, y: 249)),
+        // 249.75×99.9: slack 750.25 and 500.1.
+        (0.999, CGPoint(x: 375, y: 250)),
+    ])
+    func aGlideThatBarelyZoomsButPansHasNoJumps(zoom: CGFloat, expected: CGPoint) {
+        // 250×100 at 1× in 1000×600 dragged to the top-left corner; a zoom close to 1 about the image
+        // centres it: nearly a pure pan, and the still point lies far outside the viewport.
+        let from = ZoomPanState(
+            zoom: 1, offset: .zero, contentSize: CGSize(width: 250, height: 100),
+            viewportSize: CGSize(width: 1000, height: 600))
+        let animation = Self.aboutImage(from, to: zoom)
+        #expect(animation.to.offset == expected)
+        #expect(abs(animation.anchor?.x ?? 0) > 10000)
+        Self.expectSmoothGlide(animation, maxStep: 1)
+        // Halfway it is about halfway, as a pan is.
+        let half = animation.state(at: Self.time(0.5))
+        #expect(abs(half.offset.x - expected.x / 2) < 0.1 && abs(half.offset.y - expected.y / 2) < 0.1)
+    }
+
+    @Test(arguments: [
+        // Wholly visible against an edge or in a corner, partly off the viewport, near the image's edge.
+        CGPoint(x: 0, y: 250), CGPoint(x: 750, y: 500), CGPoint(x: 37, y: 411), CGPoint(x: -100, y: 250),
+        CGPoint(x: -200, y: -80), CGPoint(x: 950, y: 590),
+    ])
+    func aZoomAboutASmallImageStaysInTheLimitsAndMovesItsEdgesOneWay(offset: CGPoint) {
+        let from = ZoomPanState(
+            zoom: 1, offset: offset, contentSize: CGSize(width: 250, height: 100),
+            viewportSize: CGSize(width: 1000, height: 600)
+        ).clamped()
+        for zoom in [CGFloat(2), 4, 6, 8, 16, 0.5] {
+            Self.expectSmoothGlide(Self.aboutImage(from, to: zoom), maxStep: 5)
         }
     }
 
-    @Test func aGlideAboutASmallImageAtTheLeftHasNoJumps() {
-        // 100 px growing to 1600 over 2000 samples.
-        Self.expectSmoothGlide(Self.smallImageAtTheLeftTo16x(), maxStep: 5)
+    @Test(arguments: [CGPoint(x: 0, y: 250), CGPoint(x: 750, y: 500), CGPoint(x: 37, y: 411)])
+    func aZoomAboutASmallImageShownWholeMovesItsCentreOneWay(offset: CGPoint) {
+        let from = ZoomPanState(
+            zoom: 1, offset: offset, contentSize: CGSize(width: 250, height: 100),
+            viewportSize: CGSize(width: 1000, height: 600))
+        for zoom in [CGFloat(2), 4, 6, 8, 16] {
+            let animation = Self.aboutImage(from, to: zoom)
+            Self.expectMovesOneWay(CGPoint(x: 125, y: 50), in: animation)
+            #expect(animation.state(at: Self.time(1)) == animation.to)
+        }
+    }
+
+    @Test(arguments: [
+        (CGPoint(x: -237, y: -411), CGFloat(8)), (CGPoint(x: 0, y: 0), CGFloat(16)),
+        (CGPoint(x: -600, y: -600), CGFloat(6)),
+    ])
+    func aZoomAboutALargeImageIsTheGlideAboutTheViewportsCentre(offset: CGPoint, zoom: CGFloat) {
+        // 400×300 at 4× covers 1000×600 all the way: no knot, the same glide as a preset around the
+        // viewport's centre.
+        let from = ZoomPanState(
+            zoom: 4, offset: offset, contentSize: CGSize(width: 400, height: 300),
+            viewportSize: CGSize(width: 1000, height: 600))
+        let aboutImage = Self.aboutImage(from, to: zoom)
+        let aroundCentre = ZoomAnimation(
+            from: from, to: from.zoomed(to: zoom, around: CGPoint(x: 500, y: 300)), start: Self.start)
+        for fraction in Self.fractions {
+            #expect(aboutImage.state(at: Self.time(fraction)) == aroundCentre.state(at: Self.time(fraction)))
+        }
+    }
+
+    @Test(arguments: [0.3, 0.5, 0.7])
+    func retargetingAZoomAboutTheImageDoesNotJump(fraction: Double) {
+        // The user's case, and mid-glide 2× about the image, as a second preset click would.
+        let first = Self.smallImageAtTheLeftTo16x()
+        let turn = Self.time(fraction)
+        let shown = first.state(at: turn)
+        let second = first.retargeted(to: shown.zoomedAboutImage(to: 2), at: turn, throughFill: true)
+        #expect(second.throughFill)
+        #expect(second.state(at: turn) == shown)
+        let before = first.state(at: turn - 0.0001)
+        let after = second.state(at: turn + 0.0001)
+        #expect(abs(after.zoom - before.zoom) / shown.zoom < 0.01)
+        #expect(abs(after.offset.x - before.offset.x) < 5 && abs(after.offset.y - before.offset.y) < 5)
+        // The same glide from the start of the test clock, to check it whole.
+        Self.expectSmoothGlide(
+            ZoomAnimation(from: second.from, to: second.to, start: Self.start, throughFill: true), maxStep: 5)
     }
 
     // MARK: Time
