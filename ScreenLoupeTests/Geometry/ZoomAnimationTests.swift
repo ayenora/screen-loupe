@@ -284,34 +284,29 @@ struct ZoomAnimationTests {
         #expect(Self.close(shown.offset.y, 20 - 40 * e, 1e-3))
     }
 
-    // MARK: Zooming out to a centred image
+    // MARK: Zooming without a pointer
 
-    /// 500×200 at 4× (2000×800) in 1000×600, shown at its right part, then 1× (500×200) around the
-    /// centre: the target is centred on both axes.
+    /// 500×200 at 4× (2000×800) in 1000×600, shown at its right part, then 1× about the image: the
+    /// target is centred on both axes.
     private static func zoomOutToCentred(offsetX: CGFloat) -> ZoomAnimation {
         let from = ZoomPanState(
             zoom: 4, offset: CGPoint(x: offsetX, y: -100), contentSize: CGSize(width: 500, height: 200),
             viewportSize: CGSize(width: 1000, height: 600))
-        return ZoomAnimation(from: from, to: from.zoomed(to: 1, around: CGPoint(x: 500, y: 300)), start: start)
+        return ZoomAnimation(from: from, to: from.zoomedAboutImage(to: 1), start: start)
     }
 
-    @Test(arguments: [CGFloat(-1000), -500, 0])
-    func aGlideToACentredImageEndsExactlyAtTheModel(offsetX: CGFloat) {
-        let animation = Self.zoomOutToCentred(offsetX: offsetX)
-        #expect(animation.to.offset == CGPoint(x: 250, y: 200))
-        #expect(animation.state(at: Self.time(1)) == animation.to)
-        // No jump at the end: just before it the view is a fraction of a pixel from the model.
-        let last = animation.state(at: Self.time(0.999))
-        #expect(abs(last.offset.x - animation.to.offset.x) < 0.01)
-        #expect(abs(last.offset.y - animation.to.offset.y) < 0.01)
-        #expect(Self.close(last.zoom, animation.to.zoom, 1e-4))
+    /// 100×50 at 1× in 400×300, centred and then dragged against the left edge, then 16× about the
+    /// image (the user's case): the image's centre, at viewport (50, 150), is the point to keep still.
+    private static func smallImageAtTheLeftTo16x() -> ZoomAnimation {
+        let from = ZoomPanState(
+            zoom: 1, contentSize: CGSize(width: 100, height: 50), viewportSize: CGSize(width: 400, height: 300)
+        ).centered().panned(by: CGPoint(x: -500, y: 0))
+        return ZoomAnimation(from: from, to: from.zoomedAboutImage(to: 16), start: start)
     }
 
-    @Test(arguments: [CGFloat(-1000), -500, 0])
-    func aGlideToACentredImageMovesEachEdgeOneWayAndWithinTheLimits(offsetX: CGFloat) {
-        // Every edge of the image moves one way, without jumps, and the view stays within the pan
-        // limits, although they switch from covering the viewport to staying inside it midway.
-        let animation = Self.zoomOutToCentred(offsetX: offsetX)
+    /// Every edge of the image moves one way, without jumps (under `maxStep` pixels per 1/2000 of the
+    /// glide), the view stays within the pan limits all the way, and it ends exactly at the model.
+    private static func expectSmoothGlide(_ animation: ZoomAnimation, maxStep: CGFloat) {
         var previous = animation.state(at: Self.time(0))
         var directions: [CGFloat] = [0, 0, 0, 0]
         for step in 1...2000 {
@@ -328,14 +323,53 @@ struct ZoomAnimationTests {
             ]
             for index in edges.indices {
                 let move = edges[index] - previousEdges[index]
-                // 2000 samples of a 2000 px image shrinking to 500: no step near a jump.
-                #expect(abs(move) < 5)
+                #expect(abs(move) < maxStep)
                 #expect(move * directions[index] >= -1e-9)
                 if abs(move) > 1e-9 { directions[index] = move }
             }
             previous = shown
         }
         #expect(previous == animation.to)
+    }
+
+    @Test(arguments: [CGFloat(-1000), -500, 0])
+    func aGlideToACentredImageEndsExactlyAtTheModel(offsetX: CGFloat) {
+        let animation = Self.zoomOutToCentred(offsetX: offsetX)
+        #expect(animation.to.offset == CGPoint(x: 250, y: 200))
+        #expect(animation.state(at: Self.time(1)) == animation.to)
+        // No jump at the end: just before it the view is a fraction of a pixel from the model.
+        let last = animation.state(at: Self.time(0.999))
+        #expect(abs(last.offset.x - animation.to.offset.x) < 0.01)
+        #expect(abs(last.offset.y - animation.to.offset.y) < 0.01)
+        #expect(Self.close(last.zoom, animation.to.zoom, 1e-4))
+    }
+
+    @Test(arguments: [CGFloat(-1000), -500, 0])
+    func aGlideToACentredImageMovesEachEdgeOneWayAndWithinTheLimits(offsetX: CGFloat) {
+        // The limits switch from covering the viewport to staying inside it midway. 2000 samples of a
+        // 2000 px image shrinking to 500: no step near a jump.
+        Self.expectSmoothGlide(Self.zoomOutToCentred(offsetX: offsetX), maxStep: 5)
+    }
+
+    @Test func aGlideAboutASmallImageAtTheLeftKeepsItsCentreStill() {
+        let animation = Self.smallImageAtTheLeftTo16x()
+        #expect(animation.from.offset == CGPoint(x: 0, y: 125))
+        #expect(animation.to.offset == CGPoint(x: -750, y: -250))
+        #expect(animation.anchor == CGPoint(x: 50, y: 150))
+        #expect(animation.state(at: Self.time(1)) == animation.to)
+        // Once the image covers the viewport (past 7× here) nothing holds it, and the image's centre
+        // stays at (50, 150).
+        for fraction in [0.8, 0.9, 0.99] {
+            let shown = animation.state(at: Self.time(fraction))
+            #expect(shown.zoom > 7)
+            #expect(
+                Self.close(shown.sourcePoint(forViewportPoint: CGPoint(x: 50, y: 150)), CGPoint(x: 50, y: 25), 1e-6))
+        }
+    }
+
+    @Test func aGlideAboutASmallImageAtTheLeftHasNoJumps() {
+        // 100 px growing to 1600 over 2000 samples.
+        Self.expectSmoothGlide(Self.smallImageAtTheLeftTo16x(), maxStep: 5)
     }
 
     // MARK: Time

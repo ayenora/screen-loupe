@@ -143,12 +143,16 @@ final class ZoomPanController {
         changed()
     }
 
-    /// A zoom command (a preset, a typed zoom): glides to `zoom` around `anchor` (a viewport point),
-    /// or around the viewport centre, keeping the source point under it where it shows now (centred on
-    /// an axis where the image comes out no larger than the viewport).
+    /// A zoom command (a preset, a typed zoom, `+`/`-`): glides to `zoom`. Around `anchor`, the
+    /// pointer (a viewport point), keeping the source point under it where it shows now; without one,
+    /// around the centre of the part of the image that shows, centring the image on an axis where it
+    /// comes out no larger than the viewport (`ZoomPanState.zoomedAboutImage`).
     func setZoom(_ zoom: CGFloat, around anchor: CGPoint? = nil) {
-        let center = CGPoint(x: state.viewportSize.width / 2, y: state.viewportSize.height / 2)
-        command(presented.zoomed(to: zoom, around: anchor ?? center))
+        if let anchor {
+            command(presented.zoomed(to: zoom, around: anchor))
+        } else {
+            command(presented.zoomedAboutImage(to: zoom))
+        }
     }
 
     /// `+`/`-`: the next ladder step from the zoom asked for last, so quick presses add up.

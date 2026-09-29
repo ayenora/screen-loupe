@@ -98,9 +98,18 @@ struct ZoomPanState: Equatable, Sendable {
         return min(max(fit, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
     }
 
-    /// Changes the zoom keeping the source point under `anchor` (a viewport point) in place. On an axis
-    /// where the image comes out no larger than the viewport it is centred instead; on a larger one it
-    /// is kept against the edges as any pan is.
+    /// The centre of the part of the image the viewport shows: the image's own centre when it shows
+    /// whole, the viewport's when the image covers it, on each axis apart. The viewport's centre when
+    /// no part of the image shows (no image, or no viewport yet).
+    var visibleImageCenter: CGPoint {
+        let image = CGRect(origin: offset, size: scaledContentSize)
+        let visible = image.intersection(CGRect(origin: .zero, size: viewportSize))
+        guard !visible.isEmpty else { return CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2) }
+        return CGPoint(x: visible.midX, y: visible.midY)
+    }
+
+    /// A zoom around the pointer (a wheel, a pinch, `+`/`-` over the Viewer): the source point under
+    /// `anchor` (a viewport point) stays in place, and the image is only kept in view as any pan is.
     func zoomed(to newZoom: CGFloat, around anchor: CGPoint) -> ZoomPanState {
         let target = min(max(newZoom, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
         var next = self
@@ -109,7 +118,15 @@ struct ZoomPanState: Equatable, Sendable {
             y: anchor.y - (anchor.y - offset.y) * target / zoom
         )
         next.zoom = target
-        next = next.clamped()
+        return next.clamped()
+    }
+
+    /// A zoom without a pointer (a preset, a typed zoom, `+`/`-` with the pointer elsewhere): around
+    /// the centre of the part of the image that shows, so a small image dragged to one side grows from
+    /// its own centre. On an axis where the image comes out no larger than the viewport it is then
+    /// centred; on a larger one it is kept against the edges as any pan is.
+    func zoomedAboutImage(to newZoom: CGFloat) -> ZoomPanState {
+        var next = zoomed(to: newZoom, around: visibleImageCenter)
         let scaled = next.scaledContentSize
         if scaled.width <= viewportSize.width {
             next.offset.x = Self.centeredAxis(content: scaled.width, viewport: viewportSize.width)
@@ -135,9 +152,9 @@ struct ZoomPanState: Equatable, Sendable {
         return next.centered()
     }
 
-    /// The image centred on both axes. Only on request (Fit, the first frame, and a zoom on an axis
-    /// where the image is no larger than the viewport): centring on a resize or a pan would move the
-    /// image by itself (docs/product.md, "Nothing moves unless you move it").
+    /// The image centred on both axes. Only on request (Fit, the first frame, and a zoom without a
+    /// pointer on an axis where the image is no larger than the viewport): centring on a resize or a
+    /// pan would move the image by itself (docs/product.md, "Nothing moves unless you move it").
     func centered() -> ZoomPanState {
         var next = self
         next.offset = CGPoint(
