@@ -322,7 +322,7 @@ final class OverlayFrameController {
     /// Locked or not: the pin guards against a stray drag, and picking is a deliberate command. An
     /// attached magnet moves to the picked window.
     func pickWindow(onPicked: @escaping () -> Void) {
-        pick(hint: "Click to fit the \(kind.name) · Esc to cancel") { [weak self] picked in
+        pick(hint: "Click to fit the \(kind.name) · Esc to cancel", fits: true) { [weak self] picked in
             guard let self else { return }
             let minimum = CaptureAreaEditing.minimumSize
             var rect = picked.frame
@@ -334,25 +334,28 @@ final class OverlayFrameController {
         }
     }
 
-    /// Fit to Window's picker is open.
+    /// Its window picker is open: Fit to Window's or the magnet's.
     var isPickingWindow: Bool { picker != nil }
 
-    /// Closes Fit to Window's picker as a cancel.
+    /// Closes its window picker, Fit to Window's or the magnet's, as a cancel.
     func stopPickingWindow() {
         picker?.stop()
     }
 
-    /// Opens the window picker; `onPicked` runs only when a window is picked.
-    private func pick(hint: String, onPicked: @escaping (ScreenWindow) -> Void) {
+    /// Opens the window picker; `onPicked` runs only when a window is picked. `fits`: it is Fit to
+    /// Window's, and the tab's pick button shows pressed while it runs.
+    private func pick(hint: String, fits: Bool, onPicked: @escaping (ScreenWindow) -> Void) {
         guard picker == nil, let converter else { return }
         let picker = WindowPicker(
             windows: ScreenWindows.windows(converter: converter), tint: view.style.accent, hint: hint
         ) { [weak self] picked in
             self?.picker = nil
+            self?.view.isPickingWindow = false
             self?.onPickerEnded?()
             if let picked { onPicked(picked) }
         }
         self.picker = picker
+        view.isPickingWindow = fits
         // Started by a key or the menu with a name showing: it goes under the picker's panels.
         updateButtonName()
         onPickerStarted?()
@@ -364,7 +367,9 @@ final class OverlayFrameController {
     /// Magnet to Window: the picked window holds the area where it is. Cancelling leaves the lock as
     /// it was.
     private func pickMagnetWindow() {
-        pick(hint: "Click to attach the Capture Area · Esc to cancel") { [weak self] in self?.attach(to: $0) }
+        pick(hint: "Click to attach the Capture Area · Esc to cancel", fits: false) { [weak self] in
+            self?.attach(to: $0)
+        }
     }
 
     /// A click on the magnet while it is off: the window under the area holds it, if there is one.

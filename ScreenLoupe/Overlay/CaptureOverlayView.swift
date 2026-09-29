@@ -86,6 +86,11 @@ final class CaptureOverlayView: NSView {
         didSet { viewportButton.isOn = isViewportHandleOn }
     }
 
+    /// Fit to Window's picker runs: the pick button shows pressed, filled as a button that is on.
+    var isPickingWindow = false {
+        didSet { pickButton.isOn = isPickingWindow }
+    }
+
     /// The lock chosen with the pin's ▾, shown by the pin's image.
     var lock = CaptureAreaLock.pinned {
         didSet {
