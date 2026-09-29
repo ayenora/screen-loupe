@@ -2,6 +2,8 @@
 
 A small native macOS magnifier for designers and developers.
 
+https://github.com/user-attachments/assets/fa2e3ef7-8ac3-4e69-b9fc-c11959146e5c
+
 Place a **Capture Area** rectangle over any part of the screen and inspect it in a separate **Viewer** window. The Viewer shows the area in real time and supports:
 
 - pixel-sharp zoom that glides between levels, panning, and a window sized to the magnified area;
