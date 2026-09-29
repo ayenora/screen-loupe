@@ -15,7 +15,7 @@ SWIFT_DIRS := $(wildcard $(APP_DIR) $(TESTS_DIR))
 
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 
-# make release: a signed, notarized Developer ID DMG (docs/internal/release.md, Channel A).
+# make release: a signed, notarized Developer ID DMG, kept with its archive in build/release/<version>/.
 RELEASE_DIR := build/release
 NOTARY_PROFILE := screenloupe-notary
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -38,7 +38,7 @@ help:
 	@echo "  make clean      - Remove build/"
 	@echo "  make version    - Show marketing version and build number"
 	@echo "  make icon       - Redraw the app icon (scripts/make_icon.swift)"
-	@echo "  make release    - Archive, sign with Developer ID, notarize: build/release/*.dmg"
+	@echo "  make release    - Archive, sign with Developer ID, notarize: build/release/<version>/"
 	@echo ""
 	@echo "Variables: CONFIGURATION=Debug|Release (default Debug)"
 
@@ -85,26 +85,28 @@ icon:
 
 # The build number is the commit count, so a release builds a clean, committed tree. The copies
 # made on the way are unregistered and the staging folders removed, so only the DMG and the archive
-# stay and macOS doesn't offer extra copies of the app.
+# stay and macOS doesn't offer extra copies of the app. Each version has its own folder, so an
+# earlier release's archive stays for its App Store upload and crash symbols.
 release:
 	@test -z "$$(git status --porcelain)" || { echo "Commit first: the build number is the commit count."; exit 1; }
 	@version=$$(xcodebuild -project $(PROJECT) -scheme $(SCHEME) -showBuildSettings 2>/dev/null | awk '/ MARKETING_VERSION =/ {print $$3; exit}'); \
-	dmg=$(RELEASE_DIR)/ScreenLoupe-$$version.dmg; \
+	dir=$(RELEASE_DIR)/$$version; \
+	dmg=$$dir/ScreenLoupe-$$version.dmg; \
 	set -e; \
-	rm -rf $(RELEASE_DIR); \
+	rm -rf $$dir; \
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release -quiet \
-		-archivePath $(RELEASE_DIR)/ScreenLoupe.xcarchive CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) archive; \
-	xcodebuild -exportArchive -quiet -allowProvisioningUpdates -archivePath $(RELEASE_DIR)/ScreenLoupe.xcarchive \
-		-exportOptionsPlist scripts/ExportOptions.plist -exportPath $(RELEASE_DIR)/export; \
-	mkdir -p $(RELEASE_DIR)/dmg; \
-	cp -R $(RELEASE_DIR)/export/$(SCHEME).app $(RELEASE_DIR)/dmg/; \
-	ln -s /Applications $(RELEASE_DIR)/dmg/Applications; \
-	hdiutil create -quiet -volname "Screen Loupe" -srcfolder $(RELEASE_DIR)/dmg -ov -format UDZO $$dmg; \
+		-archivePath $$dir/ScreenLoupe.xcarchive CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) archive; \
+	xcodebuild -exportArchive -quiet -allowProvisioningUpdates -archivePath $$dir/ScreenLoupe.xcarchive \
+		-exportOptionsPlist scripts/ExportOptions.plist -exportPath $$dir/export; \
+	mkdir -p $$dir/dmg; \
+	cp -R $$dir/export/$(SCHEME).app $$dir/dmg/; \
+	ln -s /Applications $$dir/dmg/Applications; \
+	hdiutil create -quiet -volname "Screen Loupe" -srcfolder $$dir/dmg -ov -format UDZO $$dmg; \
 	codesign --sign "Developer ID Application" --timestamp $$dmg; \
 	xcrun notarytool submit $$dmg --keychain-profile $(NOTARY_PROFILE) --wait; \
 	xcrun stapler staple $$dmg; \
 	spctl -a -vvv -t install $$dmg; \
-	$(LSREGISTER) -u $(RELEASE_DIR)/export/$(SCHEME).app $(RELEASE_DIR)/dmg/$(SCHEME).app \
-		$(RELEASE_DIR)/ScreenLoupe.xcarchive/Products/Applications/$(SCHEME).app; \
-	rm -rf $(RELEASE_DIR)/export $(RELEASE_DIR)/dmg; \
+	$(LSREGISTER) -u $$dir/export/$(SCHEME).app $$dir/dmg/$(SCHEME).app \
+		$$dir/ScreenLoupe.xcarchive/Products/Applications/$(SCHEME).app; \
+	rm -rf $$dir/export $$dir/dmg; \
 	echo "Ready: $$dmg (version $$version, build $(BUILD_NUMBER))"
