@@ -56,7 +56,7 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 To copy just a part of the view:
 
 - **⌥-drag** a rectangle in the Viewer: that region is copied on letting go.
-- **Select** (⌘E, or the dashed-rectangle button): drag a selection snapped to whole screen pixels, adjust it by its handles, then ⌘C copies just the selection. ⌘A selects the whole Capture Area, at the current zoom, even where it reaches beyond the window. Space-drag pans while Select is on; Escape clears.
+- **Select** (⌘E, or the dashed-rectangle button): drag a selection snapped to whole screen pixels, adjust it by its handles, then ⌘C copies just the selection. The label under it gives its size in pixels and points and its place, `32 × 22 px · 16 × 11 pt · x 11, y 11` (pixels only on a 1× display and on an image file). ⌘A selects the whole Capture Area, at the current zoom, even where it reaches beyond the window. Space-drag pans while Select is on; Escape clears.
 
 ## Freezing a moment
 

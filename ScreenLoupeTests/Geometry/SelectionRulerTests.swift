@@ -12,6 +12,13 @@ struct RulerLabelTests {
         #expect(RulerLabel.text(pixels: 3, sourceScale: 1.5) == "3 px · 2 pt")
     }
 
+    @Test func pointsAreWholeOrOneDecimal() {
+        #expect(RulerLabel.points(16) == "16")
+        #expect(RulerLabel.points(0.5) == "0.5")
+        #expect(RulerLabel.points(32.0 / 3) == "10.7")
+        #expect(RulerLabel.points(0) == "0")
+    }
+
     @Test func givesOnlyPixelsWhenAPixelIsAPoint() {
         // A 1× display, and an image file, which has no points.
         #expect(RulerLabel.text(pixels: 32, sourceScale: 1) == "32 px")
@@ -358,6 +365,57 @@ struct SelectionBadgeTests {
         let left = SelectionRuler.badgeRect(
             size: badge, for: CGRect(x: -40, y: 100, width: 100, height: 10), in: bounds, ruler: nil)
         #expect(left.minX == 4)
+    }
+
+    @Test func aBadgeWithPointsTooStaysClearOfTheRuler() {
+        // "5119 × 2879 px · 1706.3 × 959.7 pt · x 1024, y 512" at 11 pt is 289 pt wide with its
+        // padding: it reaches past the selection, over where the height line and its label go.
+        let wide = CGSize(width: 290, height: 20)
+        for rect in [
+            CGRect(x: 30, y: 100, width: 40, height: 60), CGRect(x: 10, y: 5, width: 20, height: 4),
+            CGRect(x: 300, y: 5, width: 90, height: 60), CGRect(x: 100, y: 5, width: 120, height: 280),
+            CGRect(x: -50, y: -50, width: 500, height: 400),
+        ] {
+            let lines = ruler(rect)
+            let placed = SelectionRuler.badgeRect(size: wide, for: rect, in: bounds, ruler: lines)
+            #expect(isClear(placed, of: lines))
+            #expect(bounds.contains(placed))
+        }
+    }
+
+    @Test func withNoPlaceClearOfTheRulerTheBadgeStaysInViewAtTheBottom() {
+        // Nearly the view's height, with the height line outside at x 88 from y 5 to 285: a 340 pt
+        // badge fits neither right of that line nor left of it, nor above or below the selection.
+        let wide = CGSize(width: 340, height: 20)
+        let rect = CGRect(x: 100, y: 5, width: 120, height: 280)
+        let lines = ruler(rect)
+        #expect(lines.height.side == .outside)
+        let placed = SelectionRuler.badgeRect(size: wide, for: rect, in: bounds, ruler: lines)
+        #expect(placed == CGRect(x: 56, y: 259, width: 340, height: 20))
+        #expect(bounds.contains(placed))
+    }
+
+    @Test func aBadgeWiderThanAnyRoomStaysInViewOverASelectionFillingIt() {
+        let wide = CGSize(width: 380, height: 20)
+        for rect in [
+            CGRect(x: -50, y: -50, width: 500, height: 400), CGRect(x: 100, y: 5, width: 120, height: 280),
+            CGRect(x: 30, y: 0, width: 360, height: 300),
+        ] {
+            let placed = SelectionRuler.badgeRect(size: wide, for: rect, in: bounds, ruler: ruler(rect))
+            #expect(bounds.contains(placed))
+        }
+    }
+
+    @Test func aBadgeWiderThanTheViewerStartsAtItsLeftSide() {
+        // A narrow image area (the side column open): the size, at the badge's start, stays in view.
+        let wide = CGSize(width: 450, height: 20)
+        for rect in [
+            CGRect(x: 300, y: 100, width: 60, height: 40), CGRect(x: 10, y: 100, width: 60, height: 40),
+            CGRect(x: -50, y: -50, width: 500, height: 400),
+        ] {
+            #expect(SelectionRuler.badgeRect(size: wide, for: rect, in: bounds, ruler: nil).minX == 4)
+            #expect(SelectionRuler.badgeRect(size: wide, for: rect, in: bounds, ruler: ruler(rect)).minX == 4)
+        }
     }
 
     @Test func theBadgeSitsOnWholePoints() {

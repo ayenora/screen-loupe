@@ -27,6 +27,9 @@ final class ViewerOverlayView: NSView {
     /// The Viewer's drawable pixels per point (`MTKView.drawableScale`): zoom and pan are in drawable
     /// pixels, this view draws in points.
     var drawableScale: () -> CGFloat = { 1 }
+    /// The shown frame's pixels per point (`FrameLayout.scale`, 1 for an image file): the
+    /// selection's badge gives its size in points too.
+    var sourceScale: () -> CGFloat = { 1 }
 
     init(zoomPan: ZoomPanController, inspector: PixelInspector) {
         self.zoomPan = zoomPan
@@ -165,7 +168,8 @@ final class ViewerOverlayView: NSView {
         // Out of the Selection Ruler's way.
         let lengths = ruler?.measured(rect, placed: placed, bounds: bounds)
         Self.drawChip(
-            PixelSelection.label(rect), for: placed, in: bounds, ruler: lengths.map { ($0.width, $0.height) })
+            PixelSelection.label(rect, sourceScale: sourceScale()), for: placed, in: bounds,
+            ruler: lengths.map { ($0.width, $0.height) })
     }
 
     private static let chipAttributes: [NSAttributedString.Key: Any] = [

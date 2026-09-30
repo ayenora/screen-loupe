@@ -49,6 +49,7 @@ final class ViewerContentView: NSStackView {
         meterPanel = ColorMeterPanel(inspector: inspector)
         ruler = RulerController(zoomPan: zoomPan, project: project, settings: settings)
         ruler.sourceScale = { frameStore.shownFrame?.layout.scale ?? 1 }
+        overlay.sourceScale = ruler.sourceScale
         ruler.pictureOrigin = { frameStore.shownFrame?.areaOrigin ?? .zero }
         references = ReferencesController(project: project, zoomPan: zoomPan)
         selection = SelectionController(zoomPan: zoomPan)

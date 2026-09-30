@@ -70,8 +70,43 @@ struct PixelSelectionTests {
         #expect(PixelSelection.handlePoint(.bottom, of: rect, in: state) == CGPoint(x: 40, y: 40))
     }
 
-    @Test func theLabelGivesSizeAndPlace() {
-        #expect(PixelSelection.label(CGRect(x: 11, y: 11, width: 12, height: 5)) == "12 × 5 px · x 11, y 11")
+    @Test func theLabelGivesPixelsOnlyWhenAPixelIsAPoint() {
+        // A 1× display, or an image file (its frame's scale is 1).
+        #expect(
+            PixelSelection.label(CGRect(x: 11, y: 11, width: 12, height: 5), sourceScale: 1)
+                == "12 × 5 px · x 11, y 11")
+        #expect(
+            PixelSelection.label(CGRect(x: 0, y: 0, width: 1, height: 1), sourceScale: 1) == "1 × 1 px · x 0, y 0")
+    }
+
+    @Test func theLabelGivesPixelsAndPointsOnARetinaDisplay() {
+        #expect(
+            PixelSelection.label(CGRect(x: 11, y: 11, width: 32, height: 22), sourceScale: 2)
+                == "32 × 22 px · 16 × 11 pt · x 11, y 11")
+    }
+
+    @Test func oddPixelsAt2xGiveHalfPoints() {
+        #expect(
+            PixelSelection.label(CGRect(x: 3, y: 7, width: 33, height: 22), sourceScale: 2)
+                == "33 × 22 px · 16.5 × 11 pt · x 3, y 7")
+        #expect(
+            PixelSelection.label(CGRect(x: 0, y: 0, width: 1, height: 1), sourceScale: 2)
+                == "1 × 1 px · 0.5 × 0.5 pt · x 0, y 0")
+    }
+
+    @Test func at3xPointsGetOneDecimal() {
+        #expect(
+            PixelSelection.label(CGRect(x: 5, y: 6, width: 30, height: 10), sourceScale: 3)
+                == "30 × 10 px · 10 × 3.3 pt · x 5, y 6")
+        #expect(
+            PixelSelection.label(CGRect(x: 5, y: 6, width: 32, height: 3), sourceScale: 3)
+                == "32 × 3 px · 10.7 × 1 pt · x 5, y 6")
+    }
+
+    @Test func thePlaceStaysInPixels() {
+        #expect(
+            PixelSelection.label(CGRect(x: 101, y: 33, width: 4, height: 4), sourceScale: 2)
+                == "4 × 4 px · 2 × 2 pt · x 101, y 33")
     }
 
     @Test func draggingTheAreasLeftAndTopEdgesKeepsTheSelectionOnItsPixels() {

@@ -37,9 +37,12 @@ enum RulerLabel {
     static func text(pixels: CGFloat, sourceScale: CGFloat) -> String {
         let px = "\(Int(pixels)) px"
         guard sourceScale != 1 else { return px }
-        let points = pixels / sourceScale
-        let text = points == points.rounded() ? "\(Int(points))" : String(format: "%.1f", Double(points))
-        return "\(px) · \(text) pt"
+        return "\(px) · \(points(pixels / sourceScale)) pt"
+    }
+
+    /// `16`, or `16.5` when it isn't a whole number of points: one decimal.
+    static func points(_ points: CGFloat) -> String {
+        points == points.rounded() ? "\(Int(points))" : String(format: "%.1f", Double(points))
     }
 }
 
@@ -144,7 +147,10 @@ enum SelectionRuler {
     /// overlaps: under the selection's bottom-left corner, below whatever of the ruler is there;
     /// else over its top, above whatever is there; else, with no room either way (the selection fills
     /// the Viewer), inside it at the bottom of what shows, right of a height line along its left
-    /// edge. Its left edge follows the selection's, kept inside the Viewer; on whole points.
+    /// edge. With no place there clear of the ruler either (a badge wider than the room right of a
+    /// height line), it stays at the bottom of what shows, over the line: never out of view. Its left
+    /// edge follows the selection's, kept inside the Viewer, and a badge wider than the Viewer starts at
+    /// its left side, so the size shows and the place is cut; on whole points.
     static func badgeRect(
         size: CGSize, for rect: CGRect, in bounds: CGRect, ruler: (width: Line, height: Line)?
     )
@@ -152,10 +158,11 @@ enum SelectionRuler {
     {
         let lines = ruler.map { [$0.width, $0.height] } ?? []
         let obstacles = lines.flatMap { [area(of: $0), $0.label] }
+        // Wider than the Viewer, it keeps to the left side: its end, the place, is what is cut, not the size.
         func placed(x: CGFloat, y: CGFloat) -> CGRect {
             CGRect(
                 origin: CGPoint(
-                    x: min(max(x, bounds.minX + badgeMargin), bounds.maxX - size.width - badgeMargin).rounded(),
+                    x: max(min(x, bounds.maxX - size.width - badgeMargin), bounds.minX + badgeMargin).rounded(),
                     y: y.rounded()),
                 size: size)
         }
@@ -185,8 +192,14 @@ enum SelectionRuler {
             guard right.minX > inside.minX else { break }
             inside = right
         }
+        let bottom = inside.minY
         while let obstacle = hit(inside, among: obstacles) {
             inside = placed(x: inside.minX, y: obstacle.minY - badgeGap - size.height)
+        }
+        // No place clear of the ruler: back at the bottom of what shows, over a line rather than
+        // out of view.
+        if inside.minY < bounds.minY {
+            inside.origin.y = max(bottom, bounds.minY)
         }
         return inside
     }
