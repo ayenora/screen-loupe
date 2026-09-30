@@ -25,9 +25,9 @@ enum MainMenu {
     private static func appMenu(target: AppController) -> NSMenu {
         let name = ProcessInfo.processInfo.processName
         let menu = NSMenu(title: name)
-        menu.addItem(
-            withTitle: "About \(name)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
-            keyEquivalent: "")
+        let about = menu.addItem(
+            withTitle: "About \(name)", action: #selector(AppController.showAbout(_:)), keyEquivalent: "")
+        about.target = target
         menu.addItem(.separator())
         let settings = menu.addItem(
             withTitle: "Settings…", action: #selector(AppController.showSettings(_:)), keyEquivalent: ",")

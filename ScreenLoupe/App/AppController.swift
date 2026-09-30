@@ -310,6 +310,20 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
     #endif
 
+    /// The standard About panel, with the build's `Edition` as its one line of credits.
+    @objc func showAbout(_ sender: Any?) {
+        let centred = NSMutableParagraphStyle()
+        centred.alignment = .center
+        let credits = NSAttributedString(
+            string: Edition.name,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: centred,
+            ])
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+    }
+
     /// The guide on the project's website (docs/guide.md).
     private static let guide = "https://ayenora.github.io/screen-loupe/guide"
 

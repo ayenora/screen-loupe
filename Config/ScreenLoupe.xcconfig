@@ -1,0 +1,17 @@
+// Settings for the app target: its identity, entitlements and generated Info.plist.
+
+PRODUCT_NAME = $(TARGET_NAME)
+PRODUCT_BUNDLE_IDENTIFIER = com.ayenora.screenloupe
+CODE_SIGN_ENTITLEMENTS = ScreenLoupe/ScreenLoupe.entitlements
+ENABLE_HARDENED_RUNTIME = YES
+
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+COMBINE_HIDPI_IMAGES = YES
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
+SWIFT_EMIT_LOC_STRINGS = YES
+
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO
+INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.developer-tools
+INFOPLIST_KEY_NSHumanReadableCopyright = Copyright © 2026 Ayenora. MIT License.
+INFOPLIST_KEY_NSPrincipalClass = NSApplication
