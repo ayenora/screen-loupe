@@ -47,6 +47,76 @@ enum RecentCaptureRules {
         return next
     }
 
+    /// How a capture shows: its zoom and offset. `nil` zoom: fitted to the Viewer, as an image file
+    /// first shows.
+    struct CaptureView: Equatable {
+        var zoom: CGFloat?
+        var offset: CGPoint
+    }
+
+    /// A recent capture as linking sees it. Linked captures share one zoom and offset, not the
+    /// selection, so any of them shown opens at the same spot.
+    struct Link<ID: Equatable>: Equatable {
+        let id: ID
+        /// The kept picture's size: only pictures of one size can be linked.
+        let size: PixelSize
+        var isLinked: Bool
+        var view: CaptureView
+    }
+
+    /// What linking a capture does: every capture as it is after, and whether the Viewer moves to
+    /// the linked capture's new view, as it is the one shown.
+    struct Linking<ID: Equatable>: Equatable {
+        var links: [Link<ID>]
+        var showsNewView: Bool
+    }
+
+    /// Whether capture `id` can be linked now, or unlinked: linked captures share one zoom and
+    /// offset, which only land on the same pixels in pictures of the same size. The first can be
+    /// linked whatever its size, and any again once none is linked.
+    static func canLink<ID>(_ id: ID, in links: [Link<ID>]) -> Bool {
+        guard let link = links.first(where: { $0.id == id }) else { return false }
+        return link.isLinked || links.allSatisfy { !$0.isLinked || $0.size == link.size }
+    }
+
+    /// The captures after capture `id` is put away at `view`: it keeps the view, and when it is
+    /// linked so does every linked one, so any of them shown later opens where it was left.
+    static func leaving<ID>(_ id: ID, at view: CaptureView, in links: [Link<ID>]) -> [Link<ID>] {
+        let isLinked = links.first { $0.id == id }?.isLinked == true
+        return links.map { link in
+            var link = link
+            if link.id == id || (isLinked && link.isLinked) { link.view = view }
+            return link
+        }
+    }
+
+    /// Links capture `id`, with `shown` in the Viewer at `viewer`. It takes the group's view: the
+    /// Viewer's while a linked capture shows, as that may have moved since the group's was kept; else
+    /// the one the linked captures keep. The first keeps its own. When it is the one shown and the
+    /// group's view isn't the Viewer's, the Viewer moves to it: its kept view may be older than what
+    /// shows. `nil` when it can't be linked or already is.
+    static func linking<ID>(_ id: ID, shown: ID?, viewer: CaptureView, in links: [Link<ID>]) -> Linking<ID>? {
+        guard let index = links.firstIndex(where: { $0.id == id }), !links[index].isLinked,
+            canLink(id, in: links)
+        else { return nil }
+        let shownIsLinked = links.contains { $0.id == shown && $0.isLinked }
+        let group = shownIsLinked ? viewer : links.first { $0.isLinked }?.view
+        var next = links
+        next[index].isLinked = true
+        if let group { next[index].view = group }
+        return Linking(links: next, showsNewView: id == shown && group != nil && group != viewer)
+    }
+
+    /// Unlinks capture `id`, with `shown` in the Viewer at `viewer`. It keeps its view as its own.
+    /// When it is the one shown, the Viewer's view goes to the whole group first, so the group holds
+    /// what was last on screen.
+    static func unlinking<ID>(_ id: ID, shown: ID?, viewer: CaptureView, in links: [Link<ID>]) -> [Link<ID>] {
+        guard let link = links.first(where: { $0.id == id }), link.isLinked else { return links }
+        var next = id == shown ? leaving(id, at: viewer, in: links) : links
+        if let index = next.firstIndex(where: { $0.id == id }) { next[index].isLinked = false }
+        return next
+    }
+
     /// A row's size: "294 × 239 px", the kept picture's own pixels.
     static func sizeText(_ size: PixelSize) -> String {
         "\(size.width) × \(size.height) px"

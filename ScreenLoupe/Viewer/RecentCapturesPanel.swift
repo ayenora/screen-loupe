@@ -4,7 +4,7 @@ import SwiftUI
 /// The Recent Captures panel at the right of the Viewer: the
 /// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
 /// newest first — square thumbnail, "Snapshot" or the image file's name, its size, its date and time,
-/// and Delete. Clicking a row shows it in the Viewer. Every size but the camera button's is
+/// Link View and Delete. Clicking a row shows it in the Viewer. Every size but the camera button's is
 /// multiplied by `captures.scale`, so the panel grows with the column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
@@ -169,6 +169,7 @@ private struct CaptureRow: View {
                 .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            LinkToggle(captures: captures, capture: capture)
             Button {
                 captures.remove(capture.id)
             } label: {
@@ -191,13 +192,26 @@ private struct CaptureRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { captures.show(capture.id) }
-        // One element, with Show and Delete as its actions.
+        // One element, with Show, Link or Unlink View and Delete as its actions.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(capture.name), \(capture.sizeText), \(capture.dateText)")
+        .accessibilityLabel("\(capture.name), \(capture.sizeText), \(capture.dateText)\(linkState)")
         .accessibilityAddTraits(isShown ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { captures.show(capture.id) }
         .accessibilityAction(named: "Show") { captures.show(capture.id) }
+        .accessibilityActions {
+            if capture.isLinked {
+                Button("Unlink view") { captures.setLinked(capture.id, false) }
+            } else if captures.canLink(capture) {
+                Button("Link view") { captures.setLinked(capture.id, true) }
+            }
+        }
         .accessibilityAction(named: "Delete capture") { captures.remove(capture.id) }
+    }
+
+    /// Whether it is linked, or why it can't be: its tooltip isn't read, as the row is one element.
+    private var linkState: String {
+        if capture.isLinked { return ", linked" }
+        return captures.canLink(capture) ? "" : ", sizes differ from linked"
     }
 
     private var thumbnail: some View {
@@ -213,6 +227,45 @@ private struct CaptureRow: View {
             }
         }
         .thumbnailTile(scale: s)
+    }
+}
+
+/// Links a capture's view with the other linked ones, left of Delete: a bare link glyph when off, white
+/// on a system blue square when on, and tertiary when the picture's size differs from the linked
+/// ones' — then a click does nothing and the tooltip says why. Not `.disabled`, which would hide the
+/// tooltip.
+private struct LinkToggle: View {
+    let captures: RecentCaptures
+    let capture: RecentCapture
+
+    private var s: CGFloat { captures.scale }
+
+    var body: some View {
+        let canLink = captures.canLink(capture)
+        Button {
+            if canLink { captures.setLinked(capture.id, !capture.isLinked) }
+        } label: {
+            Image(systemName: "link")
+                .font(.system(size: 11 * s, weight: .semibold))
+                .foregroundStyle(
+                    capture.isLinked
+                        ? Color.white : Color(nsColor: canLink ? .secondaryLabelColor : .tertiaryLabelColor)
+                )
+                .frame(width: 20 * s, height: 20 * s)
+                .background(
+                    RoundedRectangle(cornerRadius: 5 * s).fill(capture.isLinked ? Color(nsColor: .systemBlue) : .clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help(canLink: canLink))
+    }
+
+    private func help(canLink: Bool) -> String {
+        if capture.isLinked { return "Unlink View" }
+        if canLink { return "Link View" }
+        let linked = captures.linkedSize.map(RecentCaptureRules.sizeText) ?? ""
+        return "Sizes differ: this is \(capture.sizeText), linked are \(linked)"
     }
 }
 

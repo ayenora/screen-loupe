@@ -119,7 +119,10 @@ final class ViewerContentView: NSStackView {
         }
         viewerView.onCopyRegion = { [weak self] region in self?.copyRegion(region) }
         viewerView.onShowLive = { [weak self] in self?.captures.show(nil) }
-        captures.onShow = { [weak self] old, new in self?.show(new, after: old) }
+        captures.onPutAway = { [weak self] old in self?.putAway(old) }
+        captures.onShow = { [weak self] new in self?.show(new) }
+        captures.viewerView = { [zoomPan] in .init(zoom: zoomPan.state.zoom, offset: zoomPan.state.offset) }
+        captures.onAdoptView = { [weak self] capture in self?.restoreView(of: capture) }
         captures.onChange = { [weak self] in self?.showCaptureIndicator() }
         captures.onTakeSnapshot = { [weak self] in self?.takeSnapshot() }
         inspector.onChange = { [weak self] in
@@ -437,22 +440,25 @@ final class ViewerContentView: NSStackView {
         captures.add(capture)
     }
 
-    /// Shows `new` in place of `old` (`nil`: the live view). Each keeps its zoom, pan and selection:
-    /// they are put away and brought back, so going back finds everything as it was left.
-    private func show(_ new: RecentCapture?, after old: RecentCapture?) {
+    /// Keeps how `old` was left (`nil`: the live view), its zoom, pan and selection, so going back
+    /// finds everything as it was left.
+    private func putAway(_ old: RecentCapture?) {
         let state = zoomPan.state
         if let old {
             captures.keep(old.id, zoom: state.zoom, offset: state.offset, selection: selection.keptSelection)
         } else {
             liveView = (state.zoom, state.offset, selection.keptSelection)
         }
+    }
+
+    /// Shows `new` (`nil`: the live view) as it was put away (`putAway`).
+    private func show(_ new: RecentCapture?) {
         frameStore.shownCapture = new?.frame
         // The next picture is not an edge drag of the last one.
         viewerView.forgetAreaOrigin()
         viewerView.frameArrived()
         if let new {
-            // An image file first shows fitted.
-            if let zoom = new.zoom { zoomPan.restore(zoom: zoom, offset: new.offset) } else { zoomPan.fitWhenShown() }
+            restoreView(of: new)
             selection.keptSelection = new.selection
         } else if let live = liveView {
             zoomPan.restore(zoom: live.zoom, offset: live.offset)
@@ -462,6 +468,16 @@ final class ViewerContentView: NSStackView {
         inspector.frameArrived()
         showCaptureIndicator()
         onShowCapture?()
+    }
+
+    /// Shows `capture`'s kept zoom and offset: on showing it, or on linking it while it shows.
+    private func restoreView(of capture: RecentCapture) {
+        // An image file first shows fitted.
+        if let zoom = capture.zoom {
+            zoomPan.restore(zoom: zoom, offset: capture.offset)
+        } else {
+            zoomPan.fitWhenShown()
+        }
     }
 
     /// The purple border and "Capture 2 of 8 · 14:20:05 · Esc for live" while a capture shows, or

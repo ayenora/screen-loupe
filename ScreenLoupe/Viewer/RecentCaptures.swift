@@ -20,6 +20,8 @@ struct RecentCapture: Identifiable {
     var zoom: CGFloat?
     var offset: CGPoint
     var selection: CGRect?
+    /// Linked captures share one zoom and offset, not the selection (`RecentCaptureRules.Link`).
+    var isLinked = false
 
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -69,8 +71,12 @@ final class RecentCaptures {
     /// Take Snapshot, from the panel's camera button.
     @ObservationIgnored var onTakeSnapshot: (() -> Void)?
 
-    /// Called with the capture shown before and the one shown now (`nil`: the live view).
-    @ObservationIgnored var onShow: ((_ old: RecentCapture?, _ new: RecentCapture?) -> Void)?
+    /// Called with the capture shown before (`nil`: the live view) as it is put away, to keep how it
+    /// was left.
+    @ObservationIgnored var onPutAway: ((_ old: RecentCapture?) -> Void)?
+    /// Called with the capture shown now (`nil`: the live view), after the one before was put away:
+    /// leaving a linked capture also writes the view of the next one.
+    @ObservationIgnored var onShow: ((_ new: RecentCapture?) -> Void)?
 
     var shown: RecentCapture? { captures.first { $0.id == shownID } }
 
@@ -114,9 +120,9 @@ final class RecentCaptures {
     /// Shows a capture in the Viewer, or the live view for `nil`.
     func show(_ id: UUID?) {
         guard id != shownID else { return }
-        let old = shown
+        onPutAway?(shown)
         shownID = id
-        onShow?(old, shown)
+        onShow?(shown)
     }
 
     func remove(_ id: UUID) {
@@ -125,12 +131,55 @@ final class RecentCaptures {
         onChange?()
     }
 
-    /// Keeps how a capture was left, for the next time it shows.
+    /// Keeps how a capture was left, for the next time it shows; its zoom and offset also for every
+    /// capture linked with it (`RecentCaptureRules.leaving`).
     func keep(_ id: UUID, zoom: CGFloat, offset: CGPoint, selection: CGRect?) {
         guard let index = captures.firstIndex(where: { $0.id == id }) else { return }
-        captures[index].zoom = zoom
-        captures[index].offset = offset
         captures[index].selection = selection
+        apply(RecentCaptureRules.leaving(id, at: .init(zoom: zoom, offset: offset), in: links))
+    }
+
+    /// The size of the linked captures' pictures, or `nil` when none is linked.
+    var linkedSize: PixelSize? { captures.first(where: \.isLinked)?.frame.layout.size }
+
+    /// Whether `capture` can be linked now, or unlinked (`RecentCaptureRules.canLink`).
+    func canLink(_ capture: RecentCapture) -> Bool {
+        RecentCaptureRules.canLink(capture.id, in: links)
+    }
+
+    /// The Viewer's zoom and offset now, for linking and unlinking while a capture shows.
+    @ObservationIgnored var viewerView: (() -> RecentCaptureRules.CaptureView)?
+    /// Called with the shown capture when linking it gave it the group's view, to show it so.
+    @ObservationIgnored var onAdoptView: ((RecentCapture) -> Void)?
+
+    /// Links or unlinks a capture (`RecentCaptureRules.linking`, `unlinking`). Does nothing to one
+    /// that can't be linked.
+    func setLinked(_ id: UUID, _ linked: Bool) {
+        guard let viewer = viewerView?() else { return }
+        guard linked else {
+            return apply(RecentCaptureRules.unlinking(id, shown: shownID, viewer: viewer, in: links))
+        }
+        guard let linking = RecentCaptureRules.linking(id, shown: shownID, viewer: viewer, in: links) else { return }
+        apply(linking.links)
+        if linking.showsNewView, let shown { onAdoptView?(shown) }
+    }
+
+    /// The captures as linking sees them.
+    private var links: [RecentCaptureRules.Link<UUID>] {
+        captures.map {
+            .init(
+                id: $0.id, size: $0.frame.layout.size, isLinked: $0.isLinked,
+                view: .init(zoom: $0.zoom, offset: $0.offset))
+        }
+    }
+
+    /// Takes the links and views a linking rule gave back, for the same captures in the same order.
+    private func apply(_ links: [RecentCaptureRules.Link<UUID>]) {
+        for (index, link) in zip(captures.indices, links) where captures[index].id == link.id {
+            captures[index].isLinked = link.isLinked
+            captures[index].zoom = link.view.zoom
+            captures[index].offset = link.view.offset
+        }
     }
 
     /// `image` scaled down to fit the thumbnail box; a small image stays as it is. Drawn in its RGB

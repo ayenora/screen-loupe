@@ -79,6 +79,239 @@ struct RecentCaptureListTests {
     }
 }
 
+struct LinkedCaptureTests {
+    private typealias View = RecentCaptureRules.CaptureView
+    private typealias Link = RecentCaptureRules.Link<Int>
+
+    private static let small = PixelSize(width: 294, height: 239)
+    private static let large = PixelSize(width: 1920, height: 1080)
+    private let fitted = View(zoom: nil, offset: .zero)
+    private let corner = View(zoom: 8, offset: CGPoint(x: -800, y: -400))
+    private let whole = View(zoom: 1, offset: CGPoint(x: 173, y: 120))
+
+    private func link(_ id: Int, size: PixelSize = small, linked: Bool = false, view: View? = nil) -> Link {
+        Link(id: id, size: size, isLinked: linked, view: view ?? View(zoom: 2, offset: CGPoint(x: id, y: id)))
+    }
+
+    private func view(of id: Int, in links: [Link]) -> View? { links.first { $0.id == id }?.view }
+
+    // MARK: Who can be linked
+
+    @Test func theFirstCanBeLinkedWhateverItsSize() {
+        #expect(RecentCaptureRules.canLink(1, in: [link(1)]))
+        #expect(RecentCaptureRules.canLink(1, in: [link(1, size: Self.large), link(2)]))
+    }
+
+    @Test func theSameSizeCanJoin() {
+        #expect(RecentCaptureRules.canLink(3, in: [link(1, linked: true), link(2, linked: true), link(3)]))
+    }
+
+    @Test func anotherSizeCannotJoin() {
+        #expect(!RecentCaptureRules.canLink(2, in: [link(1, linked: true), link(2, size: Self.large)]))
+    }
+
+    /// Width and height both count: a rotated size is another.
+    @Test func swappedSidesAreAnotherSize() {
+        let rotated = PixelSize(width: 239, height: 294)
+        #expect(!RecentCaptureRules.canLink(2, in: [link(1, linked: true), link(2, size: rotated)]))
+    }
+
+    @Test func oneSideDifferingIsAnotherSize() {
+        for size in [PixelSize(width: 294, height: 240), PixelSize(width: 295, height: 239)] {
+            #expect(!RecentCaptureRules.canLink(2, in: [link(1, linked: true), link(2, size: size)]))
+        }
+    }
+
+    @Test func aLinkedOneCanAlwaysBeUnlinked() {
+        #expect(RecentCaptureRules.canLink(1, in: [link(1, linked: true)]))
+    }
+
+    @Test func anUnknownCaptureCannotBeLinked() {
+        #expect(!RecentCaptureRules.canLink(9, in: [link(1)]))
+    }
+
+    /// Unlinking the last one leaves none linked: another size can be linked again.
+    @Test func afterTheLastIsUnlinkedAnotherSizeCanBeLinked() {
+        let links = [link(1, linked: true), link(2, size: Self.large)]
+        let unlinked = RecentCaptureRules.unlinking(1, shown: nil, viewer: corner, in: links)
+        #expect(RecentCaptureRules.canLink(2, in: unlinked))
+    }
+
+    /// A deleted or pushed-out capture is gone from the list, and so from the group: once the only
+    /// linked one goes, another size can be linked; while one of the size is left, it can't.
+    @Test func aRemovedLinkedOneNoLongerHoldsTheSize() {
+        let links = [link(1, linked: true), link(2, linked: true), link(3, size: Self.large)]
+        #expect(!RecentCaptureRules.canLink(3, in: links.filter { $0.id != 1 }))
+        #expect(RecentCaptureRules.canLink(3, in: links.filter { $0.id != 1 && $0.id != 2 }))
+    }
+
+    // MARK: Leaving a capture
+
+    @Test func anUnlinkedOneKeepsItsViewToItself() {
+        let links = [link(1), link(2, linked: true), link(3, linked: true)]
+        #expect(RecentCaptureRules.leaving(1, at: corner, in: links) == [link(1, view: corner), links[1], links[2]])
+    }
+
+    @Test func aLinkedOneAloneKeepsItToItself() {
+        let links = [link(1, linked: true), link(2)]
+        #expect(RecentCaptureRules.leaving(1, at: corner, in: links) == [link(1, linked: true, view: corner), link(2)])
+    }
+
+    @Test func aLinkedOneWritesItToEveryLinkedOneOnly() {
+        let links = [link(1, linked: true), link(2), link(3, linked: true)]
+        #expect(
+            RecentCaptureRules.leaving(3, at: corner, in: links) == [
+                link(1, linked: true, view: corner), link(2), link(3, linked: true, view: corner),
+            ])
+    }
+
+    @Test func leavingAnUnknownOneChangesNothing() {
+        let links = [link(1, linked: true), link(2)]
+        #expect(RecentCaptureRules.leaving(9, at: corner, in: links) == links)
+    }
+
+    // MARK: Linking
+
+    @Test func theFirstLinkedKeepsItsOwnView() {
+        let result = RecentCaptureRules.linking(1, shown: nil, viewer: corner, in: [link(1, view: whole), link(2)])
+        #expect(result == .init(links: [link(1, linked: true, view: whole), link(2)], showsNewView: false))
+    }
+
+    /// Shown and linked first: the Viewer already shows its view.
+    @Test func theFirstLinkedWhileShownDoesNotMove() {
+        let result = RecentCaptureRules.linking(1, shown: 1, viewer: corner, in: [link(1, view: whole)])
+        #expect(result == .init(links: [link(1, linked: true, view: whole)], showsNewView: false))
+    }
+
+    @Test func withNoLinkedOneShownItTakesTheKeptView() {
+        let links = [link(1, linked: true, view: corner), link(2, view: whole), link(3)]
+        let result = RecentCaptureRules.linking(2, shown: 3, viewer: fitted, in: links)
+        #expect(result?.links == [links[0], link(2, linked: true, view: corner), links[2]])
+        #expect(result?.showsNewView == false)
+    }
+
+    /// The linked one shown may have moved since the group's view was kept: the Viewer's is taken.
+    @Test func withALinkedOneShownItTakesTheViewersView() {
+        let links = [link(1, linked: true, view: whole), link(2)]
+        let result = RecentCaptureRules.linking(2, shown: 1, viewer: corner, in: links)
+        #expect(result?.links == [links[0], link(2, linked: true, view: corner)])
+        #expect(result?.showsNewView == false)
+    }
+
+    @Test func linkingTheShownOneMovesTheViewerToTheGroupsView() {
+        let links = [link(1, linked: true, view: corner), link(2, view: whole)]
+        let result = RecentCaptureRules.linking(2, shown: 2, viewer: whole, in: links)
+        #expect(result == .init(links: [links[0], link(2, linked: true, view: corner)], showsNewView: true))
+    }
+
+    @Test func linkingTheShownOneAtTheGroupsViewDoesNotMove() {
+        let links = [link(1, linked: true, view: corner), link(2, view: corner)]
+        #expect(RecentCaptureRules.linking(2, shown: 2, viewer: corner, in: links)?.showsNewView == false)
+    }
+
+    /// Its kept view is from when it was last put away; the Viewer may have moved since.
+    @Test func linkingTheShownOneMovesTheViewerEvenWhenItsKeptViewIsTheGroups() {
+        let links = [link(1, linked: true, view: corner), link(2, view: corner)]
+        let result = RecentCaptureRules.linking(2, shown: 2, viewer: whole, in: links)
+        #expect(result == .init(links: [links[0], link(2, linked: true, view: corner)], showsNewView: true))
+    }
+
+    @Test func anotherSizeIsNotLinked() {
+        let links = [link(1, linked: true), link(2, size: Self.large)]
+        #expect(RecentCaptureRules.linking(2, shown: nil, viewer: corner, in: links) == nil)
+    }
+
+    @Test func aLinkedOneIsNotLinkedAgain() {
+        #expect(RecentCaptureRules.linking(1, shown: nil, viewer: corner, in: [link(1, linked: true)]) == nil)
+    }
+
+    /// An image file linked before it was ever put away keeps no zoom: fitted is the group's view.
+    @Test func aFittedFilesViewIsTakenAsItIs() {
+        let links = [link(1, linked: true, view: fitted), link(2, view: corner)]
+        let result = RecentCaptureRules.linking(2, shown: 2, viewer: corner, in: links)
+        #expect(result == .init(links: [links[0], link(2, linked: true, view: fitted)], showsNewView: true))
+    }
+
+    /// A file shown fitted and linked first keeps being fitted.
+    @Test func aFittedFileLinkedFirstStaysFitted() {
+        let result = RecentCaptureRules.linking(1, shown: 1, viewer: whole, in: [link(1, view: fitted)])
+        #expect(result?.links == [link(1, linked: true, view: fitted)])
+        #expect(result?.showsNewView == false)
+    }
+
+    // MARK: Unlinking
+
+    /// The group already keeps its view while another capture, or live, shows.
+    @Test func unlinkingOneNotShownKeepsEveryView() {
+        let links = [link(1, linked: true, view: whole), link(2, linked: true, view: whole)]
+        #expect(
+            RecentCaptureRules.unlinking(1, shown: 2, viewer: corner, in: links) == [
+                link(1, view: whole), links[1],
+            ])
+        #expect(RecentCaptureRules.unlinking(1, shown: nil, viewer: corner, in: links)[0] == link(1, view: whole))
+    }
+
+    /// The shown one may have moved since the group's view was kept: the group keeps what shows,
+    /// and so does it, as its own.
+    @Test func unlinkingTheShownOneLeavesTheViewersViewWithTheGroup() {
+        let links = [link(1, linked: true, view: whole), link(2, linked: true, view: whole), link(3)]
+        #expect(
+            RecentCaptureRules.unlinking(2, shown: 2, viewer: corner, in: links) == [
+                link(1, linked: true, view: corner), link(2, view: corner), links[2],
+            ])
+    }
+
+    @Test func unlinkingTheShownLastOneKeepsTheViewersView() {
+        #expect(
+            RecentCaptureRules.unlinking(1, shown: 1, viewer: corner, in: [link(1, linked: true, view: whole)]) == [
+                link(1, view: corner)
+            ])
+    }
+
+    @Test func unlinkingAnUnlinkedOneChangesNothing() {
+        let links = [link(1, view: whole), link(2, linked: true)]
+        #expect(RecentCaptureRules.unlinking(1, shown: 1, viewer: corner, in: links) == links)
+    }
+
+    // MARK: Flipping between linked captures
+
+    /// Leaving A for B: B opens where A was left.
+    @Test func switchingFromOneLinkedToAnotherShowsTheSameSpot() {
+        let links = [link(1, linked: true, view: whole), link(2, linked: true, view: whole)]
+        #expect(view(of: 2, in: RecentCaptureRules.leaving(1, at: corner, in: links)) == corner)
+    }
+
+    /// Live in between keeps nothing of a capture: B opens where A was left.
+    @Test func throughLiveTheNextLinkedShowsTheSameSpot() {
+        let links = [link(1, linked: true), link(2, linked: true)]
+        let afterA = RecentCaptureRules.leaving(1, at: corner, in: links)
+        #expect(view(of: 2, in: afterA) == corner)
+    }
+
+    /// An unlinked capture shown in between keeps its view to itself.
+    @Test func throughAnUnlinkedOneTheNextLinkedShowsTheSameSpot() {
+        let links = [link(1, linked: true), link(2, linked: true), link(3)]
+        let afterA = RecentCaptureRules.leaving(1, at: corner, in: links)
+        let afterC = RecentCaptureRules.leaving(3, at: whole, in: afterA)
+        #expect(view(of: 2, in: afterC) == corner)
+        #expect(view(of: 3, in: afterC) == whole)
+    }
+
+    /// Deleting the shown linked capture first goes to live, which puts it away: the others keep its view.
+    @Test func deletingTheShownLinkedOneLeavesItsViewWithTheGroup() {
+        let links = [link(1, linked: true), link(2, linked: true), link(3, linked: true)]
+        let left = RecentCaptureRules.leaving(1, at: corner, in: links).filter { $0.id != 1 }
+        #expect(left.map(\.view) == [corner, corner])
+        #expect(left.map(\.isLinked) == [true, true])
+    }
+
+    /// A file shown fitted and left at its fitted zoom gives the group that zoom.
+    @Test func leavingAFileGivesItsZoomToTheGroup() {
+        let links = [link(1, linked: true, view: fitted), link(2, linked: true, view: fitted)]
+        #expect(view(of: 2, in: RecentCaptureRules.leaving(1, at: whole, in: links)) == whole)
+    }
+}
+
 struct RecentCaptureSizeTextTests {
     @Test func theSizeIsInPixels() {
         #expect(RecentCaptureRules.sizeText(PixelSize(width: 294, height: 239)) == "294 × 239 px")
