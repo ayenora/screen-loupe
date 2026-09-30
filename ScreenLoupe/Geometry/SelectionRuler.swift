@@ -32,12 +32,10 @@ struct RulerChoice: Equatable, Sendable {
 }
 
 /// A ruler's length label: `32 px · 16 pt`, or `32 px` when a pixel is a point (a 1× display, an
-/// image file). Both rulers show their lengths this way.
+/// image file; `SizeText.pair`). Both rulers show their lengths this way.
 enum RulerLabel {
     static func text(pixels: CGFloat, sourceScale: CGFloat) -> String {
-        let px = "\(Int(pixels)) px"
-        guard sourceScale != 1 else { return px }
-        return "\(px) · \(points(pixels / sourceScale)) pt"
+        SizeText.pair("\(Int(pixels)) px", "\(points(pixels / sourceScale)) pt", scale: sourceScale)
     }
 
     /// `16`, or `16.5` when it isn't a whole number of points: one decimal.

@@ -24,6 +24,14 @@ struct RulerLabelTests {
         #expect(RulerLabel.text(pixels: 32, sourceScale: 1) == "32 px")
         #expect(RulerLabel.text(pixels: 1, sourceScale: 1) == "1 px")
     }
+
+    @Test func anImageFileGivesOnlyPixels() {
+        let image = FrameLayout(image: PixelSize(width: 640, height: 480))
+        #expect(RulerLabel.text(pixels: 640, sourceScale: image.scale) == "640 px")
+        #expect(
+            PixelSelection.label(CGRect(x: 0, y: 0, width: 640, height: 480), sourceScale: image.scale)
+                == "640 × 480 px · x 0, y 0")
+    }
 }
 
 struct RulerChoiceTests {

@@ -33,6 +33,9 @@ enum OverlayFrameKind {
     /// Capture Area is placed at launch, for the Viewer to open beside it.
     var placedWhenFirstShown: Bool { self == .studio }
 
+    /// Its sizes are chosen in pixels: where a pixel is a point, its tab gives the size in pixels.
+    var sizesInPixels: Bool { self == .studio }
+
     var name: String {
         switch self {
         case .captureArea: "Capture Area"
@@ -622,7 +625,7 @@ final class OverlayFrameController {
         let scale = display?.scale ?? 1
 
         let units = settings.settings.sizeUnits
-        let tabText = SizeText.tab(captured.size, scale: scale, units: units)
+        let tabText = SizeText.tab(captured.size, scale: scale, units: units, keepsPixels: kind.sizesInPixels)
         let labelText = SizeText.label(captured.size, scale: scale, units: units)
         // L T R B from the top-left corner of the display the area is on.
         let local = display.flatMap { display in

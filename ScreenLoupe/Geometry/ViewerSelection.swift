@@ -70,14 +70,12 @@ enum PixelSelection {
 
     /// `32 × 22 px · 16 × 11 pt · x 11, y 11`: the size in pixels and in points, as the rulers give
     /// lengths (`RulerLabel`), then the top-left corner in pixels from the Capture Area's. Pixels only
-    /// when a pixel is a point (a 1× display, an image file): `12 × 5 px · x 11, y 11`.
+    /// when a pixel is a point (a 1× display, an image file; `SizeText.pair`): `12 × 5 px · x 11, y 11`.
     static func label(_ rect: CGRect, sourceScale: CGFloat) -> String {
-        let pixels = "\(Int(rect.width)) × \(Int(rect.height)) px"
-        let size =
-            sourceScale == 1
-            ? pixels
-            : "\(pixels) · \(RulerLabel.points(rect.width / sourceScale)) × "
-                + "\(RulerLabel.points(rect.height / sourceScale)) pt"
+        let size = SizeText.pair(
+            "\(Int(rect.width)) × \(Int(rect.height)) px",
+            "\(RulerLabel.points(rect.width / sourceScale)) × \(RulerLabel.points(rect.height / sourceScale)) pt",
+            scale: sourceScale)
         return "\(size) · x \(Int(rect.minX)), y \(Int(rect.minY))"
     }
 }

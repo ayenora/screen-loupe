@@ -86,7 +86,7 @@ struct CaptureAreaSettingsView: View {
                         .monospacedDigit().foregroundStyle(.secondary)
                 }
             }
-            SettingsRow("Size on the tab") {
+            SettingsRow("Size on the tab", note: "One size on a 1× display, where pt and px are the same.") {
                 Picker("Size on the tab", selection: store.binding(\.sizeUnits)) {
                     Text("pt and px").tag(SizeUnits.pointsAndPixels)
                     Text("pt").tag(SizeUnits.points)
