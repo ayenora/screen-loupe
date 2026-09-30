@@ -54,7 +54,10 @@ struct Settings: Codable, Equatable {
     var expandedSidePanel = SidePanel.colorMeter
     /// The side panel column's width in points; its content scales with it.
     var sidePanelWidth = Double(SidePanel.widthRange.lowerBound)
-    var pinnedColors: [PinnedColor] = []
+    /// The Color Meter's Recent colours, newest first, under the name they were first saved with.
+    var pinnedColors: [PickedColor] = []
+    /// The Color Meter's favourites and its Text and Background.
+    var meterColors = SavedMeterColors()
     /// The Viewer's zoom when the app last quit or the Viewer closed.
     var viewerZoom: Double?
 
@@ -125,7 +128,8 @@ struct Settings: Codable, Equatable {
         capturesVisible = c.value(.capturesVisible, or: d.capturesVisible) && !referencesVisible
         expandedSidePanel = c.value(.expandedSidePanel, or: d.expandedSidePanel)
         sidePanelWidth = c.value(.sidePanelWidth, or: d.sidePanelWidth)
-        pinnedColors = c.value(.pinnedColors, or: d.pinnedColors)
+        pinnedColors = c.value(.pinnedColors, or: [Lenient<PickedColor>]()).compactMap(\.value)
+        meterColors = c.value(.meterColors, or: d.meterColors)
         viewerZoom = c.value(.viewerZoom, or: d.viewerZoom)
         showsDockIcon = c.value(.showsDockIcon, or: d.showsDockIcon)
         showsWindowsOnLaunch = c.value(.showsWindowsOnLaunch, or: d.showsWindowsOnLaunch)

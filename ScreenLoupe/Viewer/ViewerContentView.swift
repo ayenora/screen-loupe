@@ -121,6 +121,12 @@ final class ViewerContentView: NSStackView {
         }
         viewerView.onCopyRegion = { [weak self] region in self?.copyRegion(region) }
         viewerView.onShowLive = { [weak self] in self?.captures.show(nil) }
+        viewerView.dropsColorTarget = { [weak self] in
+            // Only while the target shows; a countdown running is what Escape is for then.
+            guard let self, sidePanelLayout?.isMeterExpanded == true else { return false }
+            if case .countdown = frozenIndicator.state { return false }
+            return inspector.changeColors { $0.clearTarget() }
+        }
         captures.onPutAway = { [weak self] old in self?.putAway(old) }
         captures.onShow = { [weak self] new in self?.show(new) }
         captures.viewerView = { [zoomPan] in .init(zoom: zoomPan.state.zoom, offset: zoomPan.state.offset) }
@@ -143,6 +149,7 @@ final class ViewerContentView: NSStackView {
         references.onPaste = { [weak self] in self?.paste(as: .references) }
         viewerView.onPick = { [weak self] in self?.pickColor() }
         meterPanel.onCopy = { [weak self] text, what in self?.copyText(text, what: what) }
+        meterPanel.onFeedback = { [weak self] text in self?.showToast(text) }
 
         let settings = settings
         sidePanels.onExpand = { panel in settings.update { $0.expandedSidePanel = panel } }
@@ -173,6 +180,7 @@ final class ViewerContentView: NSStackView {
     private func applyMouseModes() {
         let isSelecting = selection.isToolOn
         viewerView.isPicking = !isSelecting && sidePanelLayout?.isMeterExpanded == true
+        meterPanel.isPicking = viewerView.isPicking
         references.takesMouse = !isSelecting && !viewerView.isPicking
         window?.invalidateCursorRects(for: viewerView)
     }
@@ -519,8 +527,8 @@ final class ViewerContentView: NSStackView {
     }
 
     private func pickColor() {
-        guard let pin = inspector.pinProbe() else { return }
-        showToast("Pinned \(pin.hex)")
+        guard let color = inspector.pickProbe() else { return }
+        showToast("Picked \(color.hex)")
     }
 
     private func copyText(_ text: String, what: String) {

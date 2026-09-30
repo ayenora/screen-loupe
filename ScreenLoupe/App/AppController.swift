@@ -321,6 +321,8 @@ final class AppController: NSObject, NSApplicationDelegate {
                 .foregroundColor: NSColor.secondaryLabelColor,
                 .paragraphStyle: centred,
             ])
+        // From the menu bar item the app may not be active, and the panel would open behind.
+        NSApp.activate()
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 
@@ -333,6 +335,11 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc func showKeyboardShortcuts(_ sender: Any?) {
         NSWorkspace.shared.open(URL(string: Self.guide + "#keyboard-shortcuts")!)
+    }
+
+    /// Opens the latest release in the browser; the app itself never goes online.
+    @objc func checkForUpdates(_ sender: Any?) {
+        NSWorkspace.shared.open(URL(string: "https://github.com/ayenora/screen-loupe/releases/latest")!)
     }
 
     @objc func showAcknowledgements(_ sender: Any?) {

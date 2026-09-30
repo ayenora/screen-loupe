@@ -43,7 +43,7 @@ struct ColorMathTests {
         #expect(sample.swiftUI == "Color(red: 1.000, green: 0.000, blue: 0.000, opacity: 0.502)")
         #expect(sample.appKit == "NSColor(srgbRed: 1.000, green: 0.000, blue: 0.000, alpha: 0.502)")
         #expect(sample.nativeValues == "1.000 0.000 0.000")
-        // A pinned colour is kept by its HEX and comes back with its opacity.
+        // A kept colour is kept by its HEX and comes back with its opacity.
         #expect(ColorSample(srgbHex: sample.hex) == ColorSample(srgbHex: "#FF000080"))
         #expect(ColorSample(srgbHex: sample.hex).alpha == sample.alpha)
         #expect(ColorSample(srgbHex: "#FF0000").alpha == 1)

@@ -23,9 +23,13 @@ final class StatusItemController {
         menu.addItem(Self.item("Reset Zoom", #selector(AppController.resetZoom(_:)), target))
         menu.addItem(.separator())
         menu.addItem(Self.item("Settings…", #selector(AppController.showSettings(_:)), target))
-        // Menu bar only, the app has no Help menu: the guide is reached from here.
+        // Menu bar only, the app has no app or Help menu: About, the guide and updates are reached from here.
         menu.addItem(Self.item("Screen Loupe Guide", #selector(AppController.showGuide(_:)), target))
+        if MainMenu.isDeveloperIDSigned {
+            menu.addItem(Self.item("Check for Updates…", #selector(AppController.checkForUpdates(_:)), target))
+        }
         menu.addItem(.separator())
+        menu.addItem(Self.item("About Screen Loupe", #selector(AppController.showAbout(_:)), target))
         menu.addItem(withTitle: "Quit Screen Loupe", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         item.menu = menu
     }

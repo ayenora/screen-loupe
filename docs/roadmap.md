@@ -18,7 +18,7 @@ A generator that builds a complete, balanced colour system from a few colours, w
 
 - **Seeds** from anywhere on screen: pick them with the Color Meter.
 - **Presets as starting moods:** deep, standard, pastel, corporate, gold on black, and more.
-- **Light and dark themes together,** tints and shades balanced by perceived lightness rather than by numbers, text and background pairs chosen so they stay readable in both. Contrast checking lives here, next to a text preview — not as a bare ratio in the Color Meter.
+- **Light and dark themes together,** tints and shades balanced by perceived lightness rather than by numbers, text and background pairs chosen so they stay readable in both. The Color Meter checks the contrast of one pair of colours; here every pair in both themes is checked, next to a text preview.
 - **Previews that look like real UI:** text at several sizes, cards, buttons, surfaces, shadows, in both themes side by side.
 - **Export:** CSS custom properties and an HTML preview page first; later design tokens and native colour sets.
 

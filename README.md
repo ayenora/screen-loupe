@@ -8,7 +8,7 @@ Place a **Capture Area** rectangle over any part of the screen and inspect it in
 
 - pixel-sharp zoom that glides between levels, panning, and a window sized to the magnified area;
 - a crosshair on the real cursor, a freeze frame for transient states, and snapshots kept to inspect later;
-- a Color Meter (HEX, CSS, SwiftUI, AppKit, pinned colours) and a pixel grid;
+- a Color Meter (HEX, CSS, SwiftUI, AppKit, recent and favourite colours, WCAG contrast) and a pixel grid;
 - a corner ruler in screen pixels;
 - reference layers: design exports over the live pixels, with a Difference blend;
 - image files opened, dropped or pasted, inspected with the same tools;

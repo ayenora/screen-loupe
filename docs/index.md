@@ -6,7 +6,7 @@ title: Screen Loupe
 
 **A zoomed monitor exactly where you need it.** Pin a frame over any part of the screen, keep working there with your normal mouse and keyboard, and watch that spot magnified — live, pixel-true and perfectly still — in a window next to it.
 
-[Download for macOS](https://github.com/ayenora/screen-loupe/releases/latest) · [Guide](guide) · [Source on GitHub](https://github.com/ayenora/screen-loupe)
+[Download for macOS](https://github.com/ayenora/screen-loupe/releases/latest) · [Guide](guide) · [Support](support) · [Source on GitHub](https://github.com/ayenora/screen-loupe)
 
 Free and open source (MIT). macOS 14 Sonoma or later. No account, no telemetry: the app collects no data.
 

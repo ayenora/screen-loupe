@@ -18,7 +18,7 @@ extension MTKView {
 ///
 /// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel (or a
 /// bare mouse wheel, per Settings), `+`/`-`; `0` fits. With the Color Meter open the cursor is an eyedropper and a
-/// click (without dragging) pins the colour under it. Option-drag copies a region; with the Select
+/// click (without dragging) picks the colour under it. Option-drag copies a region; with the Select
 /// tool on a drag selects and Space-drag pans.
 final class ViewerView: MTKView {
     private let frameStore: FrameStore
@@ -29,7 +29,7 @@ final class ViewerView: MTKView {
     /// Called when a click (not a drag) should pin the colour under the cursor.
     var onPick: (() -> Void)?
 
-    /// The eyedropper cursor and click-to-pin, while the Color Meter is open.
+    /// The eyedropper cursor and click-to-pick, while the Color Meter is open.
     var isPicking = false {
         didSet { if isPicking != oldValue { window?.invalidateCursorRects(for: self) } }
     }
@@ -263,6 +263,8 @@ final class ViewerView: MTKView {
     var onCopyRegion: ((CGRect) -> Void)?
     /// Escape with nothing else to drop: back from a recent capture to the live view.
     var onShowLive: (() -> Void)?
+    /// Escape after the selection: drops the Color Meter's target; `false` when it drops nothing.
+    var dropsColorTarget: (() -> Bool)?
 
     private enum Press { case ruler, reference, selection }
     /// Who the current press belongs to; `nil` for panning or picking.
@@ -425,9 +427,10 @@ final class ViewerView: MTKView {
             restingCursor.set()
         case " ": sendToggleFreeze()
         case "\u{1b}":
-            // Escape: drops the selection first; else stops a freeze countdown and goes back from a
-            // recent capture to live.
+            // Escape: drops the selection first; else the Color Meter's target, unless a freeze
+            // countdown runs; else stops the countdown and goes back from a recent capture to live.
             if selection?.clearSelection() == true { return }
+            if dropsColorTarget?() == true { return }
             NSApp.sendAction(#selector(AppController.cancelFreezeCountdown(_:)), to: nil, from: self)
             onShowLive?()
         default: super.keyDown(with: event)

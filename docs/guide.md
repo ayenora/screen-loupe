@@ -6,12 +6,12 @@ title: Guide — Screen Loupe
 
 Screen Loupe shows one spot of your screen magnified in a window of its own, while you keep working in that spot. The workflow is **place → zoom → pan → inspect → copy**.
 
-[Home](.) · [Download](https://github.com/ayenora/screen-loupe/releases/latest)
+[Home](.) · [Download](https://github.com/ayenora/screen-loupe/releases/latest) · [Support](support)
 
 ## Getting started
 
 1. Open the DMG and drag Screen Loupe to Applications. It needs macOS 14 Sonoma or later.
-2. Open it. The first time, the Viewer asks for **Screen Recording** access: click Grant Access, turn Screen Loupe on in System Settings › Privacy & Security › Screen Recording, and reopen the app when macOS asks. On macOS 15 and later the list is called **Screen & System Audio Recording**; the app captures no audio.
+2. Open it. The first time, the Viewer asks for **Screen Recording** access: click Continue, turn Screen Loupe on in System Settings › Privacy & Security › Screen Recording, and reopen the app when macOS asks. On macOS 15 and later the list is called **Screen & System Audio Recording**; the app captures no audio.
 3. A blue frame — the **Capture Area** — appears on screen, and the **Viewer** window beside it shows what is inside the frame, live.
 
 Closing the Viewer hides the frame too; the app stays in the menu bar (the magnifier icon). Show Viewer there, or click the Dock icon, brings both back.
@@ -68,7 +68,11 @@ To copy just a part of the view:
 
 ![The Color Meter with the crosshair on a pixel](images/02-color-meter.png)
 
-- **Color Meter** (eyedropper button): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a pixel to pin its colour.
+- **Color Meter** (eyedropper button): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a colour below — recent, favourite, Text or Background — to see it in every format instead; the line above the swatch names it, and a recent row is highlighted. Move the pointer over the image — in the Viewer or inside the Capture Area — and the pixel under it is back.
+  - **Recent:** every click on a pixel keeps its colour — the last eight, kept between launches — except a click that fills a favourite. Right-click a row to copy it as HEX, CSS, SwiftUI or AppKit, add it to Favorites, or remove it.
+  - **Favorites:** eight slots for the colours you want to keep. Right-click one to copy or remove it.
+  - **Contrast:** Text and Background with an "Aa" preview, the WCAG 2 contrast ratio and Pass or Fail for Text AA, Large AA, Text AAA and Large AAA (large = 18 pt, or 14 pt bold). Swap exchanges them.
+  - **Choosing where a colour goes:** click Text, Background or a favourite slot to make it the target, marked with a ring: the next clicks on pixels, and recent colours you click, go there. Without a target, clicks on pixels only go to Recent. While Text or Background is the target, clicking a filled favourite puts it there too. Text and Background stay the target, so you can try many backgrounds against one text; a favourite takes one colour, which doesn't go to Recent. Click the target again, or press Escape, to stop. While you point at the image, the target shows that pixel, outlined dashed.
 - **Ruler** (⌘R): a corner ruler in screen pixels. Drag the line or a length label to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan.
 - **Pixel grid:** lines on the pixel boundaries from 800% on.
 - **References:** lay design exports over the live pixels — Add… in the panel, or drop the files on the Viewer — set opacity, or switch to Difference — matching pixels turn black. To try it, open the [example page](examples/reference-check/) and add its [design export](examples/reference-check/design-export.png) as a reference.
@@ -113,7 +117,7 @@ In the Viewer:
 | ⌥⌘0 | Size Window to Area |
 | `+` / `-` | Zoom in / out |
 | ⌥-drag | Copy a region |
-| Escape | Cancel a countdown, clear a selection, back to live |
+| Escape | Clear a selection; else cancel a countdown and go back to live; else drop the Color Meter's target; else back to live |
 
 On the Capture Area and the studio's frame (click it first): arrows move by 1 px, ⇧ by 10 px, ⌥ resizes; hold ⌘ while dragging to snap, ⇧ on a corner for a square.
 
@@ -133,9 +137,13 @@ Global, from any app — each can be changed or cleared in Settings › Shortcut
 
 Settings… (⌘,) has five tabs: General (launch at login, Dock or menu bar only), Capture Area (frame colour, line and labels), Viewer (background, grid, crosshair colour, wheel zoom), Screenshots (folder, file names) and Shortcuts.
 
+## Updates
+
+Help › Check for Updates…, also in the menu bar item, opens the latest release on GitHub in your browser; the app itself never goes online. Homebrew users get new versions with `brew upgrade`. The downloaded copy has the item; a copy from the Mac App Store, updated by the store, and a copy built from source don't.
+
 ## If something doesn't work
 
 - **The Viewer asks for access although you granted it:** quit and reopen the app; macOS applies Screen Recording access on launch.
 - **Screen Loupe is missing from the list, or it is on and the Viewer still asks:** select it in the list and remove it with −, add it again with + from Applications, turn it on and reopen the app. This happens most often after an update.
 - **A global shortcut is marked in Settings:** macOS or another app already uses it; choose another.
-- Something else: [open an issue](https://github.com/ayenora/screen-loupe/issues).
+- Something else: see [Support](support).

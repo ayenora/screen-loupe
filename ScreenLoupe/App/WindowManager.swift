@@ -96,7 +96,7 @@ final class WindowManager {
             updateCapture()
             trackCursor()
         }
-        captureArea.onMouseMoved = { [weak self] in self?.trackCursor() }
+        captureArea.onMouseMoved = { [weak self] in self?.trackCursor(pointerMoved: true) }
         captureArea.onViewportHandleDragBegan = { [weak self] in
             guard let self else { return }
             // The drag pans from the view as shown: a zoom glide stops there.
@@ -128,8 +128,9 @@ final class WindowManager {
 
     /// Follows the real cursor while the Viewer is open, so the crosshair and the Color Meter show
     /// the pixel it points at inside the Capture Area. The Capture Area
-    /// reports mouse moves while it is shown; without it there is nothing to point at.
-    private func trackCursor() {
+    /// reports mouse moves while it is shown; without it there is nothing to point at. `pointerMoved`:
+    /// called for such a move, which brings the live pixel back into the Color Meter's focus.
+    private func trackCursor(pointerMoved: Bool = false) {
         // The real cursor points at a pixel of the live view or a frozen frame; at nothing in a
         // picture of its own, such as a recent capture.
         let still = capture.frameStore.still
@@ -141,7 +142,8 @@ final class WindowManager {
         }
         inspector.setAreaPixel(
             DisplayCoordinateConverter.areaPixel(
-                at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale))
+                at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale),
+            pointerMoved: pointerMoved)
     }
 
     // MARK: The part the Viewer shows

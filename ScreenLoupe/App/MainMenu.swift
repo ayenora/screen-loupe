@@ -1,4 +1,5 @@
 import AppKit
+import Security
 
 /// The main menu, built in code: the app has no nib or storyboard.
 @MainActor
@@ -313,6 +314,14 @@ enum MainMenu {
             withTitle: "Keyboard Shortcuts", action: #selector(AppController.showKeyboardShortcuts(_:)),
             keyEquivalent: "")
         shortcuts.target = target
+        // Only the downloaded copy: the Mac App Store updates its own copy and allows no other way
+        // (App Review Guideline 2.4.5), and a build from source has no release of its own.
+        if isDeveloperIDSigned {
+            let updates = menu.addItem(
+                withTitle: "Check for Updates…", action: #selector(AppController.checkForUpdates(_:)),
+                keyEquivalent: "")
+            updates.target = target
+        }
         menu.addItem(.separator())
         let acknowledgements = menu.addItem(
             withTitle: "Acknowledgements", action: #selector(AppController.showAcknowledgements(_:)),
@@ -320,6 +329,24 @@ enum MainMenu {
         acknowledgements.target = target
         return menu
     }
+
+    /// Signed with a Developer ID Application certificate, as the downloaded copy is. App Store,
+    /// TestFlight, Apple Development, ad-hoc and unsigned builds aren't. Only the certificate
+    /// chain is checked, not the bundle's files. The Help menu and the menu bar item show Check
+    /// for Updates only when this is true.
+    static let isDeveloperIDSigned: Bool = {
+        var code: SecCode?
+        var requirement: SecRequirement?
+        let developerID =
+            "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists"
+            + " and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
+            SecRequirementCreateWithString(developerID as CFString, [], &requirement) == errSecSuccess,
+            let requirement
+        else { return false }
+        return SecCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), requirement)
+            == errSecSuccess
+    }()
 
     #if DEBUG
         /// Only in Debug builds: states that are hard to reach by hand.

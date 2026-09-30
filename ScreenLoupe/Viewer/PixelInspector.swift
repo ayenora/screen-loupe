@@ -1,19 +1,7 @@
 import AppKit
 import CoreVideo
 
-/// A colour the user pinned by clicking in the Viewer.
-struct PinnedColor: Codable, Equatable {
-    var hex: String
-    var nativeValues: String
-    var nativeSpaceName: String
-    /// Where it was picked, in Capture Area pixels.
-    var x: Int
-    var y: Int
-
-    var sample: ColorSample { ColorSample(srgbHex: hex) }
-}
-
-/// The pixel being inspected and the pinned colours.
+/// The pixel being inspected and the Color Meter's kept colours.
 ///
 /// The inspected pixel is the one under the mouse in the Viewer; when the mouse is elsewhere, the
 /// one under the real cursor inside the Capture Area. Its colour is read straight from the latest
@@ -35,10 +23,9 @@ final class PixelInspector {
         var sample: ColorSample?
     }
 
-    static let maxPins = 8
-
     private(set) var probe: Probe?
-    private(set) var pins: [PinnedColor]
+    /// Recent, the favourites and the contrast pair, with the focus and the target.
+    private(set) var colors: ColorMeterState
     var onChange: (() -> Void)?
 
     private let frameStore: FrameStore
@@ -49,20 +36,23 @@ final class PixelInspector {
     init(frameStore: FrameStore, settings: SettingsStore) {
         self.frameStore = frameStore
         self.settings = settings
-        // An older version kept more; the newest stay.
-        pins = Array(settings.settings.pinnedColors.prefix(Self.maxPins))
+        colors = ColorMeterState(recent: settings.settings.pinnedColors, saved: settings.settings.meterColors)
     }
 
     // MARK: Pointing
 
     func setViewerPixel(_ pixel: (x: Int, y: Int)?) {
         viewerPixel = pixel
-        update()
+        // Pointing into the image brings the live pixel back into focus; a new frame under a
+        // pointer that didn't move doesn't.
+        update(focusChanged: pixel != nil && colors.pointerMovedOverImage())
     }
 
-    func setAreaPixel(_ pixel: (x: Int, y: Int)?) {
+    /// `pointerMoved`: the real cursor moved, which brings the live pixel back into focus as in the
+    /// Viewer; the area moving or a new frame under a still cursor doesn't.
+    func setAreaPixel(_ pixel: (x: Int, y: Int)?, pointerMoved: Bool = false) {
         areaPixel = pixel
-        update()
+        update(focusChanged: pointerMoved && pixel != nil && colors.pointerMovedOverImage())
     }
 
     /// A new frame: the colour under a pointer that didn't move may still have changed.
@@ -71,7 +61,7 @@ final class PixelInspector {
         update()
     }
 
-    private func update() {
+    private func update(focusChanged: Bool = false) {
         let next: Probe?
         if let pixel = viewerPixel {
             next = Probe(source: .viewer, x: pixel.x, y: pixel.y, sample: sample(atAreaPixel: pixel))
@@ -80,7 +70,7 @@ final class PixelInspector {
         } else {
             next = nil
         }
-        guard next != probe else { return }
+        guard next != probe || focusChanged else { return }
         probe = next
         onChange?()
     }
@@ -106,34 +96,27 @@ final class PixelInspector {
             colorSpace: frame.colorSpace, spaceName: frame.colorSpaceName)
     }
 
-    // MARK: Pins
+    // MARK: Kept colours
 
-    /// Pins the inspected colour; returns it, or `nil` when there is nothing to pin.
+    /// Picks the inspected colour (`ColorMeterState.pick`); returns it, or `nil` when there is
+    /// nothing to pick.
     @discardableResult
-    func pinProbe() -> PinnedColor? {
+    func pickProbe() -> PickedColor? {
         guard let probe, let sample = probe.sample else { return nil }
-        let pin = PinnedColor(
-            hex: sample.hex, nativeValues: sample.nativeValues, nativeSpaceName: sample.nativeSpaceName,
-            x: probe.x, y: probe.y)
-        pins.insert(pin, at: 0)
-        if pins.count > Self.maxPins { pins.removeLast(pins.count - Self.maxPins) }
-        pinsChanged()
-        return pin
+        let color = PickedColor(sample, x: probe.x, y: probe.y)
+        changeColors { $0.pick(color) }
+        return color
     }
 
-    func removePin(at index: Int) {
-        guard pins.indices.contains(index) else { return }
-        pins.remove(at: index)
-        pinsChanged()
-    }
-
-    func clearPins() {
-        pins.removeAll()
-        pinsChanged()
-    }
-
-    private func pinsChanged() {
-        settings.update { $0.pinnedColors = pins }
+    /// Changes the kept colours, saves them and tells the panel.
+    @discardableResult
+    func changeColors<Result>(_ change: (inout ColorMeterState) -> Result) -> Result {
+        let result = change(&colors)
+        settings.update {
+            $0.pinnedColors = colors.recent
+            $0.meterColors = colors.saved
+        }
         onChange?()
+        return result
     }
 }
