@@ -1,7 +1,7 @@
 // Settings for every target of the project: the version, the team and signing, the deployment
 // target, Swift, and the Debug and Release defaults.
 
-MARKETING_VERSION = 1.3.0
+MARKETING_VERSION = 1.4.0
 CURRENT_PROJECT_VERSION = 1
 
 DEVELOPMENT_TEAM = AT9PLFB7G4

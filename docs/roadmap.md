@@ -4,7 +4,7 @@ What comes after the current version. Every item is measured against the app's p
 
 ## Next
 
-- **The Mac App Store,** besides the signed, notarized download on GitHub Releases.
+- **The Mac App Store,** with 1.4, besides the signed, notarized download on GitHub Releases.
 
 ## The version after: colour
 

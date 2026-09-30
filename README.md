@@ -7,10 +7,11 @@ https://github.com/user-attachments/assets/fa2e3ef7-8ac3-4e69-b9fc-c11959146e5c
 Place a **Capture Area** rectangle over any part of the screen and inspect it in a separate **Viewer** window. The Viewer shows the area in real time and supports:
 
 - pixel-sharp zoom that glides between levels, panning, and a window sized to the magnified area;
-- a crosshair on the real cursor, a freeze frame for transient states, and snapshots kept to inspect later;
+- a crosshair on the real cursor, a freeze frame for transient states, and snapshots kept across launches to inspect later, linked to share one zoom and position;
 - a Color Meter (HEX, CSS, SwiftUI, AppKit, recent and favourite colours, WCAG contrast) and a pixel grid;
-- a corner ruler and a selection ruler in screen pixels;
-- reference layers: design exports over the live pixels, with a Difference blend;
+- a corner ruler and a selection ruler in screen pixels, and the selection's size in pixels and points;
+- colour vision simulation: six modes over everything the Viewer shows, in copies of the view too;
+- reference layers: design exports over the live pixels, with a Difference blend, or a snapshot or the frozen frame as a before-and-after check;
 - image files opened, dropped or pasted, inspected with the same tools;
 - copies of either the original area or the zoomed view;
 - snapping the frame to window edges with ⌘, fitting it to a window in one click, and a magnet that keeps it on a moving window, following its size when fitted, with margins to capture only an inner part of it;
@@ -40,7 +41,7 @@ The app collects no data and sends nothing anywhere: [privacy policy](https://ay
 ## Requirements
 
 - macOS 14 Sonoma or later, with Screen Recording permission granted to the app
-- Xcode 26 or later to build; the 1.3.0 release is built with Xcode 27
+- Xcode 26 or later to build; the 1.4.0 release is built with Xcode 27
 
 ## Build
 
