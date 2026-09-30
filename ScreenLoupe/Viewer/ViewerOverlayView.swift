@@ -349,8 +349,9 @@ final class ViewerOverlayView: NSView {
 /// a chip at its top — solid and "Frozen · Space
 /// to resume" when frozen, dashed with a shrinking ring and the seconds left while counting down.
 /// After a freeze from another app a second chip at the bottom says how it happened. A recent
-/// capture shown in place of the live view gets a purple border and its own chip. Never in Copy View, which draws the
-/// frame itself.
+/// capture shown in place of the live view gets a purple border and its own chip. The colour vision
+/// simulation gets an orange border and a chip of its own, stacked under another indicator that
+/// shows (`ViewerIndicators`). Never in Copy View, which draws the frame itself.
 final class FrozenIndicatorView: NSView {
     enum State: Equatable {
         case hidden
@@ -360,6 +361,8 @@ final class FrozenIndicatorView: NSView {
         case countdown(deadline: Date, total: TimeInterval)
         /// A recent capture shows; `label` says which.
         case capture(label: String)
+        /// A colour vision is simulated; `label` says which.
+        case simulation(label: String)
 
         var isFrozen: Bool {
             if case .frozen = self { return true }
@@ -384,6 +387,12 @@ final class FrozenIndicatorView: NSView {
 
     private var ticker: Timer?
 
+    /// Where the simulation's chip and border go (`ViewerIndicators`): the chip's top, and the
+    /// border's inset from the edge.
+    var stacking = (top: ViewerIndicators.top, inset: CGFloat(0)) {
+        didSet { needsDisplay = true }
+    }
+
     private static let frozenText = "Frozen · Space to resume" as NSString
     static let attributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: NSColor.white,
@@ -391,6 +400,8 @@ final class FrozenIndicatorView: NSView {
     static let darkFill = NSColor(srgbRed: 28 / 255, green: 28 / 255, blue: 30 / 255, alpha: 0.9)
     /// Darker than the border's system purple, so the white text on it reads.
     private static let captureChip = NSColor(srgbRed: 155 / 255, green: 63 / 255, blue: 209 / 255, alpha: 1)
+    /// Darker than the border's system orange, likewise.
+    private static let simulationChip = NSColor(srgbRed: 190 / 255, green: 80 / 255, blue: 0, alpha: 1)
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -414,23 +425,44 @@ final class FrozenIndicatorView: NSView {
         case .capture(let label):
             drawBorder(dashed: false, color: .systemPurple)
             drawChip(label as NSString, color: Self.captureChip)
+        case .simulation(let label):
+            drawBorder(dashed: false, color: .systemOrange, inset: stacking.inset)
+            drawChip(label as NSString, color: Self.simulationChip, top: stacking.top)
         }
     }
 
-    private func drawChip(_ text: NSString, color: NSColor) {
+    /// The bottom of the chip or pill at the top while one shows, for the simulation's to stack
+    /// under; `nil` while none does.
+    var chipBottom: CGFloat? {
+        guard !isHidden, alphaValue > 0 else { return nil }
+        switch state {
+        case .hidden: return nil
+        case .frozen: return ViewerIndicators.top + Self.chipHeight(Self.frozenText)
+        case .countdown: return 10 + CountdownPill.freeze.ring + 2 * CountdownPill.freeze.inset
+        case .capture(let label), .simulation(let label):
+            return ViewerIndicators.top + Self.chipHeight(label as NSString)
+        }
+    }
+
+    private static func chipHeight(_ text: NSString) -> CGFloat {
+        (text.size(withAttributes: attributes).height + 10).rounded(.up)
+    }
+
+    private func drawChip(_ text: NSString, color: NSColor, top: CGFloat = ViewerIndicators.top) {
         let size = text.size(withAttributes: Self.attributes)
         let chip = CGRect(
-            x: (bounds.midX - size.width / 2 - 10).rounded(), y: 12, width: (size.width + 20).rounded(.up),
-            height: (size.height + 10).rounded(.up))
+            x: (bounds.midX - size.width / 2 - 10).rounded(), y: top, width: (size.width + 20).rounded(.up),
+            height: Self.chipHeight(text))
         color.setFill()
         NSBezierPath(roundedRect: chip, xRadius: 8, yRadius: 8).fill()
         text.draw(at: CGPoint(x: chip.minX + 10, y: chip.minY + 5), withAttributes: Self.attributes)
     }
 
-    private func drawBorder(dashed: Bool, color: NSColor = .systemBlue) {
+    private func drawBorder(dashed: Bool, color: NSColor = .systemBlue, inset: CGFloat = 0) {
         color.setStroke()
-        let border = NSBezierPath(rect: bounds.insetBy(dx: 1.5, dy: 1.5))
-        border.lineWidth = 3
+        let half = ViewerIndicators.borderWidth / 2
+        let border = NSBezierPath(rect: bounds.insetBy(dx: inset + half, dy: inset + half))
+        border.lineWidth = ViewerIndicators.borderWidth
         if dashed { border.setLineDash([10, 6], count: 2, phase: 0) }
         border.stroke()
     }

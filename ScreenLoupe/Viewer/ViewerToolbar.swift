@@ -2,14 +2,15 @@ import AppKit
 
 /// The Viewer's toolbar: zoom presets and the current zoom on the left; Freeze
 /// with its menu of delays, the Select tool, the Ruler with its menu of rulers, the Grid toggle, the
-/// pointer toggle with its menu of styles, the Color Meter, References and Recent Captures toggles,
-/// Copy, Save and the keep-on-top pin on the right.
+/// pointer toggle with its menu of styles, the Color Meter, the colour vision simulation with its
+/// menu of modes, References and Recent Captures toggles, Copy, Save and the keep-on-top pin on the
+/// right.
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
 /// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the Ruler a submenu of
-/// its two rulers, the pin a checkmark.
+/// its two rulers, the simulation a submenu of its toggle and modes, the pin a checkmark.
 ///
-/// Freeze, Select, Ruler, Copy, Save and Keep on Top are app commands: they go up the responder chain to
+/// Freeze, Select, Ruler, the simulation, Copy, Save and Keep on Top are app commands: they go up the responder chain to
 /// `AppController`, as the menus' do. The toggles are settings and change them directly. Every
 /// button shows the state of its model, never just its own click.
 @MainActor
@@ -22,6 +23,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private static let gridID = NSToolbarItem.Identifier("grid")
     private static let crosshairID = NSToolbarItem.Identifier("crosshair")
     private static let meterID = NSToolbarItem.Identifier("colorMeter")
+    private static let visionID = NSToolbarItem.Identifier("colorVision")
     private static let referencesID = NSToolbarItem.Identifier("references")
     private static let capturesID = NSToolbarItem.Identifier("recentCaptures")
     private static let copyID = NSToolbarItem.Identifier("copyView")
@@ -76,6 +78,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     /// The ▾ beside the ruler button: Corner Ruler or Selection Ruler.
     private let rulerMenuButton = NSButton()
     private let rulerMenuItem = NSMenuItem(title: "Ruler", action: nil, keyEquivalent: "")
+    private let visionButton = NSButton()
+    /// The ▾ beside the eye button: the colour vision modes.
+    private let visionMenuButton = NSButton()
+    private let visionMenuItem = NSMenuItem(title: "Color Vision", action: nil, keyEquivalent: "")
     private let freezeMenuItem = NSMenuItem(title: "Freeze Frame", action: nil, keyEquivalent: "")
     private let onTopButton = NSButton()
     private let copyButton = NSButton()
@@ -90,15 +96,20 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private let settings: SettingsStore
     private let ruler: RulerController
     private let selection: SelectionController
+    private let colorVision: ColorVisionController
     /// Frozen or counting down to a freeze, as `setFrozen` last reported it.
     private var isFrozen = false
     let toolbar = NSToolbar(identifier: "Viewer")
 
-    init(zoomPan: ZoomPanController, settings: SettingsStore, ruler: RulerController, selection: SelectionController) {
+    init(
+        zoomPan: ZoomPanController, settings: SettingsStore, ruler: RulerController, selection: SelectionController,
+        colorVision: ColorVisionController
+    ) {
         self.zoomPan = zoomPan
         self.settings = settings
         self.ruler = ruler
         self.selection = selection
+        self.colorVision = colorVision
         super.init()
         presets.target = self
         presets.action = #selector(presetChosen(_:))
@@ -156,6 +167,15 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         rulerMenu.addItem(
             withTitle: "Selection Ruler", action: #selector(AppController.toggleSelectionRuler(_:)), keyEquivalent: "")
         rulerMenuItem.submenu = rulerMenu
+        configure(
+            visionButton, symbol: "eye", title: "Simulate Color Vision (⌘Y)", action: #selector(visionClicked(_:)))
+        visionButton.setButtonType(.pushOnPushOff)
+        configure(
+            visionMenuButton, symbol: "chevron.down", title: "Color Vision", action: #selector(visionMenuClicked(_:)))
+        visionMenuButton.image = visionMenuButton.image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
+        visionMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        visionMenuItem.submenu = MainMenu.colorVisionMenu(withToggle: true, target: nil)
         for toggle in Toggle.allCases {
             let button = NSButton()
             configure(button, symbol: toggle.symbol, title: toggle.title, action: #selector(toggleClicked(_:)))
@@ -188,6 +208,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         showRuler()
         selection.observe { [weak self] in self?.showSelectTool() }
         showSelectTool()
+        colorVision.observe { [weak self] in self?.showColorVision() }
+        showColorVision()
         settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.show($0, on: self?.onTopButton) }
         settings.observe(\.gridEnabled) { [weak self] in self?.showToggle(.grid, isOn: $0) }
         settings.observe(\.crosshairEnabled) { [weak self] in self?.showToggle(.crosshair, isOn: $0) }
@@ -270,6 +292,14 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
 
     private func showSelectTool() {
         show(selection.isToolOn, on: selectButton)
+    }
+
+    /// The eye button's name follows the chosen mode.
+    private func showColorVision() {
+        show(colorVision.isOn, on: visionButton)
+        let title = "Simulate \(colorVision.mode.title) (⌘Y)"
+        visionButton.toolTip = title
+        visionButton.setAccessibilityLabel(title)
     }
 
     /// Freeze Now, the delays and Use Frozen Frame as Reference, as `AppController` commands, which
@@ -436,6 +466,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         ruler.turnOn(RulerMode.allCases[sender.tag])
     }
 
+    @objc private func visionClicked(_ sender: NSButton) {
+        send(#selector(AppController.toggleColorVision(_:)), from: sender, isOn: colorVision.isOn)
+    }
+
+    /// The modes, the chosen one checked, whether it is on or not; choosing one turns it on.
+    @objc private func visionMenuClicked(_ sender: NSButton) {
+        let below = NSPoint(x: -visionButton.frame.width, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4)
+        MainMenu.colorVisionMenu(withToggle: false, target: nil).popUp(positioning: nil, at: below, in: sender)
+    }
+
     @objc private func onTopClicked(_ sender: NSButton) {
         send(
             #selector(AppController.toggleViewerAlwaysOnTop(_:)), from: sender,
@@ -472,7 +512,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         [
             Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.freezeID, Self.selectID, Self.rulerID, Self.gridID,
             Self.crosshairID,
-            Self.meterID, Self.referencesID, Self.capturesID, .space,
+            Self.meterID, Self.visionID, Self.referencesID, Self.capturesID, .space,
             Self.copyID, Self.saveID, Self.onTopID,
         ]
     }
@@ -510,6 +550,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             item.view = group
             item.label = "Ruler"
             item.menuFormRepresentation = rulerMenuItem
+        case Self.visionID:
+            let group = NSStackView(views: [visionButton, visionMenuButton])
+            group.spacing = 0
+            item.view = group
+            item.label = "Color Vision"
+            item.menuFormRepresentation = visionMenuItem
         case Self.crosshairID:
             let group = NSStackView(views: [toggleButtons[.crosshair], pointerMenuButton].compactMap { $0 })
             group.spacing = 0

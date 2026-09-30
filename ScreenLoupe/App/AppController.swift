@@ -237,6 +237,17 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.viewer.toggleRuler(.selection)
     }
 
+    /// The eye button and View › Color Vision › Simulate Color Vision (⌘Y): the chosen mode on or off.
+    @objc func toggleColorVision(_ sender: Any?) {
+        windows.viewer.toggleColorVision()
+    }
+
+    /// A mode in View › Color Vision or the eye button's ▾, by its tag: chosen and on.
+    @objc func chooseColorVision(_ sender: Any?) {
+        guard let tag = (sender as? NSMenuItem)?.tag, ColorVisionMode.allCases.indices.contains(tag) else { return }
+        windows.viewer.turnOnColorVision(ColorVisionMode.allCases[tag])
+    }
+
     @objc func toggleFreeze(_ sender: Any?) {
         windows.toggleFreeze()
     }
@@ -494,6 +505,16 @@ extension AppController: NSMenuItemValidation {
             let mode: RulerMode = menuItem.action == #selector(toggleCornerRuler(_:)) ? .corner : .selection
             let viewer = builtWindows?.viewer
             menuItem.state = viewer?.isRulerOn == true && viewer?.rulerMode == mode ? .on : .off
+            return viewer?.showsCapture == true
+        case #selector(toggleColorVision(_:)):
+            let viewer = builtWindows?.viewer
+            menuItem.state = viewer?.colorVision.isOn == true ? .on : .off
+            return viewer?.showsCapture == true
+        case #selector(chooseColorVision(_:)):
+            // Checked on the chosen mode, whether it is on or not.
+            let viewer = builtWindows?.viewer
+            let mode = viewer?.colorVision.mode ?? settings.settings.colorVisionMode
+            menuItem.state = ColorVisionMode.allCases.firstIndex(of: mode) == menuItem.tag ? .on : .off
             return viewer?.showsCapture == true
         case #selector(toggleFreeze(_:)):
             let isFrozen = builtWindows?.isFrozen == true

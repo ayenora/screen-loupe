@@ -29,3 +29,27 @@ enum ViewerHints {
         }
     }
 }
+
+/// The indicators around the Viewer's image — frozen, a delayed freeze, a recent capture shown,
+/// the colour vision simulation — each a border around the image and a pill at its top centre.
+/// The simulation's stacks under another one that shows, so neither covers the other: its pill
+/// below the other's, its border just inside the other's. Points, y down.
+enum ViewerIndicators {
+    /// The pill's top when it is the only one.
+    static let top: CGFloat = 12
+    /// Between the other pill's bottom and the simulation's.
+    static let spacing: CGFloat = 6
+    static let borderWidth: CGFloat = 3
+
+    /// The simulation's pill's top: below `otherBottom`, the bottom of another indicator's pill
+    /// that shows, else at `top`.
+    static func simulationTop(below otherBottom: CGFloat?) -> CGFloat {
+        otherBottom.map { ($0 + spacing).rounded() } ?? top
+    }
+
+    /// How far the simulation's border sits in from the image's edge: inside another indicator's
+    /// border when one shows.
+    static func simulationBorderInset(otherShows: Bool) -> CGFloat {
+        otherShows ? borderWidth : 0
+    }
+}

@@ -95,6 +95,36 @@ enum ViewerShaders {
             return color * uniforms.opacity;
         }
 
+        struct VisionUniforms {
+            // Linear light of the scene's colour space to simulated linear light (ColorVisionTransform).
+            float3x3 matrix;
+            // x: the last entry of the encoding table.
+            float4 encodeLast;
+        };
+
+        // The colour vision simulation over the composed scene, pixel for pixel, into the target of
+        // the same size: each 8-bit value decoded to linear light through the colour space's curve,
+        // the matrix, clamped, and encoded again through a table stepped in the square root of
+        // linear light. No resampling: the scene's pixels, nearest-neighbour magnification included,
+        // stay where they are.
+        fragment float4 visionFragment(QuadVertex in [[stage_in]], texture2d<float> scene [[texture(0)]],
+                                       constant VisionUniforms &uniforms [[buffer(0)]],
+                                       constant float4 *decode [[buffer(1)]], constant float4 *encode [[buffer(2)]]) {
+            float4 color = scene.read(uint2(in.position.xy));
+            uint3 code = uint3(round(saturate(color.rgb) * 255.0));
+            float3 light = float3(decode[code.r].r, decode[code.g].g, decode[code.b].b);
+            light = saturate(uniforms.matrix * light);
+            float last = uniforms.encodeLast.x;
+            float3 at = sqrt(light) * last;
+            uint3 low = uint3(floor(at));
+            uint3 high = uint3(min(float3(low) + 1.0, float3(last)));
+            float3 t = at - float3(low);
+            float3 encoded = float3(mix(encode[low.r].r, encode[high.r].r, t.r),
+                                    mix(encode[low.g].g, encode[high.g].g, t.g),
+                                    mix(encode[low.b].b, encode[high.b].b, t.b));
+            return float4(encoded, color.a);
+        }
+
         struct CheckerUniforms {
             float4 first;
             float4 second;

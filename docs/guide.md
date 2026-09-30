@@ -32,7 +32,7 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 - **»** beside the pin opens the buttons used less often: the viewport handle, bring the Viewer forward (when another window covers it) and Fit to Window. Rest the pointer on any button to see its name.
 - **The part the Viewer shows:** zoomed in, a dashed outline inside the frame marks what the Viewer shows, while you pan or zoom and while the pointer is near the frame.
 - **Viewport handle** (the dashed-rectangle button, View › Show Viewport Handle, or ⌃⌥⌘M): the outline stays, with a small handle beside it; drag the handle to pan the Viewer from the frame. Everything else inside the frame still goes to the app underneath.
-- The tab shows the size in points and pixels; on hover a box beside the frame shows its edges from the display's top-left corner.
+- The tab shows the size in points and pixels, one size in points on a 1× display, where they are the same; on hover a box beside the frame shows its edges from the display's top-left corner.
 
 ## The Viewer
 
@@ -49,7 +49,7 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 
 | Command | What you get |
 |---|---|
-| **Copy View** ⌘C | Exactly what the Viewer shows, at its zoom. |
+| **Copy View** ⌘C | Exactly what the Viewer shows, at its zoom — with a colour vision simulation while one is on. |
 | **Copy Source** ⇧⌘C | The area as it is on screen, unmagnified, at native resolution. |
 | **Save View…** ⌘S / **Save Source…** ⇧⌘S | The same as a PNG file. |
 
@@ -73,11 +73,13 @@ To copy just a part of the view:
   - **Recent:** every click on a pixel keeps its colour — the last eight, kept between launches — except a click that fills a favourite. Right-click a row to copy it as HEX, CSS, SwiftUI or AppKit, add it to Favorites, or remove it.
   - **Favorites:** eight slots for the colours you want to keep. Right-click one to copy or remove it.
   - **Contrast:** Text and Background with an "Aa" preview, the WCAG 2 contrast ratio and Pass or Fail for Text AA, Large AA, Text AAA and Large AAA (large = 18 pt, or 14 pt bold). Swap exchanges them.
+  - The Color Meter always reads the real pixels, also while a colour vision is simulated.
   - **Choosing where a colour goes:** click Text, Background or a favourite slot to make it the target, marked with a ring: the next clicks on pixels, and recent colours you click, go there. Without a target, clicks on pixels only go to Recent. While Text or Background is the target, clicking a filled favourite puts it there too. Text and Background stay the target, so you can try many backgrounds against one text; a favourite takes one colour, which doesn't go to Recent. Click the target again, or press Escape, to stop. While you point at the image, the target shows that pixel, outlined dashed.
 - **Ruler:** two rulers in screen pixels, one at a time. The ruler button turns the chosen one on and off; its ▾ chooses one and turns it on.
   - **Corner Ruler** (⌘R): drag the line or a length label to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan, also over a snapshot.
   - **Selection Ruler** (⌥⌘R): the width and height of the Select tool's selection, as lines with their lengths just outside it — above and left, or below and right at the Viewer's edge. It turns Select on; draw, move or resize the selection and the lengths follow.
 - **Pixel grid:** lines on the pixel boundaries from 800% on.
+- **Colour vision** (eye button, View › Color Vision, ⌘Y): see the screen as a person with another colour vision sees it, live, while you work on the design. The eye button turns the chosen simulation on and off; its ▾ chooses one and turns it on: Protanopia and Protanomaly (red), Deuteranopia and Deuteranomaly (green; weak green is the most common, about 5 in 100 men), Tritanopia (blue) or Grayscale, to check contrast without colour. It covers everything the Viewer shows — the live view, a frozen frame, a snapshot, an image, the references over them. An orange border and "Deuteranopia · simulated" show while it is on. Copy View and Save View include it, so a bug report can show it; Copy Source, Save Source and the Color Meter keep the real colours. It starts off at every launch, with the last mode chosen. The simulation is the model of Machado, Oliveira and Fernandes (2009), in linear light, from your display's colour profile.
 - **References:** lay design exports over the live pixels — Add… in the panel, or drop the files on the Viewer — set opacity, or switch to Difference — matching pixels turn black. To try it, open the [example page](examples/reference-check/) and add its [design export](examples/reference-check/design-export.png) as a reference.
 - **Before and after:** right-click a Recent Captures row and choose Use as Reference, or use the frozen frame (above). The picture becomes a layer on top in Difference at full opacity, so you can capture, change your CSS or SwiftUI view, and see exactly what moved. A snapshot lands on the pixels it was taken from; an image file or a pasted image lands at the top-left. If the Capture Area has moved since, drag the layer into place. A capture shown in the Viewer stays, so you can compare two captures with each other; layers keep their place on the screen's pixels over a snapshot too.
 - **Recent Captures:** your last eight snapshots and opened or pasted images, kept to zoom, measure and pick colours on later. The camera beside the Live row, or View › Take Snapshot (⌘T), takes a snapshot of what the live view shows — the part of the Capture Area in the Viewer, or just the selection while there is one; the frozen frame while frozen — whatever the Viewer shows, and adds it without switching to it. It opens at the zoom it was taken at, its pixels where they were. The Live row shows the Capture Area's size in pixels. Copies and saves don't add rows. The Live row goes back to the live view. Captures stay on your Mac through quitting, a crash or a restart, until you delete one (×) or a ninth pushes out the oldest; the Viewer reopens on what it showed — the capture at its zoom and position, or the live view.
@@ -118,6 +120,7 @@ In the Viewer:
 | ⌘A | Select the whole Capture Area |
 | ⌘R | Corner Ruler |
 | ⌥⌘R | Selection Ruler |
+| ⌘Y | Colour vision simulation on / off |
 | ⌘0 | Reset zoom |
 | ⌥⌘0 | Size Window to Area |
 | `+` / `-` | Zoom in / out |

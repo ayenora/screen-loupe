@@ -48,6 +48,9 @@ struct Settings: Codable, Equatable {
     var pointerStyle = PointerStyle.crosshair
     /// The ruler the ruler button and its ▾ chose last.
     var rulerMode = RulerMode.corner
+    /// The colour vision the eye button and its ▾ chose last. Whether the simulation is on isn't
+    /// kept: the app never starts with the colours changed.
+    var colorVisionMode = ColorVisionMode.deuteranopia
     var meterVisible = false
     /// References and Recent Captures take turns in the side column: at most one is open.
     var referencesVisible = false
@@ -126,6 +129,7 @@ struct Settings: Codable, Equatable {
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)
         pointerStyle = c.value(.pointerStyle, or: d.pointerStyle)
         rulerMode = c.value(.rulerMode, or: d.rulerMode)
+        colorVisionMode = c.value(.colorVisionMode, or: d.colorVisionMode)
         meterVisible = c.value(.meterVisible, or: d.meterVisible)
         referencesVisible = c.value(.referencesVisible, or: d.referencesVisible)
         capturesVisible = c.value(.capturesVisible, or: d.capturesVisible) && !referencesVisible

@@ -38,3 +38,20 @@ struct ViewerHintsTests {
         #expect(ViewerHints.rects(sizes: [], in: bounds).isEmpty)
     }
 }
+
+struct ViewerIndicatorsTests {
+    @Test func aloneTheSimulationSitsAtTheTopAndTheEdge() {
+        #expect(ViewerIndicators.simulationTop(below: nil) == ViewerIndicators.top)
+        #expect(ViewerIndicators.simulationBorderInset(otherShows: false) == 0)
+    }
+
+    @Test func underAnotherIndicatorItsPillGoesBelowAndItsBorderInside() {
+        #expect(ViewerIndicators.simulationTop(below: 36) == CGFloat(42))
+        #expect(ViewerIndicators.simulationTop(below: 48) == CGFloat(54))
+        #expect(ViewerIndicators.simulationBorderInset(otherShows: true) == ViewerIndicators.borderWidth)
+    }
+
+    @Test func thePillStaysOnWholePoints() {
+        #expect(ViewerIndicators.simulationTop(below: 35.6) == CGFloat(42))
+    }
+}

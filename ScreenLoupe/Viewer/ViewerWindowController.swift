@@ -34,7 +34,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content = ViewerContentView(
             settings: settings, frameStore: frameStore, zoomPan: zoomPan, inspector: inspector, project: project)
         toolbar = ViewerToolbar(
-            zoomPan: zoomPan, settings: settings, ruler: content.ruler, selection: content.selection)
+            zoomPan: zoomPan, settings: settings, ruler: content.ruler, selection: content.selection,
+            colorVision: content.colorVision)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
@@ -144,6 +145,19 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     /// View › Corner Ruler and Selection Ruler (`RulerController.toggle(_:)`).
     func toggleRuler(_ mode: RulerMode) {
         content.ruler.toggle(mode)
+    }
+
+    // MARK: Color vision
+
+    /// The simulation's chosen mode and whether it is on.
+    var colorVision: ColorVisionController { content.colorVision }
+
+    func toggleColorVision() {
+        content.colorVision.toggle()
+    }
+
+    func turnOnColorVision(_ mode: ColorVisionMode) {
+        content.colorVision.turnOn(mode)
     }
 
     // MARK: Select tool

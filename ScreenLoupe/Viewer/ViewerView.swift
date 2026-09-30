@@ -44,6 +44,16 @@ final class ViewerView: MTKView {
         }
     }
 
+    /// The colour vision simulated over what the Viewer shows, and in Copy View; `nil` while off.
+    var colorVision: ColorVisionMode? {
+        get { renderer?.colorVision }
+        set {
+            guard newValue != colorVision else { return }
+            renderer?.colorVision = newValue
+            requestDraw()
+        }
+    }
+
     /// Off: a mouse wheel zooms without ⌘. Trackpad scrolling always pans.
     var wheelZoomNeedsCommand = true
 

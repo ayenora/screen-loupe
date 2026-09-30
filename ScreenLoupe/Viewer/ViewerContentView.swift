@@ -12,6 +12,7 @@ final class ViewerContentView: NSStackView {
     let statusView = CaptureStatusView()
     let ruler: RulerController
     let selection: SelectionController
+    let colorVision: ColorVisionController
     let captures = RecentCaptures()
     /// Called when a recent capture starts or stops showing in place of the live view.
     var onShowCapture: (() -> Void)?
@@ -27,6 +28,7 @@ final class ViewerContentView: NSStackView {
     private let toast = ToastView()
     private let frozenIndicator = FrozenIndicatorView()
     private let captureIndicator = FrozenIndicatorView()
+    private let visionIndicator = FrozenIndicatorView()
     /// The live view's zoom, pan and selection while a recent capture shows, to go back to.
     private var liveView: (zoom: CGFloat, offset: CGPoint, selection: CGRect?)?
     /// The magnified image with everything drawn over it; left of the side column.
@@ -53,6 +55,7 @@ final class ViewerContentView: NSStackView {
         ruler.pictureOrigin = { frameStore.shownFrame?.areaOrigin ?? .zero }
         references = ReferencesController(project: project, zoomPan: zoomPan)
         selection = SelectionController(zoomPan: zoomPan)
+        colorVision = ColorVisionController(settings: settings)
         // A selection is drawn with the Select tool: the Selection Ruler turns it on.
         ruler.onMeasureSelection = { [selection] in if !selection.isToolOn { selection.toggleTool() } }
         viewerView.ruler = ruler
@@ -81,7 +84,8 @@ final class ViewerContentView: NSStackView {
         imageArea.clipsToBounds = true
         frozenIndicator.isHidden = true
         captureIndicator.isHidden = true
-        for view in [viewerView, overlay, frozenIndicator, captureIndicator] as [NSView] {
+        visionIndicator.isHidden = true
+        for view in [viewerView, overlay, frozenIndicator, captureIndicator, visionIndicator] as [NSView] {
             view.frame = imageArea.bounds
             view.autoresizingMask = [.width, .height]
             imageArea.addSubview(view)
@@ -118,6 +122,11 @@ final class ViewerContentView: NSStackView {
         }
         zoomPan.observe { [weak self] in self?.captures.shownViewChanged() }
         ruler.observe { [weak self] in self?.overlay.needsDisplay = true }
+        colorVision.observe { [weak self] in
+            guard let self else { return }
+            viewerView.colorVision = colorVision.active
+            showVisionIndicator()
+        }
         selection.observe { [weak self] in
             self?.overlay.needsDisplay = true
             self?.applyMouseModes()
@@ -214,6 +223,18 @@ final class ViewerContentView: NSStackView {
         frozenIndicator.state = state
         // The Selection Ruler's hint stacks over the freeze's.
         overlay.needsDisplay = true
+        showVisionIndicator()
+    }
+
+    /// The orange border and "Deuteranopia · simulated" while a colour vision is simulated, under
+    /// the frozen or the capture indicator when one shows (`ViewerIndicators`).
+    private func showVisionIndicator() {
+        let otherBottom = captureIndicator.chipBottom ?? frozenIndicator.chipBottom
+        visionIndicator.stacking = (
+            ViewerIndicators.simulationTop(below: otherBottom),
+            ViewerIndicators.simulationBorderInset(otherShows: otherBottom != nil)
+        )
+        visionIndicator.state = colorVision.active.map { .simulation(label: $0.indicatorLabel) } ?? .hidden
     }
 
     /// An Option-drag's region, straight to the clipboard.
@@ -570,6 +591,7 @@ final class ViewerContentView: NSStackView {
         captureIndicator.state = shown.map { .capture(label: captures.label(for: $0)) } ?? .hidden
         frozenIndicator.alphaValue = shown == nil ? 1 : 0
         overlay.needsDisplay = true
+        showVisionIndicator()
     }
 
     private func pickColor() {

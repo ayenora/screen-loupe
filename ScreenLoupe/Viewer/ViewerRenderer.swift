@@ -10,6 +10,8 @@ import OSLog
 @MainActor
 final class ViewerRenderer: NSObject, MTKViewDelegate {
     var style = ViewerStyle()
+    /// The colour vision simulated over the whole scene, or `nil`.
+    var colorVision: ColorVisionMode?
     /// The visible reference layers, bottom first.
     var references: () -> [(layer: ReferenceLayer, image: CGImage)] = { [] }
     /// Called when a reference texture made off the main thread is ready to draw.
@@ -28,13 +30,29 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         var references: [(layer: ReferenceLayer, image: CGImage)]
         /// The colour space the target is shown in; reference images are drawn into it.
         var colorSpace: CGColorSpace
+        /// The colour vision simulated over everything else, or `nil`.
+        var colorVision: ColorVisionMode?
     }
 
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private let checkerPipeline: MTLRenderPipelineState
     private let referencePipeline: MTLRenderPipelineState
+    private let visionPipeline: MTLRenderPipelineState
     private let device: MTLDevice
+    /// The scene before the simulation on the screen, the drawable's size; kept while the size
+    /// stays and the simulation is on.
+    private var sceneTexture: MTLTexture?
+    /// The simulation of a mode in a colour space (`vision(_:space:)`).
+    private var vision: (mode: ColorVisionMode, space: CGColorSpace, simulation: Simulation?)?
+
+    /// A simulation's tables and matrix, as the shader takes them.
+    private struct Simulation {
+        /// The decoding table (256 entries), then the encoding one, one `float4` per entry.
+        var tables: MTLBuffer
+        /// Metal's float3x3: three columns, each padded to four floats.
+        var matrix: [SIMD4<Float>]
+    }
     /// Each layer's image as a texture in the Viewer's colour space, remade when either changes.
     private var referenceTextures: [UUID: (image: CGImage, space: CGColorSpace, texture: MTLTexture)] = [:]
     /// Layers whose texture is being made.
@@ -76,11 +94,15 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         blending.destinationAlphaBlendFactor = .oneMinusSourceAlpha
         let referenceDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
         referenceDescriptor.fragmentFunction = library.makeFunction(name: "referenceFragment")
+        // The simulation replaces every pixel of the target: no blending.
+        let visionDescriptor = checkerDescriptor.copy() as! MTLRenderPipelineDescriptor
+        visionDescriptor.fragmentFunction = library.makeFunction(name: "visionFragment")
 
         var cache: CVMetalTextureCache?
         guard let pipeline = try? device.makeRenderPipelineState(descriptor: descriptor),
             let checkerPipeline = try? device.makeRenderPipelineState(descriptor: checkerDescriptor),
             let referencePipeline = try? device.makeRenderPipelineState(descriptor: referenceDescriptor),
+            let visionPipeline = try? device.makeRenderPipelineState(descriptor: visionDescriptor),
             CVMetalTextureCacheCreate(nil, nil, device, nil, &cache) == kCVReturnSuccess,
             let cache
         else { return nil }
@@ -89,6 +111,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         self.pipeline = pipeline
         self.checkerPipeline = checkerPipeline
         self.referencePipeline = referencePipeline
+        self.visionPipeline = visionPipeline
         self.device = device
         self.textureCache = cache
         self.frameStore = frameStore
@@ -105,8 +128,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         #endif
         guard let pass = view.currentRenderPassDescriptor,
             let drawable = view.currentDrawable,
-            let commands = queue.makeCommandBuffer(),
-            let encoder = commands.makeRenderCommandEncoder(descriptor: pass)
+            let commands = queue.makeCommandBuffer()
         else { return }
         #if DEBUG
             frameStore.count { $0.draws += 1 }
@@ -115,8 +137,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         let scene = scene(for: view, style: style, state: zoomPan.presented)
         // Textures of layers that are gone or hidden go too.
         referenceTextures = referenceTextures.filter { entry in scene.references.contains { $0.layer.id == entry.key } }
-        let texture = encode(scene, into: encoder)
-        encoder.endEncoding()
+        if scene.colorVision == nil { sceneTexture = nil }
+        let texture = encode(scene, commands: commands, into: pass, keepsSceneTexture: true)
         commands.present(drawable)
         // The CVMetalTexture must outlive the GPU work that samples it; only held, never used, on the
         // completion handler's thread.
@@ -133,12 +155,12 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         Scene(
             size: view.drawableSize, drawableScale: view.drawableScale, state: state,
             frame: frameStore.shownFrame, style: style, references: references(),
-            colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!)
+            colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!, colorVision: colorVision)
     }
 
     /// `scene` rendered offscreen by the same pipelines as the screen, for Copy View: what it shows is the Viewer, at
     /// any zoom, with the grid and the
-    /// reference layers as drawn. Past `ImageBudget` just its top-left part is rendered. `nil`
+    /// reference layers as drawn, and the colour vision simulation while it is on. Past `ImageBudget` just its top-left part is rendered. `nil`
     /// without a frame or a viewport.
     func renderImage(_ scene: Scene) -> CGImage? {
         var scene = scene
@@ -160,9 +182,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         pass.colorAttachments[0].loadAction = .clear
         pass.colorAttachments[0].clearColor = scene.style.background.clearColor
         pass.colorAttachments[0].storeAction = .store
-        guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return nil }
-        let texture = encode(scene, into: encoder)
-        encoder.endEncoding()
+        let texture = encode(scene, commands: commands, into: pass, keepsSceneTexture: false)
         if let blit = commands.makeBlitCommandEncoder() {
             blit.synchronize(resource: target)
             blit.endEncoding()
@@ -189,9 +209,100 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             intent: .defaultIntent)
     }
 
+    /// `scene` into `pass`'s target: its layers (`encodeLayers`), and with a colour vision simulated,
+    /// the layers into `sceneTexture` first and the simulation from it into the target. The
+    /// simulation works in linear light and the layers blend in encoded values, so it goes over
+    /// the composed scene, not layer by layer. The screen keeps `sceneTexture` from frame to frame
+    /// (`keepsSceneTexture`); Copy View, of another size, makes its own. Returns the frame's texture,
+    /// which must stay alive until the GPU is done with it.
+    private func encode(
+        _ scene: Scene, commands: MTLCommandBuffer, into pass: MTLRenderPassDescriptor, keepsSceneTexture: Bool
+    )
+        -> CVMetalTexture?
+    {
+        guard let target = pass.colorAttachments[0].texture, let mode = scene.colorVision,
+            let vision = vision(mode, space: scene.colorSpace),
+            let sceneTexture = keepsSceneTexture
+                ? keptSceneTexture(width: target.width, height: target.height)
+                : makeSceneTexture(width: target.width, height: target.height)
+        else {
+            guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return nil }
+            let texture = encodeLayers(scene, into: encoder)
+            encoder.endEncoding()
+            return texture
+        }
+        let layersPass = MTLRenderPassDescriptor()
+        layersPass.colorAttachments[0].texture = sceneTexture
+        layersPass.colorAttachments[0].loadAction = .clear
+        layersPass.colorAttachments[0].clearColor = scene.style.background.clearColor
+        layersPass.colorAttachments[0].storeAction = .store
+        guard let layers = commands.makeRenderCommandEncoder(descriptor: layersPass) else { return nil }
+        let texture = encodeLayers(scene, into: layers)
+        layers.endEncoding()
+        guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return texture }
+        var uniforms = vision.matrix + [SIMD4<Float>(Float(ColorVisionTransform.encodeCount - 1), 0, 0, 0)]
+        var viewport = SIMD4<Float>(-1, 1, 1, -1)
+        encoder.setRenderPipelineState(visionPipeline)
+        encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * uniforms.count, index: 0)
+        encoder.setFragmentBuffer(vision.tables, offset: 0, index: 1)
+        encoder.setFragmentBuffer(
+            vision.tables, offset: 256 * MemoryLayout<SIMD4<Float>>.stride, index: 2)
+        encoder.setFragmentTexture(sceneTexture, index: 0)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder.endEncoding()
+        return texture
+    }
+
+    /// The screen's target for the layers under a simulation, remade when the size changes.
+    private func keptSceneTexture(width: Int, height: Int) -> MTLTexture? {
+        if let sceneTexture, sceneTexture.width == width, sceneTexture.height == height { return sceneTexture }
+        sceneTexture = makeSceneTexture(width: width, height: height)
+        return sceneTexture
+    }
+
+    /// A target for the layers under a simulation: the same format as the final target, so the
+    /// simulation reads the values the screen would show without it.
+    private func makeSceneTexture(width: Int, height: Int) -> MTLTexture? {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: Self.pixelFormat, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .private
+        return device.makeTexture(descriptor: descriptor)
+    }
+
+    /// `mode` for pixels in `space` (`ColorVisionTransform`), made when either changes. A space the
+    /// transform can't read (a LUT-based profile) is taken as sRGB: close for most displays, and the
+    /// picture under the "simulated" indicator is always simulated.
+    private func vision(_ mode: ColorVisionMode, space: CGColorSpace) -> Simulation? {
+        if let vision, vision.mode == mode, vision.space == space { return vision.simulation }
+        var simulation: Simulation?
+        var transform = ColorVisionTransform(mode: mode, space: space)
+        if transform == nil {
+            log.error("Colour vision simulated as in sRGB: the Viewer's colour space isn't matrix-based")
+            transform = ColorVisionTransform(mode: mode, space: CGColorSpace(name: CGColorSpace.sRGB)!)
+        }
+        if let transform {
+            func entries(_ table: [[Float]]) -> [SIMD4<Float>] {
+                (0..<table[0].count).map { SIMD4(table[0][$0], table[1][$0], table[2][$0], 0) }
+            }
+            let tables = entries(transform.decode) + entries(transform.encode)
+            let m = transform.matrix
+            if let buffer = device.makeBuffer(
+                bytes: tables, length: tables.count * MemoryLayout<SIMD4<Float>>.stride, options: [])
+            {
+                simulation = Simulation(
+                    tables: buffer,
+                    matrix: (0..<3).map { c in SIMD4(Float(m[0, c]), Float(m[1, c]), Float(m[2, c]), 0) })
+            }
+        }
+        vision = (mode, space, simulation)
+        return simulation
+    }
+
     /// The checkerboard, the frame with its grid, and the reference layers. Returns the frame's
     /// texture, which must stay alive until the GPU is done with it.
-    private func encode(_ scene: Scene, into encoder: MTLRenderCommandEncoder) -> CVMetalTexture? {
+    private func encodeLayers(_ scene: Scene, into encoder: MTLRenderCommandEncoder) -> CVMetalTexture? {
         guard scene.size.width > 0, scene.size.height > 0 else { return nil }
         if scene.style.background == .checkerboard {
             drawCheckerboard(encoder, drawableScale: scene.drawableScale)

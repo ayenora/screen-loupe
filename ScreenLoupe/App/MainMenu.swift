@@ -132,6 +132,8 @@ enum MainMenu {
             keyEquivalent: "r")
         selectionRuler.keyEquivalentModifierMask = [.command, .option]
         selectionRuler.target = target
+        let colorVision = submenuItem(colorVisionMenu(withToggle: true, target: target))
+        menu.addItem(colorVision)
         let viewportHandle = menu.addItem(
             withTitle: "Show Viewport Handle", action: #selector(AppController.toggleViewportHandle(_:)),
             keyEquivalent: "")
@@ -141,6 +143,35 @@ enum MainMenu {
         let fullScreen = menu.addItem(
             withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreen.keyEquivalentModifierMask = [.command, .control]
+        return menu
+    }
+
+    /// View › Color Vision and the eye button's overflow form, which start with Simulate Color
+    /// Vision (⌘Y), and the eye button's ▾, which doesn't: the modes, each with who sees that way
+    /// under it, grouped by separators, as `AppController` commands, which check the chosen one.
+    /// The ▾'s go up the responder chain (`target` `nil`).
+    static func colorVisionMenu(withToggle: Bool, target: AppController?) -> NSMenu {
+        let menu = NSMenu(title: "Color Vision")
+        if withToggle {
+            let toggle = menu.addItem(
+                withTitle: "Simulate Color Vision", action: #selector(AppController.toggleColorVision(_:)),
+                keyEquivalent: "y")
+            toggle.target = target
+        }
+        for (index, mode) in ColorVisionMode.allCases.enumerated() {
+            if !menu.items.isEmpty, index == 0 || mode.group != ColorVisionMode.allCases[index - 1].group {
+                menu.addItem(.separator())
+            }
+            let item = menu.addItem(
+                withTitle: mode.title, action: #selector(AppController.chooseColorVision(_:)), keyEquivalent: "")
+            item.tag = index
+            item.target = target
+            if #available(macOS 14.4, *) {
+                item.subtitle = mode.detail
+            } else {
+                item.toolTip = mode.detail
+            }
+        }
         return menu
     }
 

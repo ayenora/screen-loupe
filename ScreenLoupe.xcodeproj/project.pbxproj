@@ -23,6 +23,7 @@
 				Geometry/ClipboardImageSource.swift,
 				Geometry/ColorContrast.swift,
 				Geometry/ColorMath.swift,
+				Geometry/ColorVision.swift,
 				Geometry/ColorMeterState.swift,
 				Geometry/CoordinateTypes.swift,
 				Geometry/CornerRuler.swift,
