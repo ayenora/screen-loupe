@@ -2,7 +2,7 @@
 
 A page and a design export of one of its components, to try reference layers in Difference.
 
-- [index.html](index.html) — the page as built: a pricing card with an "Upgrade to Pro" button. Online: <https://ayenora.github.io/screen-loupe/examples/reference-check/>.
+- [index.html](index.html) — the page as built: a project card with an "Open Project" button. Online: <https://ayenora.github.io/screen-loupe/examples/reference-check/>.
 - [design-export.png](design-export.png) — the card as designed, at 2× (816 × 776 px for 408 × 388 pt).
 
 The build differs from the design in two places: the button sits 2 px lower and its corner radius is 8 instead of 10.

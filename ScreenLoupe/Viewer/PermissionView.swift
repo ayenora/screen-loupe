@@ -31,7 +31,7 @@ final class PermissionView: NSView {
         body.textColor = .secondaryLabelColor
         body.preferredMaxLayoutWidth = 380
 
-        let grant = NSButton(title: "Grant Access…", target: self, action: #selector(grantAccess))
+        let grant = NSButton(title: "Continue", target: self, action: #selector(grantAccess))
         grant.keyEquivalent = "\r"
         let settings = NSButton(title: "Open System Settings", target: self, action: #selector(openSettings))
         let buttons = NSStackView(views: [settings, grant])
