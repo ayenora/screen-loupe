@@ -167,8 +167,9 @@ final class ViewerView: MTKView {
     private var colorSpaceDisplayID: CGDirectDisplayID?
 
     /// Frames come in the source display's color space (ScreenCaptureKit's default), an opened image
-    /// in its own. Tagging the layer with it lets the system color-match when the Viewer sits on a
-    /// display with another profile; on the same display the values pass through unchanged.
+    /// or a recent capture in the one kept with it. Tagging the layer with it lets the system
+    /// color-match when the Viewer sits on a display with another profile; on the same display the
+    /// values pass through unchanged.
     private func matchColorSpace(of frame: ViewerFrame) {
         if let space = frame.imageColorSpace {
             colorSpaceDisplayID = nil

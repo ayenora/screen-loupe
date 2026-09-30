@@ -3,7 +3,7 @@ import CoreGraphics
 /// How the pixels of the picture the Viewer shows are laid out: a live frame, a frozen one or a
 /// recent capture. Every tool counts pixels from the picture's top-left, so
 /// they all work on each of them alike.
-struct FrameLayout: Equatable, Sendable {
+struct FrameLayout: Codable, Equatable, Sendable {
     /// The whole picture in pixels: the Capture Area, or the part a recent capture keeps of it.
     var size: PixelSize
     /// Top-left corner of the frame's pixels inside the picture. Non-zero only when the area

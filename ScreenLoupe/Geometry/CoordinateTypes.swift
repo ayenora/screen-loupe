@@ -22,7 +22,7 @@ struct DisplayLocalRect: Equatable, Sendable {
 }
 
 /// Whole pixels of an image, origin at its top-left corner, y down.
-struct PixelSize: Equatable, Sendable {
+struct PixelSize: Codable, Equatable, Sendable {
     var width: Int
     var height: Int
 }

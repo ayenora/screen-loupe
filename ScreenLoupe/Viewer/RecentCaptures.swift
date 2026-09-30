@@ -5,7 +5,7 @@ import Observation
 /// frame the Viewer shows, or the
 /// selection, at native resolution, so every tool works on real screen pixels when it is opened again.
 struct RecentCapture: Identifiable {
-    let id = UUID()
+    let id: UUID
     /// The frame, in a buffer of its own, cut to what was kept and to `ImageBudget`.
     let frame: ViewerFrame
     /// "Snapshot", or an image file's name.
@@ -42,8 +42,9 @@ struct RecentCapture: Identifiable {
     var dateText: String { Self.dateFormatter.string(from: date) }
 }
 
-/// The last snapshots of the Capture Area and images opened from files, kept in memory until the
-/// app quits, and which of them the Viewer shows in place of the live view.
+/// The last snapshots of the Capture Area and images opened from files, and which of them the Viewer
+/// shows in place of the live view. Kept on disk as they change (`RecentCaptureStore`), so the
+/// Viewer opens on them again after quitting, a crash or a restart.
 @MainActor
 @Observable
 final class RecentCaptures {
@@ -95,10 +96,11 @@ final class RecentCaptures {
     /// stream, shown at `zoom` and `offset` with no selection when it is opened. The thumbnail is
     /// drawn from the kept pixels. `nil` when nothing of the frame is kept.
     static func snapshot(of frame: ViewerFrame, area: CGRect, zoom: CGFloat, offset: CGPoint) -> RecentCapture? {
-        guard let kept = frame.copiedForKeeping(area: area) else { return nil }
+        guard let kept = frame.copiedForKeeping(area: area, colorSpace: frame.colorSpace) else { return nil }
         let keptImage = ScreenshotExporter.sourceImage(from: kept, colorSpace: kept.colorSpace)
         return RecentCapture(
-            frame: kept, name: "Snapshot", date: Date(), thumbnail: keptImage.flatMap(thumbnail(of:)), isFile: false,
+            id: UUID(), frame: kept, name: "Snapshot", date: Date(), thumbnail: keptImage.flatMap(thumbnail(of:)),
+            isFile: false,
             zoom: zoom, offset: offset, selection: nil)
     }
 
@@ -106,14 +108,19 @@ final class RecentCaptures {
     /// (`ImageFileLoader.frame(at:)`): its buffer is already its own.
     static func file(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) -> RecentCapture {
         RecentCapture(
-            frame: frame, name: name, date: Date(), thumbnail: thumbnail, isFile: true,
+            id: UUID(), frame: frame, name: name, date: Date(), thumbnail: thumbnail, isFile: true,
             zoom: nil, offset: .zero, selection: nil)
     }
 
     /// Keeps `capture` as the newest; the oldest other than the shown one goes past the limit
     /// (`RecentCaptureRules.adding`).
     func add(_ capture: RecentCapture) {
+        let before = captures
         captures = RecentCaptureRules.adding(capture, to: captures) { $0.id == shownID }
+        store.add(capture)
+        for pushedOut in before where !captures.contains(where: { $0.id == pushedOut.id }) {
+            store.delete(pushedOut.id)
+        }
         onChange?()
     }
 
@@ -123,11 +130,13 @@ final class RecentCaptures {
         onPutAway?(shown)
         shownID = id
         onShow?(shown)
+        store.saveSoon()
     }
 
     func remove(_ id: UUID) {
         if id == shownID { show(nil) }
         captures.removeAll { $0.id == id }
+        store.delete(id)
         onChange?()
     }
 
@@ -157,11 +166,13 @@ final class RecentCaptures {
     func setLinked(_ id: UUID, _ linked: Bool) {
         guard let viewer = viewerView?() else { return }
         guard linked else {
-            return apply(RecentCaptureRules.unlinking(id, shown: shownID, viewer: viewer, in: links))
+            apply(RecentCaptureRules.unlinking(id, shown: shownID, viewer: viewer, in: links))
+            return store.saveSoon()
         }
         guard let linking = RecentCaptureRules.linking(id, shown: shownID, viewer: viewer, in: links) else { return }
         apply(linking.links)
         if linking.showsNewView, let shown { onAdoptView?(shown) }
+        store.saveSoon()
     }
 
     /// The captures as linking sees them.
@@ -180,6 +191,76 @@ final class RecentCaptures {
             captures[index].zoom = link.view.zoom
             captures[index].offset = link.view.offset
         }
+    }
+
+    // MARK: Kept on disk
+
+    @ObservationIgnored private let store = RecentCaptureStore()
+
+    /// The shown capture's zoom, offset and selection as the Viewer shows them now, kept as they
+    /// change; `nil` while the Viewer isn't laid out, and the capture's own view stands.
+    @ObservationIgnored var shownView: (() -> (view: RecentCaptureRules.CaptureView, selection: CGRect?)?)?
+
+    init() {
+        store.index = { [weak self] in self?.index }
+    }
+
+    /// The captures kept last time (`RecentCaptureStore.load`): the Viewer back on the one it
+    /// showed at once, or on the live view; the others join the list as they are read.
+    func restore() {
+        let kept = store.load()
+        if let shown = kept.shown {
+            captures = [shown]
+            onChange?()
+            show(shown.id)
+        }
+        let order = kept.entries.map(\.id)
+        store.readRest(kept.entries.filter { $0.id != kept.shown?.id }) { [weak self] capture in
+            self?.restored(capture, order: order)
+        }
+    }
+
+    /// A capture kept last time, read after the list came up, in its place among the kept ones
+    /// (`RecentCaptureRules.restoring`); pushed out when the list has filled up since, as the oldest.
+    /// A linked one joins the links as they are now (`RecentCaptureRules.joining`).
+    private func restored(_ capture: RecentCapture, order: [UUID]) {
+        guard captures.count < Self.limit else { return store.delete(capture.id) }
+        var capture = capture
+        let link = RecentCaptureRules.joining(
+            .init(
+                id: capture.id, size: capture.frame.layout.size, isLinked: capture.isLinked,
+                view: .init(zoom: capture.zoom, offset: capture.offset)),
+            into: links)
+        capture.isLinked = link.isLinked
+        capture.zoom = link.view.zoom
+        capture.offset = link.view.offset
+        captures = RecentCaptureRules.restoring(capture, into: captures, order: order, id: \.id)
+        onChange?()
+    }
+
+    /// The shown capture's view changed: kept after a short delay.
+    func shownViewChanged() {
+        if shownID != nil { store.saveSoon() }
+    }
+
+    /// Keeps the list as it is now, before the app quits, with the captures still being written,
+    /// waiting for them a few seconds at most; going back to the live view after is not kept, so the
+    /// Viewer opens on what it shows now.
+    func saveBeforeQuit() async {
+        await store.close(timeout: 5)
+    }
+
+    /// The captures as the index keeps them: the shown one, and every one linked with it, at the
+    /// Viewer's view now (`RecentCaptureRules.leaving`), as putting it away would keep them.
+    private var index: RecentCaptureArchive.Index {
+        let now = shownID == nil ? nil : shownView?()
+        var links = links
+        if let shownID, let now { links = RecentCaptureRules.leaving(shownID, at: now.view, in: links) }
+        let entries = zip(captures, links).map { capture, link in
+            let selection = if let now, capture.id == shownID { now.selection } else { capture.selection }
+            return capture.entry(view: link.view, selection: selection)
+        }
+        return RecentCaptureArchive.Index(entries: entries, shownID: shownID)
     }
 
     /// `image` scaled down to fit the thumbnail box; a small image stays as it is. Drawn in its RGB

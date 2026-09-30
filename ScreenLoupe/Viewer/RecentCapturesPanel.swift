@@ -52,7 +52,7 @@ struct RecentCapturesPanel: View {
             }
 
             Divider()
-            Text("Last \(RecentCaptures.limit) snapshots and images · kept until quit")
+            Text("Last \(RecentCaptures.limit) snapshots and images · kept until deleted")
                 .font(.system(size: 10.5 * s))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14 * s)

@@ -103,6 +103,14 @@ final class SelectionController {
         }
     }
 
+    /// A recent capture's selection kept from the last session, with the tool on, as it showed then.
+    func showKept(_ rect: CGRect) {
+        isToolOn = true
+        stored = rect
+        drag = nil
+        changed()
+    }
+
     // MARK: The Select tool
 
     func part(at point: CGPoint, scale: CGFloat) -> Part? {

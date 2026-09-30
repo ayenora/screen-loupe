@@ -68,6 +68,17 @@ final class AppController: NSObject, NSApplicationDelegate {
             })
     }
 
+    /// Quitting waits until Recent Captures are on disk: a capture just taken is still being written,
+    /// and what the Viewer shows is kept before it goes back to the live view.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let viewer = builtWindows?.viewer else { return .terminateNow }
+        Task {
+            await viewer.saveRecentCaptures()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     /// Saves what AppKit doesn't keep by itself before the app quits.
     func applicationWillTerminate(_ notification: Notification) {
         // The live view's zoom is the one kept, not a recent capture's.

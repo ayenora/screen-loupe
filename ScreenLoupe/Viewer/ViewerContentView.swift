@@ -112,16 +112,23 @@ final class ViewerContentView: NSStackView {
             overlay.needsDisplay = true
             ruler.viewportChanged()
         }
+        zoomPan.observe { [weak self] in self?.captures.shownViewChanged() }
         ruler.observe { [weak self] in self?.overlay.needsDisplay = true }
         selection.observe { [weak self] in
             self?.overlay.needsDisplay = true
             self?.applyMouseModes()
+            self?.captures.shownViewChanged()
         }
         viewerView.onCopyRegion = { [weak self] region in self?.copyRegion(region) }
         viewerView.onShowLive = { [weak self] in self?.captures.show(nil) }
         captures.onPutAway = { [weak self] old in self?.putAway(old) }
         captures.onShow = { [weak self] new in self?.show(new) }
         captures.viewerView = { [zoomPan] in .init(zoom: zoomPan.state.zoom, offset: zoomPan.state.offset) }
+        captures.shownView = { [zoomPan, selection] in
+            let state = zoomPan.state
+            guard state.viewportSize != .zero else { return nil }
+            return (.init(zoom: state.zoom, offset: state.offset), selection.keptSelection)
+        }
         captures.onAdoptView = { [weak self] capture in self?.restoreView(of: capture) }
         captures.onChange = { [weak self] in self?.showCaptureIndicator() }
         captures.onTakeSnapshot = { [weak self] in self?.takeSnapshot() }
@@ -426,9 +433,9 @@ final class ViewerContentView: NSStackView {
     /// without a selection. With nothing to keep it beeps.
     func takeSnapshot() {
         guard let frame = frameStore.snapshotFrame else { return NSSound.beep() }
-        let current = (zoom: zoomPan.state.zoom, offset: zoomPan.state.offset, selection: selection.keptSelection)
-        let view = RecentCaptureRules.snapshotView(savedLive: liveView, current: current)
         let size = frame.layout.size
+        let current = (zoom: zoomPan.state.zoom, offset: zoomPan.state.offset, selection: selection.keptSelection)
+        let view = RecentCaptureRules.snapshotView(savedLive: liveView ?? firstLiveView(of: size), current: current)
         let live = ZoomPanState(
             zoom: view.zoom, offset: view.offset, contentSize: CGSize(width: size.width, height: size.height),
             viewportSize: zoomPan.state.viewportSize)
@@ -440,13 +447,21 @@ final class ViewerContentView: NSStackView {
         captures.add(capture)
     }
 
+    /// While a capture shown since launch shows, the live view hasn't shown yet: how it will first
+    /// show a frame of `size` (`ZoomPanController.firstView`), with no selection. `nil` otherwise.
+    private func firstLiveView(of size: PixelSize) -> (zoom: CGFloat, offset: CGPoint, selection: CGRect?)? {
+        guard isShowingCapture else { return nil }
+        let first = zoomPan.firstView(of: CGSize(width: size.width, height: size.height))
+        return (first.zoom, first.offset, nil)
+    }
+
     /// Keeps how `old` was left (`nil`: the live view), its zoom, pan and selection, so going back
-    /// finds everything as it was left.
+    /// finds everything as it was left. A live view that hasn't shown a frame yet has nothing to keep.
     private func putAway(_ old: RecentCapture?) {
         let state = zoomPan.state
         if let old {
             captures.keep(old.id, zoom: state.zoom, offset: state.offset, selection: selection.keptSelection)
-        } else {
+        } else if state.contentSize != .zero {
             liveView = (state.zoom, state.offset, selection.keptSelection)
         }
     }
@@ -454,6 +469,12 @@ final class ViewerContentView: NSStackView {
     /// Shows `new` (`nil`: the live view) as it was put away (`putAway`).
     private func show(_ new: RecentCapture?) {
         frameStore.shownCapture = new?.frame
+        // Back to a live view that never showed (a capture shown since launch): its first frame
+        // shows as a first frame does.
+        if new == nil, liveView == nil {
+            zoomPan.forgetContent()
+            selection.keptSelection = nil
+        }
         // The next picture is not an edge drag of the last one.
         viewerView.forgetAreaOrigin()
         viewerView.frameArrived()
@@ -468,6 +489,14 @@ final class ViewerContentView: NSStackView {
         inspector.frameArrived()
         showCaptureIndicator()
         onShowCapture?()
+    }
+
+    /// The recent captures kept last time, with the Viewer on what it showed: a capture at its kept
+    /// view, or the live view (`RecentCaptures.restore`). The shown capture's selection showed with
+    /// the Select tool on, and comes back so.
+    func restoreCaptures() {
+        captures.restore()
+        if let kept = captures.shown?.selection { selection.showKept(kept) }
     }
 
     /// Shows `capture`'s kept zoom and offset: on showing it, or on linking it while it shows.

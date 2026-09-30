@@ -36,20 +36,11 @@ enum ImageFileLoader {
         return image.cropping(to: CGRect(x: 0, y: 0, width: kept.width, height: kept.height))
     }
 
-    /// Straight (not premultiplied) 8-bit BGRA in `space`: how the Viewer keeps an image's pixels.
-    private static func straightFormat(_ space: CGColorSpace) -> vImage_CGImageFormat {
-        vImage_CGImageFormat(
-            bitsPerComponent: 8, bitsPerPixel: 32, colorSpace: Unmanaged.passUnretained(space),
-            bitmapInfo: CGBitmapInfo(
-                rawValue: CGImageAlphaInfo.first.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
-            version: 0, decode: nil, renderingIntent: .defaultIntent)
-    }
-
     /// `image` turned upright, on its straight pixels, so values and transparency stay exact (ImageIO's
     /// own transform premultiplies them).
     private static func upright(_ image: CGImage, _ orientation: ImageOrientation) -> CGImage? {
         let space = CGColorSpace.rgbSpace(forImageIn: image.colorSpace)
-        var format = straightFormat(space)
+        var format = RecentCaptureArchive.straightFormat(space)
         let flags = vImage_Flags(kvImageNoFlags)
         var stored = vImage_Buffer()
         guard vImageBuffer_InitWithCGImage(&stored, &format, nil, image, flags) == kvImageNoError else { return nil }
@@ -98,13 +89,14 @@ enum ImageFileLoader {
         var pixels = vImage_Buffer(
             data: CVPixelBufferGetBaseAddress(buffer), height: vImagePixelCount(image.height),
             width: vImagePixelCount(image.width), rowBytes: CVPixelBufferGetBytesPerRow(buffer))
-        var format = straightFormat(space)
+        var format = RecentCaptureArchive.straightFormat(space)
         guard
             vImageBuffer_InitWithCGImage(&pixels, &format, nil, image, vImage_Flags(kvImageNoAllocate))
                 == kvImageNoError
         else { return nil }
         let layout = FrameLayout(image: PixelSize(width: image.width, height: image.height))
-        let frame = ViewerFrame(pixelBuffer: buffer, layout: layout, displayID: nil, imageColorSpace: space)
+        let frame = ViewerFrame(
+            pixelBuffer: buffer, layout: layout, displayID: nil, imageColorSpace: space, hasAlpha: true)
         return (frame, RecentCaptures.thumbnail(of: image))
     }
 }

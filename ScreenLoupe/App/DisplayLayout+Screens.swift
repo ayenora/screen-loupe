@@ -31,7 +31,8 @@ extension DisplayInfo {
 }
 
 extension ViewerFrame {
-    /// The colour space the pixels are in: an opened image's own, else the display's they come from.
+    /// The colour space the pixels are in: the one kept with them (an opened image's own, a recent
+    /// capture's), else the display's they come from.
     var colorSpace: CGColorSpace {
         imageColorSpace ?? NSScreen.colorSpace(forDisplay: displayID)
     }

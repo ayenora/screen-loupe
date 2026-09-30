@@ -99,8 +99,8 @@ final class PixelInspector {
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
         let bytes = base.advanced(by: y * CVPixelBufferGetBytesPerRow(buffer) + x * 4)
             .assumingMemoryBound(to: UInt8.self)
-        // 32BGRA, in the frame's colour space: its display's, or an opened image's own, whose
-        // straight alpha is its own too.
+        // 32BGRA, in the frame's colour space: its display's, or the one kept with it; an opened
+        // image's straight alpha is its own too.
         return ColorSample(
             red: bytes[2], green: bytes[1], blue: bytes[0], alpha: frame.hasAlpha ? bytes[3] : 255,
             colorSpace: frame.colorSpace, spaceName: frame.colorSpaceName)

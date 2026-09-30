@@ -69,6 +69,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         // A floating window stays above other apps' windows even while another app is active. The
         // Capture Area frame sits higher still (`.statusBar`), so the Viewer never covers it.
         settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.window?.level = $0 ? .floating : .normal }
+        // Before the content or the permission explanation comes in: a capture shown when the app
+        // quit shows again, without access too, and before the first live frame.
+        content.restoreCaptures()
         refreshContent()
     }
 
@@ -178,6 +181,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     func refreshSnapshot() {
         let size = snapshotSize
         if content.captures.liveSize != size { content.captures.liveSize = size }
+    }
+
+    /// Keeps Recent Captures as they are, with what the Viewer shows, before the app quits.
+    func saveRecentCaptures() async {
+        await content.captures.saveBeforeQuit()
     }
 
     /// Back to the live view: closing the Viewer, Escape.

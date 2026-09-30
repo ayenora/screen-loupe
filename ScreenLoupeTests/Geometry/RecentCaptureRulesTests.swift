@@ -95,6 +95,32 @@ struct LinkedCaptureTests {
 
     private func view(of id: Int, in links: [Link]) -> View? { links.first { $0.id == id }?.view }
 
+    // MARK: A kept capture read after the list came up
+
+    @Test func aKeptLinkedCaptureTakesTheGroupsView() {
+        let joined = RecentCaptureRules.joining(
+            link(2, linked: true, view: whole), into: [link(1, linked: true, view: corner), link(3)])
+        #expect(joined == link(2, linked: true, view: corner))
+    }
+
+    /// The linked ones were unlinked and others of another size linked while it was read.
+    @Test func aKeptLinkedCaptureOfAnotherSizeThanTheGroupIsUnlinked() {
+        let joined = RecentCaptureRules.joining(
+            link(2, linked: true, view: whole), into: [link(1, size: Self.large, linked: true, view: corner)])
+        #expect(joined == link(2, linked: false, view: whole))
+    }
+
+    @Test func aKeptLinkedCaptureWithNoGroupStaysAsKept() {
+        let kept = link(2, linked: true, view: whole)
+        #expect(RecentCaptureRules.joining(kept, into: [link(1, view: corner)]) == kept)
+        #expect(RecentCaptureRules.joining(kept, into: []) == kept)
+    }
+
+    @Test func aKeptCaptureThatIsNotLinkedStaysAsKept() {
+        let kept = link(2, view: whole)
+        #expect(RecentCaptureRules.joining(kept, into: [link(1, linked: true, view: corner)]) == kept)
+    }
+
     // MARK: Who can be linked
 
     @Test func theFirstCanBeLinkedWhateverItsSize() {
@@ -575,5 +601,30 @@ struct SnapshotOffsetTests {
             contentSize: area.size, viewportSize: live.viewportSize)
         #expect(row == live)
         #expect(row.clamped() == row)
+    }
+}
+
+struct RestoringTests {
+    private func restoring(_ item: String, into items: [String], order: [String]) -> [String] {
+        RecentCaptureRules.restoring(item, into: items, order: order) { $0 }
+    }
+
+    @Test func aKeptCaptureGoesBetweenTheKeptOnesAroundIt() {
+        #expect(restoring("b", into: ["a", "c"], order: ["a", "b", "c"]) == ["a", "b", "c"])
+    }
+
+    @Test func theNewestKeptCaptureGoesAboveTheOlderOnes() {
+        #expect(restoring("a", into: ["c"], order: ["a", "b", "c"]) == ["a", "c"])
+    }
+
+    @Test func theOldestGoesLast() {
+        #expect(restoring("c", into: ["a", "b"], order: ["a", "b", "c"]) == ["a", "b", "c"])
+        #expect(restoring("c", into: [], order: ["a", "b", "c"]) == ["c"])
+    }
+
+    /// Captures added since launch are newer than any kept one.
+    @Test func capturesAddedSinceStayOnTop() {
+        #expect(restoring("a", into: ["new", "b"], order: ["a", "b"]) == ["new", "a", "b"])
+        #expect(restoring("b", into: ["new2", "new1"], order: ["a", "b"]) == ["new2", "new1", "b"])
     }
 }

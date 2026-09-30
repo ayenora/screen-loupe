@@ -11,8 +11,9 @@ struct ViewerFrame: @unchecked Sendable {
     let layout: FrameLayout
     /// The display the pixels come from, for their colour space; sRGB without one.
     let displayID: CGDirectDisplayID?
-    /// An opened image's own colour space, which its pixels are in; `nil` for a picture of the
-    /// screen, whose colour space is its display's (`colorSpace`).
+    /// The colour space the pixels are in, kept with them: an opened image's own, or a recent
+    /// capture's, its display's as it was taken, since the display may go or change its profile.
+    /// `nil` for a frame of the stream, whose colour space is its display's (`colorSpace`).
     let imageColorSpace: CGColorSpace?
     /// The geometry the stream captured it with: a live frame, or one frozen from it. A recent
     /// capture or an opened image is a picture of its own, whose pixels don't map onto the Capture
@@ -22,16 +23,17 @@ struct ViewerFrame: @unchecked Sendable {
 
     /// Whether the buffer's alpha is the picture's own, straight (not premultiplied): an opened
     /// image's transparency. Frames of the screen are opaque, whatever their alpha bytes hold.
-    var hasAlpha: Bool { imageColorSpace != nil }
+    let hasAlpha: Bool
 
     init(
         pixelBuffer: CVPixelBuffer, layout: FrameLayout, displayID: CGDirectDisplayID?,
-        imageColorSpace: CGColorSpace? = nil
+        imageColorSpace: CGColorSpace? = nil, hasAlpha: Bool = false
     ) {
         self.pixelBuffer = pixelBuffer
         self.layout = layout
         self.displayID = displayID
         self.imageColorSpace = imageColorSpace
+        self.hasAlpha = hasAlpha
         geometry = nil
     }
 
@@ -41,6 +43,7 @@ struct ViewerFrame: @unchecked Sendable {
         layout = geometry.layout
         displayID = geometry.display.id
         imageColorSpace = nil
+        hasAlpha = false
         self.geometry = geometry
     }
 
@@ -51,8 +54,8 @@ struct ViewerFrame: @unchecked Sendable {
     /// The frame copied into a buffer of its own, cut to `area` (whole pixels of the picture: what a
     /// snapshot keeps) and to `ImageBudget`, to keep as a recent capture. The stream's buffers come
     /// from a small pool it reuses; holding on to them would starve it. IOSurface-backed and
-    /// Metal-compatible, so it is drawn like a live frame.
-    func copiedForKeeping(area: CGRect) -> ViewerFrame? {
+    /// Metal-compatible, so it is drawn like a live frame. It keeps `colorSpace`, its display's now.
+    func copiedForKeeping(area: CGRect, colorSpace: CGColorSpace) -> ViewerFrame? {
         guard let cut = layout.cropped(toArea: area), let kept = cut.layout.fittedToImageBudget() else { return nil }
         let offset = cut.offset
         let width = kept.imageSize.width
@@ -74,7 +77,7 @@ struct ViewerFrame: @unchecked Sendable {
         for row in 0..<height {
             memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
         }
-        return ViewerFrame(pixelBuffer: copy, layout: kept, displayID: displayID)
+        return ViewerFrame(pixelBuffer: copy, layout: kept, displayID: nil, imageColorSpace: colorSpace)
     }
 
     /// An IOSurface-backed, Metal-compatible BGRA buffer, drawn like a live frame.

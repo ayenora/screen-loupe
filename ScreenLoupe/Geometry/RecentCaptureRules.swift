@@ -47,6 +47,20 @@ enum RecentCaptureRules {
         return next
     }
 
+    /// `items`, newest first, with `item`, a capture kept from the last session that was read after
+    /// the list came up, where it belongs: below every capture added since, which are newer, and
+    /// among the other kept ones as `order` (the kept ones' ids, newest first) has them.
+    static func restoring<Item, ID: Equatable>(
+        _ item: Item, into items: [Item], order: [ID], id: (Item) -> ID
+    ) -> [Item] {
+        let rank = order.firstIndex(of: id(item)) ?? order.count
+        let index =
+            items.firstIndex { other in order.firstIndex(of: id(other)).map { $0 > rank } ?? false } ?? items.count
+        var next = items
+        next.insert(item, at: index)
+        return next
+    }
+
     /// How a capture shows: its zoom and offset. `nil` zoom: fitted to the Viewer, as an image file
     /// first shows.
     struct CaptureView: Equatable {
@@ -69,6 +83,16 @@ enum RecentCaptureRules {
     struct Linking<ID: Equatable>: Equatable {
         var links: [Link<ID>]
         var showsNewView: Bool
+    }
+
+    /// A linked capture kept from the last session, read after the list came up, as it joins `links`:
+    /// it takes the view the linked ones keep, which may have moved since; when they are of another
+    /// size — linked since — it is unlinked, as only pictures of one size can be linked.
+    static func joining<ID>(_ link: Link<ID>, into links: [Link<ID>]) -> Link<ID> {
+        guard link.isLinked, let group = links.first(where: \.isLinked) else { return link }
+        var next = link
+        if group.size == link.size { next.view = group.view } else { next.isLinked = false }
+        return next
     }
 
     /// Whether capture `id` can be linked now, or unlinked: linked captures share one zoom and
