@@ -136,3 +136,108 @@ struct ReferenceLayersCodingTests {
         #expect(decoded == stack)
     }
 }
+
+struct PictureInAreaTests {
+    private let layer = ReferenceLayer(
+        name: "design.png", fileName: "a.png", imageSize: CGSize(width: 40, height: 30),
+        origin: CGPoint(x: 120, y: 70))
+
+    private func picture(_ origin: CGPoint) -> CGRect {
+        PictureInArea.pictureRect(layer.frame, pictureOrigin: origin)
+    }
+
+    /// The live view, frozen or not, is the whole area: the layer shows at its place in it.
+    @Test func overTheLiveViewALayerShowsAtItsPlace() {
+        #expect(picture(.zero) == layer.frame)
+    }
+
+    /// A snapshot of the part from (100, 50): its pixel (20, 20) is the area's (120, 70).
+    @Test func overASnapshotALayerShowsOnTheSamePixels() {
+        #expect(picture(CGPoint(x: 100, y: 50)) == CGRect(x: 20, y: 20, width: 40, height: 30))
+    }
+
+    /// A snapshot kept before its place was recorded, and an image, sit at the area's corner.
+    @Test func overAPictureWithoutAPlaceALayerShowsAtItsPlace() {
+        let origin = RecentCaptureArchive.areaOrigin(entry(isFile: false, areaOrigin: nil))
+        #expect(picture(origin) == layer.frame)
+        let file = RecentCaptureArchive.areaOrigin(entry(isFile: true, areaOrigin: CGPoint(x: 9, y: 9)))
+        #expect(file == .zero)
+    }
+
+    @Test func aKeptSnapshotSitsWhereItWasTaken() {
+        #expect(
+            RecentCaptureArchive.areaOrigin(entry(isFile: false, areaOrigin: CGPoint(x: 100, y: 50)))
+                == CGPoint(x: 100, y: 50))
+    }
+
+    @Test func aPointOverThePictureIsThePointInTheArea() {
+        #expect(
+            PictureInArea.areaPoint(CGPoint(x: 25, y: 30), pictureOrigin: CGPoint(x: 100, y: 50))
+                == CGPoint(x: 125, y: 80))
+        #expect(PictureInArea.areaPoint(CGPoint(x: 25, y: 30), pictureOrigin: .zero) == CGPoint(x: 25, y: 30))
+    }
+
+    /// The mouse over a snapshot takes the layer on those pixels, not the one at the same place in the picture.
+    @Test func theMouseOverASnapshotTakesTheLayerOnItsPixels() {
+        var stack = ReferenceStack()
+        stack.add(layer)
+        let origin = CGPoint(x: 100, y: 50)
+        #expect(
+            stack.movableLayer(at: PictureInArea.areaPoint(CGPoint(x: 30, y: 30), pictureOrigin: origin)) == layer.id)
+        #expect(stack.movableLayer(at: PictureInArea.areaPoint(CGPoint(x: 130, y: 80), pictureOrigin: origin)) == nil)
+    }
+
+    /// Dragged over a snapshot, the layer moves in the area by the drag: back on the live view it
+    /// shows on the pixels it was dropped on over the snapshot.
+    @Test func aLayerDraggedOverASnapshotKeepsItsPlaceBackLive() {
+        let origin = CGPoint(x: 100, y: 50)
+        let moved = ReferenceStack.moved(layer, from: layer.origin, by: CGPoint(x: 5, y: -3))
+        #expect(PictureInArea.pictureRect(moved.frame, pictureOrigin: origin).origin == CGPoint(x: 25, y: 17))
+        #expect(PictureInArea.pictureRect(moved.frame, pictureOrigin: .zero).origin == CGPoint(x: 125, y: 67))
+    }
+
+    /// A corner dragged over a snapshot scales about the opposite corner's place in the area.
+    @Test func aCornerDraggedOverASnapshotScalesInTheArea() {
+        let origin = CGPoint(x: 100, y: 50)
+        // The bottom-right corner to the snapshot's (100, 80): the area's (200, 130).
+        let point = PictureInArea.areaPoint(CGPoint(x: 100, y: 80), pictureOrigin: origin)
+        let scaled = ReferenceStack.scaled(layer, corner: .bottomRight, to: point)
+        #expect(scaled.origin == layer.origin)
+        #expect(scaled.frame == CGRect(x: 120, y: 70, width: 80, height: 60))
+    }
+
+    private func entry(isFile: Bool, areaOrigin: CGPoint?) -> RecentCaptureArchive.Entry {
+        RecentCaptureArchive.Entry(
+            id: UUID(), name: "Snapshot", date: Date(), isFile: isFile, zoom: nil, offset: .zero, selection: nil,
+            isLinked: false, layout: nil, colorSpace: nil, areaOrigin: areaOrigin)
+    }
+}
+
+struct ReferenceStrayFilesTests {
+    private func layer(_ file: String) -> ReferenceLayer {
+        ReferenceLayer(name: file, fileName: file, imageSize: CGSize(width: 1, height: 1))
+    }
+
+    /// A copy written as the app quit, before its layer was added, is a stray.
+    @Test func filesNoLayerUsesAreStrays() {
+        let stray = ReferenceStack.strayFiles(
+            ["project.json", "A.png", "B.tiff", "C.tiff"], layers: [layer("A.png"), layer("C.tiff")],
+            projectFile: "project.json")
+        #expect(stray == ["B.tiff"])
+    }
+
+    @Test func theProjectFileIsNeverAStray() {
+        #expect(ReferenceStack.strayFiles(["project.json"], layers: [], projectFile: "project.json").isEmpty)
+    }
+
+    @Test func withoutLayersEveryImageIsAStray() {
+        #expect(
+            ReferenceStack.strayFiles(["project.json", "A.png"], layers: [], projectFile: "project.json") == ["A.png"])
+    }
+
+    @Test func aLayerWhoseFileIsGoneMakesNoStray() {
+        #expect(
+            ReferenceStack.strayFiles(["project.json"], layers: [layer("gone.png")], projectFile: "project.json")
+                .isEmpty)
+    }
+}

@@ -229,6 +229,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         toolbar.setFrozen(state != .hidden)
     }
 
+    /// Makes the frozen frame a reference layer (`ViewerContentView.useFrozenFrameAsReference`).
+    func useFrozenFrameAsReference() {
+        content.useFrozenFrameAsReference()
+    }
+
     // MARK: Size to area
 
     /// Whether Size Window to Area can act: the capture is shown and the window isn't full screen.

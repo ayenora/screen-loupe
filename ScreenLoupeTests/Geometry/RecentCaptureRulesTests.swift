@@ -602,6 +602,35 @@ struct SnapshotOffsetTests {
         #expect(row == live)
         #expect(row.clamped() == row)
     }
+
+    // MARK: Where the snapshot sat in the Capture Area
+
+    @Test func theOriginIsTheKeptAreasTopLeft() {
+        let live = ZoomPanState(
+            zoom: 8, offset: CGPoint(x: -800, y: -400), contentSize: CGSize(width: 400, height: 300),
+            viewportSize: CGSize(width: 640, height: 480))
+        let area = RecentCaptureRules.snapshotArea(selection: nil, in: live)!
+        #expect(RecentCaptureRules.snapshotOrigin(area: area) == CGPoint(x: 100, y: 50))
+    }
+
+    @Test func aWholeAreaSitsAtItsTopLeft() {
+        #expect(RecentCaptureRules.snapshotOrigin(area: CGRect(x: 0, y: 0, width: 294, height: 240)) == .zero)
+    }
+
+    @Test func aSelectionSitsWhereItWas() {
+        #expect(
+            RecentCaptureRules.snapshotOrigin(area: CGRect(x: 3, y: 2, width: 12, height: 5))
+                == CGPoint(x: 3, y: 2))
+    }
+
+    /// The same whole pixels the kept picture is cut to (`FrameLayout.cropped(toArea:)`).
+    @Test func aFractionalAreaSitsOnTheWholePixelsItKeeps() {
+        let area = CGRect(x: 10.4, y: 7.6, width: 20, height: 10)
+        let layout = FrameLayout(image: PixelSize(width: 100, height: 100))
+        let cut = layout.cropped(toArea: area)!
+        #expect(RecentCaptureRules.snapshotOrigin(area: area) == CGPoint(x: 10, y: 7))
+        #expect(cut.offset == PixelSize(width: 10, height: 7))
+    }
 }
 
 struct RestoringTests {
@@ -626,5 +655,52 @@ struct RestoringTests {
     @Test func capturesAddedSinceStayOnTop() {
         #expect(restoring("a", into: ["new", "b"], order: ["a", "b"]) == ["new", "a", "b"])
         #expect(restoring("b", into: ["new2", "new1"], order: ["a", "b"]) == ["new2", "new1", "b"])
+    }
+}
+
+struct CaptureAreaOriginTests {
+    /// The area's left edge dragged 30 px left and its top 10 px down: a snapshot's pixels are now
+    /// 30 px further right and 10 px higher in the area.
+    private let shift = CGPoint(x: -30, y: 10)
+
+    @Test func aSnapshotFollowsTheAreasCorner() {
+        #expect(
+            RecentCaptureRules.areaOrigin(CGPoint(x: 100, y: 50), isFile: false, followingShift: shift)
+                == CGPoint(x: 130, y: 40))
+    }
+
+    @Test func anImageStaysAtTheCorner() {
+        #expect(RecentCaptureRules.areaOrigin(.zero, isFile: true, followingShift: shift) == .zero)
+    }
+
+    @Test func noShiftMovesNothing() {
+        #expect(
+            RecentCaptureRules.areaOrigin(CGPoint(x: 7, y: 9), isFile: false, followingShift: .zero)
+                == CGPoint(x: 7, y: 9))
+    }
+
+    /// A snapshot and a reference layer follow alike, so the layer still shows on the snapshot's
+    /// pixels over it, and a later snapshot of the same screen pixels lands at the same place.
+    @Test func aSnapshotAndTheLayersKeepLiningUp() {
+        let origin = CGPoint(x: 100, y: 50)
+        var stack = ReferenceStack()
+        stack.add(
+            ReferenceLayer(
+                name: "Snapshot 14:32:05", fileName: "a.tiff", imageSize: CGSize(width: 40, height: 30),
+                origin: CGPoint(x: 120, y: 70)))
+        let before = PictureInArea.pictureRect(stack.layers[0].frame, pictureOrigin: origin)
+        stack.followAreaOrigin(shift: shift)
+        let followed = RecentCaptureRules.areaOrigin(origin, isFile: false, followingShift: shift)
+        #expect(PictureInArea.pictureRect(stack.layers[0].frame, pictureOrigin: followed) == before)
+        // The same screen pixels, taken after the resize: at the area's (130, 40).
+        let later = RecentCaptureRules.snapshotOrigin(area: CGRect(x: 130, y: 40, width: 50, height: 50))
+        #expect(later == followed)
+    }
+
+    /// Edge drags add up.
+    @Test func shiftsAddUp() {
+        let once = RecentCaptureRules.areaOrigin(CGPoint(x: 100, y: 50), isFile: false, followingShift: shift)
+        let twice = RecentCaptureRules.areaOrigin(once, isFile: false, followingShift: CGPoint(x: 5, y: 5))
+        #expect(twice == CGPoint(x: 125, y: 35))
     }
 }

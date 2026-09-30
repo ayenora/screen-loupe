@@ -6,8 +6,9 @@ import Observation
 /// selection, at native resolution, so every tool works on real screen pixels when it is opened again.
 struct RecentCapture: Identifiable {
     let id: UUID
-    /// The frame, in a buffer of its own, cut to what was kept and to `ImageBudget`.
-    let frame: ViewerFrame
+    /// The frame, in a buffer of its own, cut to what was kept and to `ImageBudget`. Only its place
+    /// in the Capture Area changes (`RecentCaptures.areaOriginMoved`).
+    var frame: ViewerFrame
     /// "Snapshot", or an image file's name.
     let name: String
     let date: Date
@@ -40,6 +41,11 @@ struct RecentCapture: Identifiable {
     var sizeText: String { RecentCaptureRules.sizeText(frame.layout.size) }
     /// "7/12, 14:32:05": when it was kept, in the user's format.
     var dateText: String { Self.dateFormatter.string(from: date) }
+
+    /// What it is as a reference (Use as Reference).
+    var referenceSource: CaptureReference.Source {
+        isFile ? .image(name: name) : .snapshot(date: date)
+    }
 }
 
 /// The last snapshots of the Capture Area and images opened from files, and which of them the Viewer
@@ -71,6 +77,11 @@ final class RecentCaptures {
     var canTakeSnapshot: Bool { liveSize != nil }
     /// Take Snapshot, from the panel's camera button.
     @ObservationIgnored var onTakeSnapshot: (() -> Void)?
+    /// Use as Reference, from a row's context menu.
+    @ObservationIgnored var onUseAsReference: ((RecentCapture) -> Void)?
+    /// Whether the references take another layer: Use as Reference is off when they don't. Read
+    /// while the panel draws, so it follows the stack.
+    @ObservationIgnored var canUseAsReference: (() -> Bool)?
 
     /// Called with the capture shown before (`nil`: the live view) as it is put away, to keep how it
     /// was left.
@@ -236,6 +247,19 @@ final class RecentCaptures {
         capture.offset = link.view.offset
         captures = RecentCaptureRules.restoring(capture, into: captures, order: order, id: \.id)
         onChange?()
+    }
+
+    /// The Capture Area's top-left moved by `shift` pixels: every snapshot keeps its place on the
+    /// screen's pixels, as the reference layers do (`RecentCaptureRules.areaOrigin`), also those
+    /// still being read or unreadable (`RecentCaptureStore.areaOriginMoved`).
+    func areaOriginMoved(by shift: CGPoint) {
+        guard shift != .zero else { return }
+        for index in captures.indices {
+            captures[index].frame.areaOrigin = RecentCaptureRules.areaOrigin(
+                captures[index].frame.areaOrigin, isFile: captures[index].isFile, followingShift: shift)
+        }
+        store.areaOriginMoved(by: shift)
+        store.saveSoon()
     }
 
     /// The shown capture's view changed: kept after a short delay.

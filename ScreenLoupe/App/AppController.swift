@@ -240,6 +240,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.freeze(after: seconds)
     }
 
+    /// The freeze button's menu and View › Use Frozen Frame as Reference.
+    @objc func useFrozenFrameAsReference(_ sender: Any?) {
+        windows.viewer.useFrozenFrameAsReference()
+    }
+
     /// Escape in the Viewer.
     @objc func cancelFreezeCountdown(_ sender: Any?) {
         builtWindows?.cancelFreezeCountdown()
@@ -486,6 +491,10 @@ extension AppController: NSMenuItemValidation {
         case #selector(freezeNow(_:)), #selector(freezeAfterDelay(_:)):
             guard builtWindows?.viewer.isShowingCapture != true else { return false }
             return builtWindows?.isFrozen == true || canExport
+        case #selector(useFrozenFrameAsReference(_:)):
+            // As the other freeze items, off while a capture shows; and with the references full.
+            guard builtWindows?.viewer.isShowingCapture != true else { return false }
+            return builtWindows?.isFrozen == true && builtWindows?.viewer.canAddReference == true
         case #selector(NSText.selectAll(_:)):
             return builtWindows?.viewer.showsCapture == true
         case #selector(toggleSelectTool(_:)):

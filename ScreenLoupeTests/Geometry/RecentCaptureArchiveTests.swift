@@ -153,12 +153,12 @@ struct RecentCaptureArchiveIndexTests {
         layout: FrameLayout(
             size: PixelSize(width: 300, height: 200), imageOrigin: CGPoint(x: 40, y: 0),
             imageSize: PixelSize(width: 260, height: 200), scale: 2),
-        colorSpace: .init(CGColorSpace(name: CGColorSpace.displayP3)!))
+        colorSpace: .init(CGColorSpace(name: CGColorSpace.displayP3)!), areaOrigin: CGPoint(x: 100, y: 50))
 
     private let file = Archive.Entry(
         id: UUID(), name: "photo.png", date: Date(timeIntervalSince1970: 1_790_000_100), isFile: true,
         zoom: nil, offset: .zero, selection: nil, isLinked: false,
-        layout: FrameLayout(image: PixelSize(width: 640, height: 480)), colorSpace: nil)
+        layout: FrameLayout(image: PixelSize(width: 640, height: 480)), colorSpace: nil, areaOrigin: nil)
 
     private func decode(_ json: String) throws -> Archive.Index {
         try JSONDecoder().decode(Archive.Index.self, from: Data(json.utf8))
@@ -170,6 +170,31 @@ struct RecentCaptureArchiveIndexTests {
         #expect(back == index)
         #expect(back.entries[0].layout?.imageOrigin == CGPoint(x: 40, y: 0))
         #expect(back.entries[1].zoom == nil)
+        #expect(back.entries[0].areaOrigin == CGPoint(x: 100, y: 50))
+        #expect(back.entries[1].areaOrigin == nil)
+    }
+
+    /// A snapshot kept before its place in the Capture Area was recorded reads as one without a
+    /// place: used as a reference, it lands at the area's top-left (`CaptureReference`).
+    @Test func aSnapshotKeptWithoutItsPlaceReadsWithout() throws {
+        let id = UUID()
+        let index = try decode(
+            #"""
+            {"entries": [{"id": "\#(id.uuidString)", "name": "Snapshot", "isFile": false, "zoom": 8,
+              "offset": [1, 2]}], "shownID": "\#(id.uuidString)"}
+            """#)
+        let entry = try #require(index.entries.first)
+        #expect(entry.areaOrigin == nil)
+        #expect(entry.zoom == 8)
+        #expect(index.shownID == id)
+    }
+
+    @Test func anUnreadablePlaceReadsAsNone() throws {
+        let id = UUID()
+        let index = try decode(#"{"entries": [{"id": "\#(id.uuidString)", "areaOrigin": "top", "zoom": 2}]}"#)
+        let entry = try #require(index.entries.first)
+        #expect(entry.areaOrigin == nil)
+        #expect(entry.zoom == 2)
     }
 
     @Test func theLiveViewShownComesBackAsNoShownCapture() throws {
@@ -191,6 +216,7 @@ struct RecentCaptureArchiveIndexTests {
         #expect(entry.isLinked == false)
         #expect(entry.layout == nil)
         #expect(entry.colorSpace == nil)
+        #expect(entry.areaOrigin == nil)
         #expect(index.shownID == nil)
     }
 

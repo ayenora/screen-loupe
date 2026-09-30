@@ -25,15 +25,22 @@ struct ViewerFrame: @unchecked Sendable {
     /// image's transparency. Frames of the screen are opaque, whatever their alpha bytes hold.
     let hasAlpha: Bool
 
+    /// Where the picture's top-left sits in the Capture Area, in its pixels: a snapshot's kept part
+    /// where it was taken (`RecentCaptureRules.snapshotOrigin`); the area's corner for a frame of
+    /// the stream, the whole area, and for an image, which has no place in it. Reference layers are
+    /// placed in the area, and shown over the picture through it (`PictureInArea`).
+    var areaOrigin: CGPoint
+
     init(
         pixelBuffer: CVPixelBuffer, layout: FrameLayout, displayID: CGDirectDisplayID?,
-        imageColorSpace: CGColorSpace? = nil, hasAlpha: Bool = false
+        imageColorSpace: CGColorSpace? = nil, hasAlpha: Bool = false, areaOrigin: CGPoint = .zero
     ) {
         self.pixelBuffer = pixelBuffer
         self.layout = layout
         self.displayID = displayID
         self.imageColorSpace = imageColorSpace
         self.hasAlpha = hasAlpha
+        self.areaOrigin = areaOrigin
         geometry = nil
     }
 
@@ -44,6 +51,7 @@ struct ViewerFrame: @unchecked Sendable {
         displayID = geometry.display.id
         imageColorSpace = nil
         hasAlpha = false
+        areaOrigin = .zero
         self.geometry = geometry
     }
 
@@ -77,7 +85,10 @@ struct ViewerFrame: @unchecked Sendable {
         for row in 0..<height {
             memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
         }
-        return ViewerFrame(pixelBuffer: copy, layout: kept, displayID: nil, imageColorSpace: colorSpace)
+        return ViewerFrame(
+            pixelBuffer: copy, layout: kept, displayID: nil, imageColorSpace: colorSpace,
+            areaOrigin: PictureInArea.areaPoint(
+                RecentCaptureRules.snapshotOrigin(area: area), pictureOrigin: areaOrigin))
     }
 
     /// An IOSurface-backed, Metal-compatible BGRA buffer, drawn like a live frame.
@@ -105,6 +116,8 @@ final class FrameStore: @unchecked Sendable {
     private var frame: ViewerFrame?
     private var geometry: CaptureGeometry?
     private var frozen: ViewerFrame?
+    /// When the view was frozen.
+    private var frozenAt = Date.distantPast
     private var capture: ViewerFrame?
     private var held: ViewerFrame?
     /// When the stream took `geometry` on (host time); `nil` until it has.
@@ -120,10 +133,17 @@ final class FrameStore: @unchecked Sendable {
         get { lock.withLock { frozen != nil } }
         set {
             lock.withLock {
+                let wasFrozen = frozen != nil
                 frozen = newValue ? frozen ?? held ?? frame : nil
                 if newValue { held = nil }
+                if !wasFrozen, frozen != nil { frozenAt = Date() }
             }
         }
+    }
+
+    /// The frozen frame and when it was frozen, for Use Frozen Frame as Reference; `nil` while live.
+    var frozenFrame: (frame: ViewerFrame, date: Date)? {
+        lock.withLock { frozen.map { ($0, frozenAt) } }
     }
 
     /// Whether the Viewer holds a live frame while the magnet moves the area (`MagnetHold`).

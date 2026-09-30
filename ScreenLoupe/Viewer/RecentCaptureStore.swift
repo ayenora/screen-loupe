@@ -80,11 +80,24 @@ final class RecentCaptureStore {
         unlisted.contains { $0.id == id }
     }
 
-    /// A capture read back goes into the list, as written.
-    private func list(_ entry: Archive.Entry, _ read: ReadCapture) -> RecentCapture {
+    /// A capture read back goes into the list, as written, at its place as it is now: the Capture
+    /// Area may have moved while it was read (`areaOriginMoved`).
+    private func list(_ read: Archive.Entry, _ pixels: ReadCapture) -> RecentCapture {
+        let entry = unlisted.first { $0.id == read.id } ?? read
         unlisted.removeAll { $0.id == entry.id }
-        written.updateValue(read.frame.imageColorSpace.flatMap(Archive.SavedColorSpace.init), forKey: entry.id)
-        return Self.capture(entry, frame: read.frame, thumbnail: read.thumbnail.value)
+        written.updateValue(pixels.frame.imageColorSpace.flatMap(Archive.SavedColorSpace.init), forKey: entry.id)
+        var frame = pixels.frame
+        frame.areaOrigin = Archive.areaOrigin(entry)
+        return Self.capture(entry, frame: frame, thumbnail: pixels.thumbnail.value)
+    }
+
+    /// The Capture Area's top-left moved by `shift` pixels: the kept captures not in the list follow
+    /// as the listed ones do (`RecentCaptures.areaOriginMoved`).
+    func areaOriginMoved(by shift: CGPoint) {
+        for index in unlisted.indices where !unlisted[index].isFile {
+            unlisted[index].areaOrigin = RecentCaptureRules.areaOrigin(
+                Archive.areaOrigin(unlisted[index]), isFile: false, followingShift: shift)
+        }
     }
 
     /// Writes `capture`'s pixels off the main thread, then the index with it. A capture deleted
@@ -223,7 +236,8 @@ final class RecentCaptureStore {
         let space = entry.colorSpace?.space ?? CGColorSpace.rgbSpace(forImageIn: image.colorSpace)
         let layout = Archive.layout(entry.layout, pixels: PixelSize(width: image.width, height: image.height))
         let frame = ViewerFrame(
-            pixelBuffer: buffer, layout: layout, displayID: nil, imageColorSpace: space, hasAlpha: entry.isFile)
+            pixelBuffer: buffer, layout: layout, displayID: nil, imageColorSpace: space, hasAlpha: entry.isFile,
+            areaOrigin: Archive.areaOrigin(entry))
         let thumbnail = RecentCaptures.thumbnail(of: image.copy(colorSpace: space) ?? image)
         return ReadCapture(frame: frame, thumbnail: UncheckedSendable(value: thumbnail))
     }
@@ -231,8 +245,8 @@ final class RecentCaptureStore {
     private static func capture(_ entry: Archive.Entry, frame: ViewerFrame, thumbnail: CGImage?) -> RecentCapture {
         RecentCapture(
             id: entry.id, frame: frame, name: entry.name, date: entry.date, thumbnail: thumbnail,
-            isFile: entry.isFile, zoom: entry.zoom, offset: entry.offset, selection: entry.selection,
-            isLinked: entry.isLinked)
+            isFile: entry.isFile, zoom: entry.zoom, offset: entry.offset,
+            selection: entry.selection, isLinked: entry.isLinked)
     }
 
     private struct ReadCapture: Sendable {
@@ -247,6 +261,7 @@ extension RecentCapture {
     func entry(view: RecentCaptureRules.CaptureView, selection: CGRect?) -> RecentCaptureArchive.Entry {
         RecentCaptureArchive.Entry(
             id: id, name: name, date: date, isFile: isFile, zoom: view.zoom, offset: view.offset,
-            selection: selection, isLinked: isLinked, layout: frame.layout, colorSpace: nil)
+            selection: selection, isLinked: isLinked, layout: frame.layout, colorSpace: nil,
+            areaOrigin: isFile ? nil : frame.areaOrigin)
     }
 }

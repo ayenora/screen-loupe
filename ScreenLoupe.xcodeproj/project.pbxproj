@@ -19,6 +19,7 @@
 			membershipExceptions = (
 				Geometry/CaptureAreaReset.swift,
 				Geometry/CaptureMargins.swift,
+				Geometry/CaptureReference.swift,
 				Geometry/ClipboardImageSource.swift,
 				Geometry/ColorContrast.swift,
 				Geometry/ColorMath.swift,

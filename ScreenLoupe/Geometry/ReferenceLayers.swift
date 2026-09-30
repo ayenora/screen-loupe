@@ -59,6 +59,24 @@ struct ReferenceLayer: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// Layers keep their place in Capture Area pixels, whatever the Viewer shows; the picture it shows
+/// is drawn from its own top-left, which sits at `pictureOrigin` in the area — a snapshot of part of
+/// the area where that part was (`ViewerFrame.areaOrigin`), and the area's corner for a frame of the
+/// stream, frozen or not, and for an image. Everything that places a layer over the picture —
+/// drawing, Difference, the handles, the mouse, Copy View — goes through here, so a layer lines up
+/// over a snapshot as over the live view, and dragging it over one keeps its place in the area.
+enum PictureInArea {
+    /// `rect`, in area pixels, in the shown picture's pixels.
+    static func pictureRect(_ rect: CGRect, pictureOrigin: CGPoint) -> CGRect {
+        rect.offsetBy(dx: -pictureOrigin.x, dy: -pictureOrigin.y)
+    }
+
+    /// `point`, in the shown picture's pixels, in area pixels.
+    static func areaPoint(_ point: CGPoint, pictureOrigin: CGPoint) -> CGPoint {
+        CGPoint(x: point.x + pictureOrigin.x, y: point.y + pictureOrigin.y)
+    }
+}
+
 /// A corner handle of the selected reference, for scaling it.
 enum ReferenceCorner: CaseIterable, Sendable {
     case topLeft, topRight, bottomLeft, bottomRight
@@ -142,10 +160,18 @@ struct ReferenceStack: Codable, Equatable, Sendable {
         }
     }
 
-    /// The layer the mouse takes at `point` (source pixels): the topmost visible, unpinned one
-    /// under it. Pinned and hidden layers let the mouse through.
+    /// The layer the mouse takes at `point` (area pixels, `PictureInArea.areaPoint`): the topmost
+    /// visible, unpinned one under it. Pinned and hidden layers let the mouse through.
     func movableLayer(at point: CGPoint) -> UUID? {
         layers.first { $0.isMovable && $0.frame.contains(point) }?.id
+    }
+
+    /// The files in the project folder no layer uses: a copy written as the app quit before its
+    /// layer was added, or left by a crash between removing a layer and its image. `projectFile`
+    /// is the project's own.
+    static func strayFiles(_ fileNames: [String], layers: [ReferenceLayer], projectFile: String) -> [String] {
+        let kept = Set(layers.map(\.fileName) + [projectFile])
+        return fileNames.filter { !kept.contains($0) }
     }
 
     // MARK: Editing
@@ -157,7 +183,7 @@ struct ReferenceStack: Codable, Equatable, Sendable {
         return moved
     }
 
-    /// `layer` scaled by dragging `corner` to `point` (source pixels): the opposite corner stays,
+    /// `layer` scaled by dragging `corner` to `point` (area pixels): the opposite corner stays,
     /// and so do the proportions.
     static func scaled(_ layer: ReferenceLayer, corner: ReferenceCorner, to point: CGPoint) -> ReferenceLayer {
         guard layer.imageSize.width > 0, layer.imageSize.height > 0 else { return layer }

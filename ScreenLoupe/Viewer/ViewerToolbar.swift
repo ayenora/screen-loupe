@@ -64,7 +64,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     /// The zoom the label last showed, to tell a zoom change from a pan.
     private var shownZoom: CGFloat?
     private let freezeButton = NSButton()
-    /// The ▾ beside the pause button: Freeze Now and Freeze in 3, 5 or 10 seconds.
+    /// The ▾ beside the pause button: Freeze Now, Freeze in 3, 5 or 10 seconds, and Use Frozen Frame
+    /// as Reference.
     private let freezeMenuButton = NSButton()
     /// The ▾ beside the pointer toggle: Crosshair, Cursor or Original Cursor in the Capture.
     private let pointerMenuButton = NSButton()
@@ -252,8 +253,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         show(selection.isToolOn, on: selectButton)
     }
 
-    /// Freeze Now and the delays, as `AppController` commands, which also enable them; the overflow
-    /// form starts with the Freeze toggle itself.
+    /// Freeze Now, the delays and Use Frozen Frame as Reference, as `AppController` commands, which
+    /// also enable them; the overflow form starts with the Freeze toggle itself.
     private static func freezeMenu(withToggle: Bool) -> NSMenu {
         let menu = NSMenu()
         if withToggle {
@@ -269,6 +270,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
                 keyEquivalent: "")
             item.tag = seconds
         }
+        menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Use Frozen Frame as Reference", action: #selector(AppController.useFrozenFrameAsReference(_:)),
+            keyEquivalent: "")
         return menu
     }
 

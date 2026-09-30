@@ -36,6 +36,22 @@ enum RecentCaptureRules {
         CGPoint(x: offset.x + area.minX * zoom, y: offset.y + area.minY * zoom)
     }
 
+    /// Where the snapshot of `area` sat in the Capture Area when it was taken: the kept picture's
+    /// top-left, in whole pixels as `FrameLayout.cropped(toArea:)` cuts it. Kept with the capture, so
+    /// used as a reference it lands on the pixels it was taken from (`CaptureReference`).
+    static func snapshotOrigin(area: CGRect) -> CGPoint {
+        area.integral.origin
+    }
+
+    /// A capture's place in the Capture Area (`ViewerFrame.areaOrigin`) after the area's top-left
+    /// moved by `shift` pixels (its left or top edge dragged): a snapshot stays on the screen pixels
+    /// it was taken from, as the reference layers do (`ReferenceStack.followAreaOrigin`), so the
+    /// two keep lining up, and with a later snapshot of the same pixels. An image has no place in
+    /// the area and stays at its corner.
+    static func areaOrigin(_ origin: CGPoint, isFile: Bool, followingShift shift: CGPoint) -> CGPoint {
+        isFile ? origin : CGPoint(x: origin.x - shift.x, y: origin.y - shift.y)
+    }
+
     /// `items`, newest first, with `item` on top; past `limit` the oldest goes. The shown one is never
     /// pushed out from under the Viewer: the oldest other one goes instead.
     static func adding<Item>(_ item: Item, to items: [Item], limit: Int = limit, isShown: (Item) -> Bool) -> [Item] {

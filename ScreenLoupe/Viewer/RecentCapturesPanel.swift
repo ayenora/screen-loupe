@@ -4,8 +4,9 @@ import SwiftUI
 /// The Recent Captures panel at the right of the Viewer: the
 /// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
 /// newest first — square thumbnail, "Snapshot" or the image file's name, its size, its date and time,
-/// Link View and Delete. Clicking a row shows it in the Viewer. Every size but the camera button's is
-/// multiplied by `captures.scale`, so the panel grows with the column.
+/// Link View and Delete. Clicking a row shows it in the Viewer; its context menu uses it as a
+/// reference. Every size but the camera button's is multiplied by `captures.scale`, so the panel
+/// grows with the column.
 struct RecentCapturesPanel: View {
     let captures: RecentCaptures
 
@@ -192,7 +193,11 @@ private struct CaptureRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { captures.show(capture.id) }
-        // One element, with Show, Link or Unlink View and Delete as its actions.
+        .contextMenu {
+            Button("Use as Reference") { captures.onUseAsReference?(capture) }
+                .disabled(!canUseAsReference)
+        }
+        // One element, with Show, Link or Unlink View, Use as Reference and Delete as its actions.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(capture.name), \(capture.sizeText), \(capture.dateText)\(linkState)")
         .accessibilityAddTraits(isShown ? [.isButton, .isSelected] : .isButton)
@@ -204,9 +209,15 @@ private struct CaptureRow: View {
             } else if captures.canLink(capture) {
                 Button("Link view") { captures.setLinked(capture.id, true) }
             }
+            if canUseAsReference {
+                Button("Use as reference") { captures.onUseAsReference?(capture) }
+            }
         }
         .accessibilityAction(named: "Delete capture") { captures.remove(capture.id) }
     }
+
+    /// Whether the references take another layer: off at their limit, as Add… is.
+    private var canUseAsReference: Bool { captures.canUseAsReference?() == true }
 
     /// Whether it is linked, or why it can't be: its tooltip isn't read, as the row is one element.
     private var linkState: String {

@@ -31,6 +31,9 @@ final class ReferencesController {
     var stack: ReferenceStack { project.project.references }
 
     @ObservationIgnored var onChange: (() -> Void)?
+    /// Where the picture the Viewer shows sits in the Capture Area (`ViewerFrame.areaOrigin`); the
+    /// layers are placed in the area and shown over the picture through it (`PictureInArea`).
+    @ObservationIgnored var pictureOrigin: () -> CGPoint = { .zero }
     @ObservationIgnored private let project: ProjectStore
     @ObservationIgnored private let zoomPan: ZoomPanController
     /// Decoded images; observed, so thumbnails show once theirs has loaded.
@@ -154,13 +157,32 @@ final class ReferencesController {
         return true
     }
 
+    /// Makes `frame`, a recent capture's or the frozen frame's, a layer on top, selected, as
+    /// `source` places it (`CaptureReference.layer`). `false` when the stack is full, also once
+    /// the pixels are written, or they couldn't be.
+    func add(_ frame: ViewerFrame, as source: CaptureReference.Source) async -> Bool {
+        guard stack.canAdd, let layer = await project.importPixels(of: frame, as: source) else { return false }
+        guard stack.canAdd else {
+            project.deleteImage(layer.fileName)
+            return false
+        }
+        update { $0.add(layer) }
+        return true
+    }
+
     // MARK: The mouse in the Viewer
+
+    /// `layer`'s place over the picture the Viewer shows, in its pixels (`PictureInArea`).
+    func pictureRect(of layer: ReferenceLayer) -> CGRect {
+        PictureInArea.pictureRect(layer.frame, pictureOrigin: pictureOrigin())
+    }
 
     /// The selected layer's corner handles, in drawable pixels.
     func handles(scale: CGFloat) -> [(corner: ReferenceCorner, rect: CGRect)] {
         guard isActive, takesMouse, let layer = stack.selected, layer.isMovable else { return [] }
         // Where they show: over the presented view during a zoom glide.
-        let rect = zoomPan.presented.imageRect(origin: layer.origin, size: layer.frame.size)
+        let picture = pictureRect(of: layer)
+        let rect = zoomPan.presented.imageRect(origin: picture.origin, size: picture.size)
         let size = Self.handleSize * scale
         return ReferenceCorner.allCases.map { corner in
             let point = corner.point(of: rect)
@@ -177,7 +199,7 @@ final class ReferencesController {
             return .corner(selected, handle.corner)
         }
         let source = zoomPan.presented.sourcePoint(forViewportPoint: point)
-        return stack.movableLayer(at: source).map(Part.layer)
+        return stack.movableLayer(at: PictureInArea.areaPoint(source, pictureOrigin: pictureOrigin())).map(Part.layer)
     }
 
     /// Takes a press on a layer or a handle, selecting the layer. Pinned and hidden layers let it
@@ -207,8 +229,9 @@ final class ReferencesController {
                 x: (point.x - drag.startPoint.x) / state.zoom, y: (point.y - drag.startPoint.y) / state.zoom)
             layer = ReferenceStack.moved(drag.startLayer, from: drag.startLayer.origin, by: delta)
         case .corner(_, let corner):
+            let source = state.sourcePoint(forViewportPoint: point)
             layer = ReferenceStack.scaled(
-                drag.startLayer, corner: corner, to: state.sourcePoint(forViewportPoint: point))
+                drag.startLayer, corner: corner, to: PictureInArea.areaPoint(source, pictureOrigin: pictureOrigin()))
         }
         update(layer.id) { $0 = layer }
     }

@@ -121,6 +121,7 @@ final class ViewerContentView: NSStackView {
         }
         viewerView.onCopyRegion = { [weak self] region in self?.copyRegion(region) }
         viewerView.onShowLive = { [weak self] in self?.captures.show(nil) }
+        viewerView.onAreaOriginMoved = { [weak self] shift in self?.captures.areaOriginMoved(by: shift) }
         viewerView.dropsColorTarget = { [weak self] in
             // Only while the target shows; a countdown running is what Escape is for then.
             guard let self, sidePanelLayout?.isMeterExpanded == true else { return false }
@@ -138,6 +139,8 @@ final class ViewerContentView: NSStackView {
         captures.onAdoptView = { [weak self] capture in self?.restoreView(of: capture) }
         captures.onChange = { [weak self] in self?.showCaptureIndicator() }
         captures.onTakeSnapshot = { [weak self] in self?.takeSnapshot() }
+        captures.onUseAsReference = { [weak self] capture in self?.useAsReference(capture) }
+        captures.canUseAsReference = { [references] in references.stack.canAdd }
         inspector.onChange = { [weak self] in
             self?.overlay.needsDisplay = true
             self?.meterPanel.refresh()
@@ -147,6 +150,7 @@ final class ViewerContentView: NSStackView {
             self?.overlay.needsDisplay = true
         }
         references.onPaste = { [weak self] in self?.paste(as: .references) }
+        references.pictureOrigin = { [frameStore] in frameStore.shownFrame?.areaOrigin ?? .zero }
         viewerView.onPick = { [weak self] in self?.pickColor() }
         meterPanel.onCopy = { [weak self] text, what in self?.copyText(text, what: what) }
         meterPanel.onFeedback = { [weak self] text in self?.showToast(text) }
@@ -343,6 +347,40 @@ final class ViewerContentView: NSStackView {
             $0.referencesVisible = true
             $0.capturesVisible = false
             $0.expandedSidePanel = .references
+        }
+    }
+
+    // MARK: Before and after
+
+    /// Use as Reference on a Recent Captures row: its pixels become a layer in Difference over what
+    /// the Viewer shows, which stays (`useAsReference(_:as:)`).
+    private func useAsReference(_ capture: RecentCapture) {
+        useAsReference(capture.frame, as: capture.referenceSource)
+    }
+
+    /// Use Frozen Frame as Reference: the frozen frame becomes a layer in Difference over the
+    /// Capture Area; resuming then shows the live view against it. With nothing frozen it beeps.
+    func useFrozenFrameAsReference() {
+        guard let frozen = frameStore.frozenFrame else { return NSSound.beep() }
+        useAsReference(frozen.frame, as: .frozenFrame(date: frozen.date))
+    }
+
+    /// Adds `frame` as a layer on top, selected (`ReferencesController.add(_:as:)`), and opens the
+    /// References panel on it as adding an image does. A full stack beeps; pixels that couldn't be
+    /// written say so.
+    private func useAsReference(_ frame: ViewerFrame, as source: CaptureReference.Source) {
+        guard references.stack.canAdd else { return NSSound.beep() }
+        Task {
+            guard await references.add(frame, as: source) else {
+                // The stack filled up meanwhile: nothing failed.
+                guard references.stack.canAdd else { return NSSound.beep() }
+                return showFailure([CaptureReference.name(source, timeZone: .current)], verb: "added")
+            }
+            settings.update {
+                $0.referencesVisible = true
+                $0.capturesVisible = false
+                $0.expandedSidePanel = .references
+            }
         }
     }
 

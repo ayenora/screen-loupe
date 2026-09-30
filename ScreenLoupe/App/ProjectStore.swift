@@ -35,18 +35,26 @@ final class ProjectStore {
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         folder = support.appending(path: Bundle.main.bundleIdentifier ?? "Screen Loupe").appending(path: "Project")
-        let file = folder.appending(path: "project.json")
-        if let data = try? Data(contentsOf: file), let project = try? JSONDecoder().decode(Project.self, from: data) {
-            self.project = project
-        } else {
-            project = Project()
-        }
+        let file = folder.appending(path: Self.projectFile)
+        let data = try? Data(contentsOf: file)
+        let saved = data.flatMap { try? JSONDecoder().decode(Project.self, from: $0) }
+        project = saved ?? Project()
         // A layer whose image is gone can't be shown.
         let missing = project.references.layers.filter {
             !FileManager.default.fileExists(atPath: imageURL(for: $0.fileName).path)
         }
         for layer in missing { project.references.remove(layer.id) }
+        // Images no layer uses are removed; not when the project couldn't be read, whose images they
+        // may be — also when the file is there but reading it failed.
+        if saved != nil || !FileManager.default.fileExists(atPath: file.path) {
+            let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            let stray = ReferenceStack.strayFiles(
+                files, layers: project.references.layers, projectFile: Self.projectFile)
+            for name in stray { deleteImage(name) }
+        }
     }
+
+    private static let projectFile = "project.json"
 
     func update(_ change: (inout Project) -> Void) {
         var next = project
@@ -104,6 +112,44 @@ final class ProjectStore {
             imageSize: CGSize(width: kept.width, height: kept.height))
     }
 
+    /// Writes `frame`'s pixels, a recent capture's or the frozen frame's, into the project as a TIFF
+    /// in their colour space (`CaptureReference.tiffData`), off the main thread, and returns a layer
+    /// for them as `source` places it (`CaptureReference.layer`), or `nil` when that fails.
+    func importPixels(of frame: ViewerFrame, as source: CaptureReference.Source) async -> ReferenceLayer? {
+        let id = UUID()
+        let fileName = "\(id.uuidString).tiff"
+        let isWritten = await Self.writeTIFF(
+            of: frame, space: UncheckedSendable(value: frame.colorSpace), to: imageURL(for: fileName), in: folder)
+        guard isWritten else {
+            log.error("Importing a capture as a reference failed")
+            return nil
+        }
+        return CaptureReference.layer(
+            source, layout: frame.layout, pictureOrigin: frame.areaOrigin, id: id, fileName: fileName,
+            timeZone: .current)
+    }
+
+    @concurrent
+    private nonisolated static func writeTIFF(
+        of frame: ViewerFrame, space: UncheckedSendable<CGColorSpace>, to url: URL, in folder: URL
+    ) async -> Bool {
+        let buffer = frame.pixelBuffer
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer),
+            let data = CaptureReference.tiffData(
+                bgra: base, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer),
+                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: space.value, hasAlpha: frame.hasAlpha)
+        else { return false }
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Removes an image the project no longer uses.
     func deleteImage(_ fileName: String) {
         try? FileManager.default.removeItem(at: imageURL(for: fileName))
@@ -130,7 +176,7 @@ final class ProjectStore {
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(project)
-            try data.write(to: folder.appending(path: "project.json"), options: .atomic)
+            try data.write(to: folder.appending(path: Self.projectFile), options: .atomic)
         } catch {
             log.error("Saving the project failed: \(error.localizedDescription, privacy: .public)")
         }

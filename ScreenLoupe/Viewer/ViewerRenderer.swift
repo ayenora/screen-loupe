@@ -227,7 +227,9 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         encoder.setRenderPipelineState(referencePipeline)
         for (layer, image) in scene.references {
             guard let texture = referenceTexture(layer.id, image: image, space: scene.colorSpace) else { continue }
-            var quad = Self.ndc(scene.state.imageRect(origin: layer.origin, size: layer.frame.size), in: scene.size)
+            // Over the shown picture: layers are placed in the Capture Area (`PictureInArea`).
+            let rect = PictureInArea.pictureRect(layer.frame, pictureOrigin: scene.frame?.areaOrigin ?? .zero)
+            var quad = Self.ndc(scene.state.imageRect(origin: rect.origin, size: rect.size), in: scene.size)
             // The layer's corners in the frame's UV: the frame covers its pixel size from its origin.
             var frameUV = SIMD4<Float>(0, 0, 0, 0)
             let difference = layer.blend == .difference && frameTexture != nil
@@ -235,9 +237,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
                 let pixels = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
                 let origin = frame.layout.imageOrigin
                 frameUV = SIMD4(
-                    Float((layer.origin.x - origin.x) / pixels.width),
-                    Float((layer.origin.y - origin.y) / pixels.height),
-                    Float(layer.frame.width / pixels.width), Float(layer.frame.height / pixels.height))
+                    Float((rect.minX - origin.x) / pixels.width), Float((rect.minY - origin.y) / pixels.height),
+                    Float(rect.width / pixels.width), Float(rect.height / pixels.height))
             }
             var uniforms = (frameUV, SIMD4<Float>(Float(layer.opacity), difference ? 1 : 0, 0, 0))
             encoder.setVertexBytes(&quad, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)

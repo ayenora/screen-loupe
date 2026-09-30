@@ -97,7 +97,8 @@ final class ViewerOverlayView: NSView {
         guard let references, let layer = references.stack.selected, references.isActive, layer.isVisible else {
             return
         }
-        let rect = Self.points(zoomPan.presented.imageRect(origin: layer.origin, size: layer.frame.size), scale: scale)
+        let picture = references.pictureRect(of: layer)
+        let rect = Self.points(zoomPan.presented.imageRect(origin: picture.origin, size: picture.size), scale: scale)
         let outline = NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5))
         outline.lineWidth = 1
         NSColor.systemBlue.setStroke()

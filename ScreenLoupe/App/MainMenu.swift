@@ -114,6 +114,10 @@ enum MainMenu {
             item.target = target
         }
         menu.addItem(submenuItem(later))
+        let frozenAsReference = menu.addItem(
+            withTitle: "Use Frozen Frame as Reference", action: #selector(AppController.useFrozenFrameAsReference(_:)),
+            keyEquivalent: "")
+        frozenAsReference.target = target
         let snapshot = menu.addItem(
             withTitle: "Take Snapshot", action: #selector(AppController.takeSnapshot(_:)), keyEquivalent: "t")
         snapshot.target = target

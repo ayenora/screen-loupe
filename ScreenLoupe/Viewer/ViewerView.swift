@@ -130,6 +130,7 @@ final class ViewerView: MTKView {
             selection?.areaOriginMoved(by: shift)
             ruler?.areaOriginMoved(by: shift)
             references?.areaOriginMoved(by: shift)
+            onAreaOriginMoved?(shift)
             matchColorSpace(of: frame)
         }
         requestDraw()
@@ -263,6 +264,9 @@ final class ViewerView: MTKView {
     var onCopyRegion: ((CGRect) -> Void)?
     /// Escape with nothing else to drop: back from a recent capture to the live view.
     var onShowLive: (() -> Void)?
+    /// The Capture Area's top-left moved by the shift given, in source pixels (its left or top edge
+    /// was dragged), for what follows it beside the tools here: the recent captures' places.
+    var onAreaOriginMoved: ((CGPoint) -> Void)?
     /// Escape after the selection: drops the Color Meter's target; `false` when it drops nothing.
     var dropsColorTarget: (() -> Bool)?
 

@@ -24,10 +24,14 @@ enum RecentCaptureArchive {
         /// `nil`: the whole PNG, one pixel per point (`layout(_:pixels:)`).
         var layout: FrameLayout?
         var colorSpace: SavedColorSpace?
+        /// A snapshot's top-left in the Capture Area when it was taken
+        /// (`RecentCaptureRules.snapshotOrigin`); `nil` for an image, and for a snapshot kept before
+        /// it was recorded.
+        var areaOrigin: CGPoint?
 
         init(
             id: UUID, name: String, date: Date, isFile: Bool, zoom: CGFloat?, offset: CGPoint, selection: CGRect?,
-            isLinked: Bool, layout: FrameLayout?, colorSpace: SavedColorSpace?
+            isLinked: Bool, layout: FrameLayout?, colorSpace: SavedColorSpace?, areaOrigin: CGPoint?
         ) {
             self.id = id
             self.name = name
@@ -39,6 +43,7 @@ enum RecentCaptureArchive {
             self.isLinked = isLinked
             self.layout = layout
             self.colorSpace = colorSpace
+            self.areaOrigin = areaOrigin
         }
 
         /// A key that is missing or unreadable keeps its default; only the id, which names the PNG,
@@ -55,6 +60,7 @@ enum RecentCaptureArchive {
             isLinked = c.value(.isLinked, or: isLinked)
             layout = c.value(.layout, or: layout)
             colorSpace = c.value(.colorSpace, or: colorSpace)
+            areaOrigin = c.value(.areaOrigin, or: areaOrigin)
         }
     }
 
@@ -96,6 +102,13 @@ enum RecentCaptureArchive {
                 ?? iccProfile.flatMap { CGColorSpace(iccData: $0 as CFData) }
             return space?.model == .rgb ? space : nil
         }
+    }
+
+    /// Where a kept capture's picture sits in the Capture Area (`ViewerFrame.areaOrigin`): a
+    /// snapshot's kept part where it was taken; the area's corner for an image, and for a snapshot
+    /// kept before that was recorded.
+    static func areaOrigin(_ entry: Entry) -> CGPoint {
+        entry.isFile ? .zero : entry.areaOrigin ?? .zero
     }
 
     /// The entries to restore, newest first as kept: one per id, and no more than `limit`.
