@@ -47,10 +47,13 @@ final class ViewerContentView: NSStackView {
         overlay = ViewerOverlayView(zoomPan: zoomPan, inspector: inspector)
         overlay.drawableScale = { [weak viewerView] in viewerView?.drawableScale ?? 1 }
         meterPanel = ColorMeterPanel(inspector: inspector)
-        ruler = RulerController(zoomPan: zoomPan, project: project)
+        ruler = RulerController(zoomPan: zoomPan, project: project, settings: settings)
         ruler.sourceScale = { frameStore.shownFrame?.layout.scale ?? 1 }
+        ruler.pictureOrigin = { frameStore.shownFrame?.areaOrigin ?? .zero }
         references = ReferencesController(project: project, zoomPan: zoomPan)
         selection = SelectionController(zoomPan: zoomPan)
+        // A selection is drawn with the Select tool: the Selection Ruler turns it on.
+        ruler.onMeasureSelection = { [selection] in if !selection.isToolOn { selection.toggleTool() } }
         viewerView.ruler = ruler
         overlay.ruler = ruler
         viewerView.selection = selection
@@ -119,6 +122,7 @@ final class ViewerContentView: NSStackView {
             self?.applyMouseModes()
             self?.captures.shownViewChanged()
         }
+        overlay.freezeHint = { [frozenIndicator] in frozenIndicator.shownHint }
         viewerView.onCopyRegion = { [weak self] region in self?.copyRegion(region) }
         viewerView.onShowLive = { [weak self] in self?.captures.show(nil) }
         viewerView.onAreaOriginMoved = { [weak self] shift in self?.captures.areaOriginMoved(by: shift) }
@@ -207,6 +211,8 @@ final class ViewerContentView: NSStackView {
         // The first live frame after a freeze keeps the framing (`AreaResizeTracker.forget`).
         if frozenIndicator.state.isFrozen, !state.isFrozen { viewerView.forgetAreaOrigin() }
         frozenIndicator.state = state
+        // The Selection Ruler's hint stacks over the freeze's.
+        overlay.needsDisplay = true
     }
 
     /// An Option-drag's region, straight to the clipboard.
@@ -562,6 +568,7 @@ final class ViewerContentView: NSStackView {
         let shown = captures.shown
         captureIndicator.state = shown.map { .capture(label: captures.label(for: $0)) } ?? .hidden
         frozenIndicator.alphaValue = shown == nil ? 1 : 0
+        overlay.needsDisplay = true
     }
 
     private func pickColor() {

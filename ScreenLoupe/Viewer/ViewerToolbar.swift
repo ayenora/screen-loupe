@@ -1,12 +1,13 @@
 import AppKit
 
 /// The Viewer's toolbar: zoom presets and the current zoom on the left; Freeze
-/// with its menu of delays, the Select tool, the Ruler, the Grid toggle, the pointer toggle with its
-/// menu of styles, the Color Meter, References and Recent Captures toggles, Copy, Save and the
-/// keep-on-top pin on the right.
+/// with its menu of delays, the Select tool, the Ruler with its menu of rulers, the Grid toggle, the
+/// pointer toggle with its menu of styles, the Color Meter, References and Recent Captures toggles,
+/// Copy, Save and the keep-on-top pin on the right.
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
-/// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the pin a checkmark.
+/// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the Ruler a submenu of
+/// its two rulers, the pin a checkmark.
 ///
 /// Freeze, Select, Ruler, Copy, Save and Keep on Top are app commands: they go up the responder chain to
 /// `AppController`, as the menus' do. The toggles are settings and change them directly. Every
@@ -72,6 +73,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private let selectButton = NSButton()
     private let selectMenuItem = NSMenuItem(title: "Select", action: nil, keyEquivalent: "")
     private let rulerButton = NSButton()
+    /// The ▾ beside the ruler button: Corner Ruler or Selection Ruler.
+    private let rulerMenuButton = NSButton()
     private let rulerMenuItem = NSMenuItem(title: "Ruler", action: nil, keyEquivalent: "")
     private let freezeMenuItem = NSMenuItem(title: "Freeze Frame", action: nil, keyEquivalent: "")
     private let onTopButton = NSButton()
@@ -138,9 +141,21 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             action: #selector(selectClicked(_:)))
         selectButton.setButtonType(.pushOnPushOff)
         selectMenuItem.action = #selector(AppController.toggleSelectTool(_:))
-        configure(rulerButton, symbol: "ruler", title: "Ruler (⌘R)", action: #selector(rulerClicked(_:)))
+        configure(rulerButton, symbol: "ruler", title: "Corner Ruler (⌘R)", action: #selector(rulerClicked(_:)))
         rulerButton.setButtonType(.pushOnPushOff)
-        rulerMenuItem.action = #selector(AppController.toggleMeasuringRuler(_:))
+        configure(
+            rulerMenuButton, symbol: "chevron.down", title: "Corner or Selection Ruler",
+            action: #selector(rulerMenuClicked(_:)))
+        rulerMenuButton.image = rulerMenuButton.image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
+        rulerMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        // The View menu's commands, which also check the ruler that is on.
+        let rulerMenu = NSMenu()
+        rulerMenu.addItem(
+            withTitle: "Corner Ruler", action: #selector(AppController.toggleCornerRuler(_:)), keyEquivalent: "")
+        rulerMenu.addItem(
+            withTitle: "Selection Ruler", action: #selector(AppController.toggleSelectionRuler(_:)), keyEquivalent: "")
+        rulerMenuItem.submenu = rulerMenu
         for toggle in Toggle.allCases {
             let button = NSButton()
             configure(button, symbol: toggle.symbol, title: toggle.title, action: #selector(toggleClicked(_:)))
@@ -245,8 +260,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         toggleMenuItems[toggle]?.state = isOn ? .on : .off
     }
 
+    /// The button's name follows the chosen mode.
     private func showRuler() {
         show(ruler.isOn, on: rulerButton)
+        let title = ruler.mode == .corner ? "Corner Ruler (⌘R)" : "Selection Ruler (⌥⌘R)"
+        rulerButton.toolTip = title
+        rulerButton.setAccessibilityLabel(title)
     }
 
     private func showSelectTool() {
@@ -397,6 +416,26 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         send(#selector(AppController.toggleMeasuringRuler(_:)), from: sender, isOn: ruler.isOn)
     }
 
+    /// The two rulers, the chosen one checked, whether it is on or not.
+    @objc private func rulerMenuClicked(_ sender: NSButton) {
+        let menu = NSMenu()
+        for (index, mode) in RulerMode.allCases.enumerated() {
+            let item = menu.addItem(
+                withTitle: mode == .corner ? "Corner Ruler" : "Selection Ruler", action: #selector(rulerModeChosen(_:)),
+                keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.state = mode == ruler.mode ? .on : .off
+        }
+        let below = NSPoint(x: -rulerButton.frame.width, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4)
+        menu.popUp(positioning: nil, at: below, in: sender)
+    }
+
+    /// Choosing a ruler also turns it on.
+    @objc private func rulerModeChosen(_ sender: NSMenuItem) {
+        ruler.turnOn(RulerMode.allCases[sender.tag])
+    }
+
     @objc private func onTopClicked(_ sender: NSButton) {
         send(
             #selector(AppController.toggleViewerAlwaysOnTop(_:)), from: sender,
@@ -466,7 +505,9 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             item.label = "Select"
             item.menuFormRepresentation = selectMenuItem
         case Self.rulerID:
-            item.view = rulerButton
+            let group = NSStackView(views: [rulerButton, rulerMenuButton])
+            group.spacing = 0
+            item.view = group
             item.label = "Ruler"
             item.menuFormRepresentation = rulerMenuItem
         case Self.crosshairID:

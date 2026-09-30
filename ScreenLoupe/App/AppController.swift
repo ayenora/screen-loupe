@@ -221,9 +221,20 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.resetZoom()
     }
 
-    /// Not `toggleRuler(_:)`: that is an `NSText` action, which a text field being edited would take.
+    /// The ruler button, in the chosen mode. Not `toggleRuler(_:)`: that is an `NSText` action,
+    /// which a text field being edited would take.
     @objc func toggleMeasuringRuler(_ sender: Any?) {
         windows.viewer.toggleRuler()
+    }
+
+    /// View › Corner Ruler (⌘R).
+    @objc func toggleCornerRuler(_ sender: Any?) {
+        windows.viewer.toggleRuler(.corner)
+    }
+
+    /// View › Selection Ruler (⌥⌘R).
+    @objc func toggleSelectionRuler(_ sender: Any?) {
+        windows.viewer.toggleRuler(.selection)
     }
 
     @objc func toggleFreeze(_ sender: Any?) {
@@ -478,9 +489,12 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleStudioWindowShadow(_:)):
             menuItem.state = settings.settings.studioWindowShadow ? .on : .off
             return true
-        case #selector(toggleMeasuringRuler(_:)):
-            menuItem.state = builtWindows?.viewer.isRulerOn == true ? .on : .off
-            return builtWindows?.viewer.showsCapture == true
+        case #selector(toggleCornerRuler(_:)), #selector(toggleSelectionRuler(_:)):
+            // Checked while that ruler is on.
+            let mode: RulerMode = menuItem.action == #selector(toggleCornerRuler(_:)) ? .corner : .selection
+            let viewer = builtWindows?.viewer
+            menuItem.state = viewer?.isRulerOn == true && viewer?.rulerMode == mode ? .on : .off
+            return viewer?.showsCapture == true
         case #selector(toggleFreeze(_:)):
             let isFrozen = builtWindows?.isFrozen == true
             let isCounting = builtWindows?.isFreezeCountingDown == true

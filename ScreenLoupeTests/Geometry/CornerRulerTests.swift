@@ -167,3 +167,70 @@ struct CornerRulerReviewTests {
         #expect(placed.corner == CGPoint(x: 100, y: 75))
     }
 }
+
+/// A pinned ruler is kept in Capture Area pixels and shown over the picture through `PictureInArea`,
+/// as the reference layers are: over a snapshot of part of the area it stays on the same pixels.
+struct CornerRulerOverPictureTests {
+    private let state = ZoomPanState(
+        zoom: 8, offset: .zero, contentSize: CGSize(width: 60, height: 40),
+        viewportSize: CGSize(width: 800, height: 600))
+    /// A snapshot of the area's part from 30, 20.
+    private let pictureOrigin = CGPoint(x: 30, y: 20)
+
+    @Test func overASnapshotAPinnedRulerSitsOnTheAreaPixelsItWasPinnedTo() {
+        let ruler = CornerRuler(anchor: .image(corner: CGPoint(x: 40, y: 25), arms: CGSize(width: 12, height: -9)))
+        let placed = ruler.placement(in: state, minimum: 64, pictureOrigin: pictureOrigin)
+        #expect(placed.corner == CGPoint(x: 10, y: 5))
+        #expect(placed.arms == CGSize(width: 12, height: -9))
+        // Over the live view the same ruler is where it was pinned.
+        #expect(ruler.placement(in: state, minimum: 64).corner == CGPoint(x: 40, y: 25))
+    }
+
+    @Test func aPinnedRulerLeftOfOrAboveTheSnapshotLiesOutsideIt() {
+        let ruler = CornerRuler(anchor: .image(corner: CGPoint(x: 5, y: 2), arms: CGSize(width: 10, height: 10)))
+        #expect(ruler.placement(in: state, minimum: 64, pictureOrigin: pictureOrigin).corner == CGPoint(x: -25, y: -18))
+    }
+
+    @Test func pinningOverASnapshotKeepsTheAreaPixelsUnderIt() {
+        // Drawn at the snapshot's pixel 10, 6: the area's 40, 26.
+        var ruler = CornerRuler(anchor: .viewer(corner: CGPoint(x: 83, y: 51), arms: CGSize(width: 101, height: -99)))
+        let before = ruler.placement(in: state, minimum: 64, pictureOrigin: pictureOrigin)
+        ruler.togglePin(in: state, minimum: 64, pictureOrigin: pictureOrigin)
+        #expect(ruler.anchor == .image(corner: CGPoint(x: 40, y: 26), arms: CGSize(width: 13, height: -12)))
+        #expect(ruler.placement(in: state, minimum: 64, pictureOrigin: pictureOrigin) == before)
+        // Back on the live view it is on the same area pixels.
+        #expect(ruler.placement(in: state, minimum: 64).corner == CGPoint(x: 40, y: 26))
+        ruler.togglePin(in: state, minimum: 64, pictureOrigin: pictureOrigin)
+        #expect(!ruler.isPinned)
+        #expect(ruler.placement(in: state, minimum: 64, pictureOrigin: pictureOrigin) == before)
+    }
+
+    @Test func stretchingAnArmOverASnapshotMeasuresFromTheCornerShown() {
+        var ruler = CornerRuler(anchor: .image(corner: CGPoint(x: 40, y: 25), arms: CGSize(width: 10, height: 10)))
+        // The corner shows at the snapshot's pixel 10; the end dragged to its pixel 35.
+        ruler.setEnd(
+            of: .horizontal, to: CGPoint(x: 8 * 35 + 3, y: 0), in: state, minimum: 64, pictureOrigin: pictureOrigin)
+        #expect(ruler.anchor == .image(corner: CGPoint(x: 40, y: 25), arms: CGSize(width: 25, height: 10)))
+        ruler.setEnd(of: .vertical, to: CGPoint(x: 0, y: 8 * 20), in: state, minimum: 64, pictureOrigin: pictureOrigin)
+        #expect(ruler.anchor == .image(corner: CGPoint(x: 40, y: 25), arms: CGSize(width: 25, height: 15)))
+    }
+
+    @Test func overASnapshotAPinnedRulerFollowsTheAreasCornerAsTheSnapshotDoes() {
+        // The area's left edge dragged 3 px right, its top 2 px down: the snapshot's place in the
+        // area and the ruler's corner both move back by as much, so it shows on the same pixels.
+        let shift = CGPoint(x: 3, y: 2)
+        var ruler = CornerRuler(anchor: .image(corner: CGPoint(x: 40, y: 25), arms: CGSize(width: 12, height: 9)))
+        ruler.followAreaOrigin(shift: shift)
+        let movedOrigin = RecentCaptureRules.areaOrigin(pictureOrigin, isFile: false, followingShift: shift)
+        #expect(ruler.placement(in: state, minimum: 64, pictureOrigin: movedOrigin).corner == CGPoint(x: 10, y: 5))
+    }
+
+    @Test func picturePointUndoesAreaPoint() {
+        let point = CGPoint(x: 7, y: -3)
+        #expect(PictureInArea.picturePoint(point, pictureOrigin: pictureOrigin) == CGPoint(x: -23, y: -23))
+        #expect(
+            PictureInArea.areaPoint(
+                PictureInArea.picturePoint(point, pictureOrigin: pictureOrigin), pictureOrigin: pictureOrigin)
+                == point)
+    }
+}

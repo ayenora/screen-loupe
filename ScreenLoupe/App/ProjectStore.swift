@@ -14,7 +14,10 @@ import UniformTypeIdentifiers
 final class ProjectStore {
     struct Project: Codable, Equatable {
         var references = ReferenceStack()
+        /// The corner ruler, while it is on.
         var ruler: CornerRuler?
+        /// Whether the Selection Ruler is on.
+        var measuresSelection = false
 
         init() {}
 
@@ -24,6 +27,7 @@ final class ProjectStore {
             let d = Project()
             references = c.value(.references, or: d.references)
             ruler = c.value(.ruler, or: d.ruler)
+            measuresSelection = c.value(.measuresSelection, or: d.measuresSelection)
         }
     }
 

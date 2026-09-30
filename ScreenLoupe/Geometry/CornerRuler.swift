@@ -6,13 +6,16 @@ import CoreGraphics
 ///
 /// Lengths are drawable pixels (the Viewer's device pixels, as in `ZoomPanState`) or source pixels,
 /// as each name says. `minimum` is the shortest an arm may look, in drawable pixels, so the handles
-/// at its ends never touch.
+/// at its ends never touch. `pictureOrigin` is where the picture the Viewer shows sits in the
+/// Capture Area (`PictureInArea`): zero for a frame of the stream.
 struct CornerRuler: Equatable, Sendable, Codable {
     enum Anchor: Equatable, Sendable, Codable {
         /// Fixed in the Viewer: the image pans and zooms under it. Drawable pixels, unsnapped.
         case viewer(corner: CGPoint, arms: CGSize)
-        /// Pinned to the image: panning and zooming move it along. Source pixels; `arms` are the
-        /// lengths the user set, which the ruler keeps even while zooming out lengthens it.
+        /// Pinned to the image: panning and zooming move it along. `corner` is in the Capture Area's
+        /// source pixels, as the reference layers are, so it stays on its pixels over any picture
+        /// shown; `arms` are the lengths the user set, which the ruler keeps even while zooming out
+        /// lengthens it.
         case image(corner: CGPoint, arms: CGSize)
     }
 
@@ -27,8 +30,8 @@ struct CornerRuler: Equatable, Sendable, Codable {
         return false
     }
 
-    /// Where the ruler is drawn: the corner in source pixels, the arms signed source pixels (right
-    /// and down are positive). All whole numbers.
+    /// Where the ruler is drawn: the corner in the shown picture's source pixels, the arms signed
+    /// source pixels (right and down are positive). All whole numbers.
     struct Placement: Equatable, Sendable {
         var corner: CGPoint
         var arms: CGSize
@@ -42,7 +45,7 @@ struct CornerRuler: Equatable, Sendable, Codable {
                 arms: CGSize(width: viewport.width / 3, height: viewport.height / 3)))
     }
 
-    func placement(in state: ZoomPanState, minimum: CGFloat) -> Placement {
+    func placement(in state: ZoomPanState, minimum: CGFloat, pictureOrigin: CGPoint = .zero) -> Placement {
         let shortest = Self.shortestArm(zoom: state.zoom, minimum: minimum)
         switch anchor {
         case .viewer(let corner, let arms):
@@ -58,7 +61,7 @@ struct CornerRuler: Equatable, Sendable, Codable {
                     height: Self.arm((arms.height / state.zoom).rounded(), shortest: shortest)))
         case .image(let corner, let arms):
             return Placement(
-                corner: corner,
+                corner: PictureInArea.picturePoint(corner, pictureOrigin: pictureOrigin),
                 arms: CGSize(
                     width: Self.arm(arms.width, shortest: shortest), height: Self.arm(arms.height, shortest: shortest)))
         }
@@ -97,14 +100,15 @@ struct CornerRuler: Equatable, Sendable, Codable {
     }
 
     /// Pins the ruler where it is drawn now, or unpins it where it is drawn now.
-    mutating func togglePin(in state: ZoomPanState, minimum: CGFloat) {
-        let placed = placement(in: state, minimum: minimum)
+    mutating func togglePin(in state: ZoomPanState, minimum: CGFloat, pictureOrigin: CGPoint = .zero) {
+        let placed = placement(in: state, minimum: minimum, pictureOrigin: pictureOrigin)
         if isPinned {
             anchor = .viewer(
                 corner: state.viewportPoint(forSourcePoint: placed.corner),
                 arms: CGSize(width: placed.arms.width * state.zoom, height: placed.arms.height * state.zoom))
         } else {
-            anchor = .image(corner: placed.corner, arms: placed.arms)
+            anchor = .image(
+                corner: PictureInArea.areaPoint(placed.corner, pictureOrigin: pictureOrigin), arms: placed.arms)
         }
     }
 
@@ -116,8 +120,10 @@ struct CornerRuler: Equatable, Sendable, Codable {
 
     /// Dragging an arm's end to `point` (drawable pixels) sets that arm's length and side. It flips
     /// to the other side only once the end is a full shortest arm past the corner.
-    mutating func setEnd(of arm: Arm, to point: CGPoint, in state: ZoomPanState, minimum: CGFloat) {
-        let placed = placement(in: state, minimum: minimum)
+    mutating func setEnd(
+        of arm: Arm, to point: CGPoint, in state: ZoomPanState, minimum: CGFloat, pictureOrigin: CGPoint = .zero
+    ) {
+        let placed = placement(in: state, minimum: minimum, pictureOrigin: pictureOrigin)
         let shortest = Self.shortestArm(zoom: state.zoom, minimum: minimum)
         let source = state.sourcePoint(forViewportPoint: point)
         let raw = arm == .horizontal ? (source.x - placed.corner.x).rounded() : (source.y - placed.corner.y).rounded()

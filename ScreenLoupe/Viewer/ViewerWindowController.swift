@@ -133,10 +133,17 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Ruler
 
     var isRulerOn: Bool { content.ruler.isOn }
+    var rulerMode: RulerMode { content.ruler.mode }
 
-    /// Turning the ruler off forgets it; turning it on starts a new one.
+    /// The ruler button: the chosen mode's ruler on or off. Turning the corner ruler off forgets
+    /// it; turning it on starts a new one.
     func toggleRuler() {
         content.ruler.toggle()
+    }
+
+    /// View › Corner Ruler and Selection Ruler (`RulerController.toggle(_:)`).
+    func toggleRuler(_ mode: RulerMode) {
+        content.ruler.toggle(mode)
     }
 
     // MARK: Select tool

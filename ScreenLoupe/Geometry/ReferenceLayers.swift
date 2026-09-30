@@ -64,11 +64,17 @@ struct ReferenceLayer: Codable, Equatable, Identifiable, Sendable {
 /// the area where that part was (`ViewerFrame.areaOrigin`), and the area's corner for a frame of the
 /// stream, frozen or not, and for an image. Everything that places a layer over the picture —
 /// drawing, Difference, the handles, the mouse, Copy View — goes through here, so a layer lines up
-/// over a snapshot as over the live view, and dragging it over one keeps its place in the area.
+/// over a snapshot as over the live view, and dragging it over one keeps its place in the area. A
+/// pinned corner ruler is placed the same way (`CornerRuler`).
 enum PictureInArea {
     /// `rect`, in area pixels, in the shown picture's pixels.
     static func pictureRect(_ rect: CGRect, pictureOrigin: CGPoint) -> CGRect {
         rect.offsetBy(dx: -pictureOrigin.x, dy: -pictureOrigin.y)
+    }
+
+    /// `point`, in area pixels, in the shown picture's pixels.
+    static func picturePoint(_ point: CGPoint, pictureOrigin: CGPoint) -> CGPoint {
+        CGPoint(x: point.x - pictureOrigin.x, y: point.y - pictureOrigin.y)
     }
 
     /// `point`, in the shown picture's pixels, in area pixels.

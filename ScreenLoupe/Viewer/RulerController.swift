@@ -1,7 +1,8 @@
 import AppKit
 
-/// The corner ruler in the Viewer: its state, hit-testing and dragging.
-/// The geometry is `CornerRuler`; points here are drawable pixels, y down, as in `ZoomPanState`.
+/// The Viewer's ruler: which one is on, the corner ruler's hit-testing and dragging, and the lengths
+/// of both. The geometry is `CornerRuler` and `SelectionRuler`; points here are drawable pixels, y
+/// down, as in `ZoomPanState`, except for the Selection Ruler's, which the overlay lays out in points.
 @MainActor
 final class RulerController {
     enum Part: Equatable {
@@ -49,10 +50,24 @@ final class RulerController {
 
     /// Source pixels per point of the captured display, for the lengths in points.
     var sourceScale: () -> CGFloat = { 1 }
+    /// Where the picture the Viewer shows sits in the Capture Area (`ViewerFrame.areaOrigin`); a
+    /// pinned ruler is placed in the area and shown over the picture through it (`PictureInArea`).
+    var pictureOrigin: () -> CGPoint = { .zero }
+    /// Called when the Selection Ruler turns on, so there is a way to draw a selection.
+    var onMeasureSelection: (() -> Void)?
 
-    /// Kept in the project, so it comes back at launch.
+    /// The corner ruler, while it is on. Kept in the project, so it comes back at launch, as does
+    /// whether the Selection Ruler is on.
     private(set) var ruler: CornerRuler? {
         didSet { if ruler != oldValue { project.update { [ruler] in $0.ruler = ruler } } }
+    }
+    /// The Selection Ruler is on: the selection's width and height show while there is one.
+    private(set) var measuresSelection: Bool {
+        didSet {
+            if measuresSelection != oldValue {
+                project.update { [measuresSelection] in $0.measuresSelection = measuresSelection }
+            }
+        }
     }
     /// The pointer is over the ruler or its pin button, or was a moment ago: the pin button and the
     /// move band show.
@@ -86,21 +101,55 @@ final class RulerController {
 
     private let zoomPan: ZoomPanController
     private let project: ProjectStore
+    private let settings: SettingsStore
     private var drag: (part: Part, last: CGPoint)?
 
-    init(zoomPan: ZoomPanController, project: ProjectStore) {
+    init(zoomPan: ZoomPanController, project: ProjectStore, settings: SettingsStore) {
         self.zoomPan = zoomPan
         self.project = project
+        self.settings = settings
         lastState = zoomPan.state
-        ruler = project.project.ruler
+        // Only the chosen mode's ruler, should the settings and the project disagree.
+        let mode = settings.settings.rulerMode
+        ruler = mode == .corner ? project.project.ruler : nil
+        measuresSelection = mode == .selection && project.project.measuresSelection
     }
 
-    var isOn: Bool { ruler != nil }
+    /// The ruler the ruler button turns on and off.
+    var mode: RulerMode { settings.settings.rulerMode }
+    /// One ruler at most: the corner ruler or the Selection Ruler, as `mode` says.
+    var isOn: Bool { ruler != nil || measuresSelection }
     var isDragging: Bool { drag != nil }
 
-    /// Turning the ruler off forgets it; turning it on starts a new, unpinned one.
+    private var choice: RulerChoice { RulerChoice(mode: mode, isOn: isOn) }
+
+    /// The ruler button (`RulerChoice.toggled()`).
     func toggle() {
-        ruler = ruler == nil ? CornerRuler.starting(in: zoomPan.state.viewportSize) : nil
+        choose(choice.toggled())
+    }
+
+    /// View › Corner Ruler (⌘R) and Selection Ruler (⌥⌘R) (`RulerChoice.toggled(_:)`).
+    func toggle(_ mode: RulerMode) {
+        choose(choice.toggled(mode))
+    }
+
+    /// A mode chosen in the ruler button's ▾ (`RulerChoice.turnedOn`).
+    func turnOn(_ mode: RulerMode) {
+        choose(choice.turnedOn(mode))
+    }
+
+    /// Turning the corner ruler off forgets it; turning it on starts a new, unpinned one. The
+    /// Selection Ruler turning on makes sure there is a way to draw a selection
+    /// (`onMeasureSelection`), also when it is on already. A ruler already on as chosen stays as it is.
+    private func choose(_ next: RulerChoice) {
+        guard next != choice else {
+            if measuresSelection { onMeasureSelection?() }
+            return
+        }
+        settings.update { $0.rulerMode = next.mode }
+        ruler = next.isOn && next.mode == .corner ? CornerRuler.starting(in: zoomPan.state.viewportSize) : nil
+        measuresSelection = next.isOn && next.mode == .selection
+        if measuresSelection { onMeasureSelection?() }
         isHovered = false
         drag = nil
         settleTimer?.invalidate()
@@ -130,7 +179,7 @@ final class RulerController {
     private func drawn(in state: ZoomPanState, scale: CGFloat) -> Drawn? {
         guard let ruler else { return nil }
         let minimum = Self.minimumLength * scale
-        var placed = ruler.placement(in: state, minimum: minimum)
+        var placed = ruler.placement(in: state, minimum: minimum, pictureOrigin: pictureOrigin())
         var corner = state.viewportPoint(forSourcePoint: placed.corner)
         var arms = CGSize(width: placed.arms.width * state.zoom, height: placed.arms.height * state.zoom)
         if snap < 1, let free = ruler.freePlacement(in: state, minimum: minimum) {
@@ -144,8 +193,8 @@ final class RulerController {
         }
         let pinShift = Self.pinDistance * scale / 2.squareRoot()
         let sourceScale = sourceScale()
-        let horizontalText = Self.length(abs(placed.arms.width), sourceScale: sourceScale)
-        let verticalText = Self.length(abs(placed.arms.height), sourceScale: sourceScale)
+        let horizontalText = RulerLabel.text(pixels: abs(placed.arms.width), sourceScale: sourceScale)
+        let verticalText = RulerLabel.text(pixels: abs(placed.arms.height), sourceScale: sourceScale)
         let horizontalSize = Self.pillSize(horizontalText)
         let verticalSize = Self.pillSize(verticalText)
         // Laid out in points, as drawn: above or below the horizontal arm's middle, left or right of
@@ -171,15 +220,6 @@ final class RulerController {
                 text: verticalText, rect: Self.pillRect(size: verticalSize, center: verticalCenter, scale: scale)))
     }
 
-    /// `32 px · 16 pt`, or `32 px` when a pixel is a point.
-    private static func length(_ pixels: CGFloat, sourceScale: CGFloat) -> String {
-        let px = "\(Int(pixels)) px"
-        guard sourceScale != 1 else { return px }
-        let points = pixels / sourceScale
-        let text = points == points.rounded() ? "\(Int(points))" : String(format: "%.1f", Double(points))
-        return "\(px) · \(text) pt"
-    }
-
     /// In points.
     private static func pillSize(_ text: String) -> CGSize {
         let size = (text as NSString).size(withAttributes: labelAttributes)
@@ -197,6 +237,30 @@ final class RulerController {
     private static func signed(_ length: CGFloat) -> CGFloat {
         length == 0 ? 1 : length
     }
+
+    // MARK: Selection Ruler
+
+    /// The Selection Ruler's dimension lines and their lengths.
+    struct Measured {
+        var width: SelectionRuler.Line
+        var height: SelectionRuler.Line
+        var widthText: String
+        var heightText: String
+    }
+
+    /// The Selection Ruler over `rect`, a selection in source pixels, drawn at `placed` in the
+    /// overlay's `bounds` (points). `nil` while it is off.
+    func measured(_ rect: CGRect, placed: CGRect, bounds: CGRect) -> Measured? {
+        guard measuresSelection else { return nil }
+        let sourceScale = sourceScale()
+        let widthText = RulerLabel.text(pixels: rect.width, sourceScale: sourceScale)
+        let heightText = RulerLabel.text(pixels: rect.height, sourceScale: sourceScale)
+        let lines = SelectionRuler.lines(
+            of: placed, in: bounds, widthLabel: Self.pillSize(widthText), heightLabel: Self.pillSize(heightText))
+        return Measured(width: lines.width, height: lines.height, widthText: widthText, heightText: heightText)
+    }
+
+    // MARK: Corner ruler
 
     func part(at point: CGPoint, scale: CGFloat) -> Part? {
         guard let ruler, let drawn = drawn(scale: scale) else { return nil }
@@ -293,7 +357,7 @@ final class RulerController {
         case .pin:
             // Pinned in the view as shown: a zoom glide stops there first.
             zoomPan.settle()
-            ruler?.togglePin(in: zoomPan.state, minimum: Self.minimumLength * scale)
+            ruler?.togglePin(in: zoomPan.state, minimum: Self.minimumLength * scale, pictureOrigin: pictureOrigin())
             changed()
         case .line where ruler?.isPinned == true:
             return false
@@ -312,7 +376,7 @@ final class RulerController {
         case .corner:
             ruler?.setCorner(to: point, in: zoomPan.state, minimum: minimum)
         case .end(let arm):
-            ruler?.setEnd(of: arm, to: point, in: zoomPan.state, minimum: minimum)
+            ruler?.setEnd(of: arm, to: point, in: zoomPan.state, minimum: minimum, pictureOrigin: pictureOrigin())
         case .pin:
             break
         }

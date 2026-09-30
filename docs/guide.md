@@ -74,7 +74,9 @@ To copy just a part of the view:
   - **Favorites:** eight slots for the colours you want to keep. Right-click one to copy or remove it.
   - **Contrast:** Text and Background with an "Aa" preview, the WCAG 2 contrast ratio and Pass or Fail for Text AA, Large AA, Text AAA and Large AAA (large = 18 pt, or 14 pt bold). Swap exchanges them.
   - **Choosing where a colour goes:** click Text, Background or a favourite slot to make it the target, marked with a ring: the next clicks on pixels, and recent colours you click, go there. Without a target, clicks on pixels only go to Recent. While Text or Background is the target, clicking a filled favourite puts it there too. Text and Background stay the target, so you can try many backgrounds against one text; a favourite takes one colour, which doesn't go to Recent. Click the target again, or press Escape, to stop. While you point at the image, the target shows that pixel, outlined dashed.
-- **Ruler** (⌘R): a corner ruler in screen pixels. Drag the line or a length label to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan.
+- **Ruler:** two rulers in screen pixels, one at a time. The ruler button turns the chosen one on and off; its ▾ chooses one and turns it on.
+  - **Corner Ruler** (⌘R): drag the line or a length label to move it, an arm's end to stretch it; pin it to keep it on its pixels while you zoom and pan, also over a snapshot.
+  - **Selection Ruler** (⌥⌘R): the width and height of the Select tool's selection, as lines with their lengths just outside it — above and left, or below and right at the Viewer's edge. It turns Select on; draw, move or resize the selection and the lengths follow.
 - **Pixel grid:** lines on the pixel boundaries from 800% on.
 - **References:** lay design exports over the live pixels — Add… in the panel, or drop the files on the Viewer — set opacity, or switch to Difference — matching pixels turn black. To try it, open the [example page](examples/reference-check/) and add its [design export](examples/reference-check/design-export.png) as a reference.
 - **Before and after:** right-click a Recent Captures row and choose Use as Reference, or use the frozen frame (above). The picture becomes a layer on top in Difference at full opacity, so you can capture, change your CSS or SwiftUI view, and see exactly what moved. A snapshot lands on the pixels it was taken from; an image file or a pasted image lands at the top-left. If the Capture Area has moved since, drag the layer into place. A capture shown in the Viewer stays, so you can compare two captures with each other; layers keep their place on the screen's pixels over a snapshot too.
@@ -114,7 +116,8 @@ In the Viewer:
 | ⌘T | Take Snapshot |
 | ⌘E | Select tool |
 | ⌘A | Select the whole Capture Area |
-| ⌘R | Ruler |
+| ⌘R | Corner Ruler |
+| ⌥⌘R | Selection Ruler |
 | ⌘0 | Reset zoom |
 | ⌥⌘0 | Size Window to Area |
 | `+` / `-` | Zoom in / out |

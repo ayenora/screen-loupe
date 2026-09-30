@@ -46,6 +46,8 @@ struct Settings: Codable, Equatable {
     /// Whether the pointer shows in the Viewer, drawn as `pointerStyle` says.
     var crosshairEnabled = true
     var pointerStyle = PointerStyle.crosshair
+    /// The ruler the ruler button and its ▾ chose last.
+    var rulerMode = RulerMode.corner
     var meterVisible = false
     /// References and Recent Captures take turns in the side column: at most one is open.
     var referencesVisible = false
@@ -123,6 +125,7 @@ struct Settings: Codable, Equatable {
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)
         crosshairEnabled = c.value(.crosshairEnabled, or: d.crosshairEnabled)
         pointerStyle = c.value(.pointerStyle, or: d.pointerStyle)
+        rulerMode = c.value(.rulerMode, or: d.rulerMode)
         meterVisible = c.value(.meterVisible, or: d.meterVisible)
         referencesVisible = c.value(.referencesVisible, or: d.referencesVisible)
         capturesVisible = c.value(.capturesVisible, or: d.capturesVisible) && !referencesVisible

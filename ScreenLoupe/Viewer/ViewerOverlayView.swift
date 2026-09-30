@@ -15,12 +15,15 @@ final class ViewerOverlayView: NSView {
     var showsCrosshair = true { didSet { if showsCrosshair != oldValue { needsDisplay = true } } }
     var pointerStyle = PointerStyle.crosshair { didSet { if pointerStyle != oldValue { needsDisplay = true } } }
     var color = SettingsColor.orange.nsColor { didSet { if color != oldValue { needsDisplay = true } } }
-    /// The corner ruler, drawn over everything else.
+    /// The corner ruler, drawn over everything but the selection; the Selection Ruler, over it.
     var ruler: RulerController?
     /// The selected reference layer gets a frame and corner handles for scaling.
     var references: ReferencesController?
     /// The Select tool's selection and an Option-drag's region.
     var selection: SelectionController?
+    /// The freeze's hint at the bottom while it shows (`FrozenIndicatorView.shownHint`): the
+    /// Selection Ruler's hint goes above it (`ViewerHints`).
+    var freezeHint: () -> String? = { nil }
     /// The Viewer's drawable pixels per point (`MTKView.drawableScale`): zoom and pan are in drawable
     /// pixels, this view draws in points.
     var drawableScale: () -> CGFloat = { 1 }
@@ -43,6 +46,7 @@ final class ViewerOverlayView: NSView {
         drawCrosshair(drawableScale: drawableScale)
         drawRuler(drawableScale: drawableScale)
         drawSelection(drawableScale: drawableScale)
+        drawSelectionRuler(drawableScale: drawableScale)
     }
 
     private func drawCrosshair(drawableScale: CGFloat) {
@@ -135,7 +139,7 @@ final class ViewerOverlayView: NSView {
             outline.setLineDash([4, 3], count: 2, phase: 0)
             NSColor.white.setStroke()
             outline.stroke()
-            Self.drawChip("\(Int(region.width)) × \(Int(region.height)) px · let go to copy", below: rect, in: bounds)
+            Self.drawChip("\(Int(region.width)) × \(Int(region.height)) px · let go to copy", for: rect, in: bounds)
             return
         }
         guard selection.isToolOn, let rect = selection.selection else { return }
@@ -158,21 +162,25 @@ final class ViewerOverlayView: NSView {
             border.lineWidth = 1
             border.stroke()
         }
-        Self.drawChip(PixelSelection.label(rect), below: placed, in: bounds)
+        // Out of the Selection Ruler's way.
+        let lengths = ruler?.measured(rect, placed: placed, bounds: bounds)
+        Self.drawChip(
+            PixelSelection.label(rect), for: placed, in: bounds, ruler: lengths.map { ($0.width, $0.height) })
     }
 
     private static let chipAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: NSColor.white,
     ]
 
-    /// A dark label under `rect`'s bottom-left corner, or over its top when there is no room below.
-    private static func drawChip(_ text: String, below rect: CGRect, in bounds: CGRect) {
+    /// A dark label by `rect`, as `SelectionRuler.badgeRect` places it: under its bottom-left corner,
+    /// else over its top, else inside it; clear of the Selection Ruler's `ruler` lines.
+    private static func drawChip(
+        _ text: String, for rect: CGRect, in bounds: CGRect,
+        ruler: (width: SelectionRuler.Line, height: SelectionRuler.Line)? = nil
+    ) {
         let size = (text as NSString).size(withAttributes: chipAttributes)
         let chipSize = CGSize(width: (size.width + 14).rounded(.up), height: (size.height + 4).rounded(.up))
-        var origin = CGPoint(x: rect.minX, y: rect.maxY + 6)
-        if origin.y + chipSize.height > bounds.maxY { origin.y = rect.minY - 6 - chipSize.height }
-        origin.x = min(max(origin.x, bounds.minX + 4), bounds.maxX - chipSize.width - 4)
-        let chip = CGRect(origin: CGPoint(x: origin.x.rounded(), y: origin.y.rounded()), size: chipSize)
+        let chip = SelectionRuler.badgeRect(size: chipSize, for: rect, in: bounds, ruler: ruler)
         NSColor.black.withAlphaComponent(0.78).setFill()
         NSBezierPath(roundedRect: chip, xRadius: 5, yRadius: 5).fill()
         (text as NSString).draw(at: CGPoint(x: chip.minX + 7, y: chip.minY + 2), withAttributes: chipAttributes)
@@ -251,8 +259,8 @@ final class ViewerOverlayView: NSView {
         // Off the pixels the lengths are approximate: dimmed until the ruler is on them.
         context.saveGState()
         if !drawn.isOnPixels { context.setAlpha(0.5) }
-        Self.drawPill(drawn.horizontalLabel, scale: scale)
-        Self.drawPill(drawn.verticalLabel, scale: scale)
+        Self.drawPill(drawn.horizontalLabel.text, in: Self.points(drawn.horizontalLabel.rect, scale: scale))
+        Self.drawPill(drawn.verticalLabel.text, in: Self.points(drawn.verticalLabel.rect, scale: scale))
         context.restoreGState()
 
         if ruler.isHovered {
@@ -280,19 +288,56 @@ final class ViewerOverlayView: NSView {
         }
     }
 
-    private static func drawPill(_ label: RulerController.Label, scale: CGFloat) {
-        let rect = CGRect(
-            x: label.rect.minX / scale, y: label.rect.minY / scale, width: label.rect.width / scale,
-            height: label.rect.height / scale)
+    /// A length label; `rect` in points.
+    private static func drawPill(_ label: String, in rect: CGRect) {
         rulerColor.setFill()
         NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
-        let text = label.text as NSString
+        let text = label as NSString
         let textSize = text.size(withAttributes: RulerController.labelAttributes)
         text.draw(
             at: CGPoint(
                 x: rect.minX + RulerController.labelPadding,
                 y: rect.minY + ((rect.height - textSize.height) / 2).rounded()),
             withAttributes: RulerController.labelAttributes)
+    }
+
+    // MARK: Selection Ruler
+
+    /// The Selection Ruler: the selection's width and height as dimension lines, drawn as the corner
+    /// ruler is, over the presented view like the selection. Without a selection, a hint at the
+    /// bottom says how to get one.
+    private func drawSelectionRuler(drawableScale scale: CGFloat) {
+        guard let ruler, ruler.measuresSelection, let selection, selection.region == nil else { return }
+        guard selection.isToolOn, let rect = selection.selection else {
+            let hint =
+                selection.isToolOn ? "Draw a selection to measure it" : "Turn on Select (⌘E) to measure a selection"
+            let hints = [freezeHint(), hint].compactMap { $0 }
+            guard let rect = ViewerHints.rects(sizes: hints.map(FrozenIndicatorView.hintSize), in: bounds).last else {
+                return
+            }
+            return FrozenIndicatorView.drawHint(hint, in: rect)
+        }
+        let placed = Self.points(zoomPan.presented.imageRect(origin: rect.origin, size: rect.size), scale: scale)
+        guard let measured = ruler.measured(rect, placed: placed, bounds: bounds) else { return }
+        let path = NSBezierPath()
+        let reach = SelectionRuler.markReach
+        for line in [measured.width, measured.height] {
+            path.move(to: line.start)
+            path.line(to: line.end)
+            let isHorizontal = line.start.y == line.end.y
+            for end in [line.start, line.end] {
+                path.move(to: CGPoint(x: end.x - (isHorizontal ? 0 : reach), y: end.y - (isHorizontal ? reach : 0)))
+                path.line(to: CGPoint(x: end.x + (isHorizontal ? 0 : reach), y: end.y + (isHorizontal ? reach : 0)))
+            }
+        }
+        NSColor.white.withAlphaComponent(0.9).setStroke()
+        path.lineWidth = 3.5
+        path.stroke()
+        Self.rulerColor.setStroke()
+        path.lineWidth = 1.5
+        path.stroke()
+        Self.drawPill(measured.widthText, in: measured.width.label)
+        Self.drawPill(measured.heightText, in: measured.height.label)
     }
 }
 
@@ -398,16 +443,31 @@ final class FrozenIndicatorView: NSView {
             in: CGRect(origin: CGPoint(x: (bounds.midX - pill.exactWidth(for: text) / 2).rounded(), y: 10), size: size))
     }
 
-    /// "Frozen by F13 from Simulator — let go of the mouse, then zoom, pan, copy" at the bottom.
+    /// "Frozen by F13 from Simulator — let go of the mouse, then zoom, pan, copy" at the bottom,
+    /// lowest of the hints there (`ViewerHints`).
     private func drawHint(_ hint: String) {
-        let text = hint as NSString
-        let size = text.size(withAttributes: Self.attributes)
-        let pill = CGRect(
-            x: (bounds.midX - size.width / 2 - 12).rounded(), y: (bounds.maxY - 20 - size.height - 12).rounded(),
-            width: (size.width + 24).rounded(.up), height: (size.height + 12).rounded(.up))
-        Self.darkFill.setFill()
-        NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2).fill()
-        text.draw(at: CGPoint(x: pill.minX + 12, y: pill.minY + 6), withAttributes: Self.attributes)
+        guard let rect = ViewerHints.rects(sizes: [Self.hintSize(hint)], in: bounds).first else { return }
+        Self.drawHint(hint, in: rect)
+    }
+
+    /// The hint at the bottom while it shows; `nil` while it doesn't.
+    var shownHint: String? {
+        guard !isHidden, alphaValue > 0, case .frozen(let hint?) = state else { return nil }
+        return hint
+    }
+
+    /// A bottom hint's dark pill for `hint`.
+    static func hintSize(_ hint: String) -> CGSize {
+        ViewerHints.pillSize(textSize: (hint as NSString).size(withAttributes: attributes))
+    }
+
+    /// A bottom hint in its dark pill at `rect`: this view's, and the Selection Ruler's over the image.
+    static func drawHint(_ hint: String, in rect: CGRect) {
+        darkFill.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
+        (hint as NSString).draw(
+            at: CGPoint(x: rect.minX + ViewerHints.padding.width, y: rect.minY + ViewerHints.padding.height),
+            withAttributes: attributes)
     }
 }
 

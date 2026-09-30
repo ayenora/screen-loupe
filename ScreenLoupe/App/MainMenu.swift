@@ -124,9 +124,14 @@ enum MainMenu {
         let select = menu.addItem(
             withTitle: "Select", action: #selector(AppController.toggleSelectTool(_:)), keyEquivalent: "e")
         select.target = target
-        let ruler = menu.addItem(
-            withTitle: "Ruler", action: #selector(AppController.toggleMeasuringRuler(_:)), keyEquivalent: "r")
-        ruler.target = target
+        let cornerRuler = menu.addItem(
+            withTitle: "Corner Ruler", action: #selector(AppController.toggleCornerRuler(_:)), keyEquivalent: "r")
+        cornerRuler.target = target
+        let selectionRuler = menu.addItem(
+            withTitle: "Selection Ruler", action: #selector(AppController.toggleSelectionRuler(_:)),
+            keyEquivalent: "r")
+        selectionRuler.keyEquivalentModifierMask = [.command, .option]
+        selectionRuler.target = target
         let viewportHandle = menu.addItem(
             withTitle: "Show Viewport Handle", action: #selector(AppController.toggleViewportHandle(_:)),
             keyEquivalent: "")
