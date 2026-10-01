@@ -2,7 +2,7 @@ import CoreGraphics
 import Testing
 
 struct PaletteHitShapeTests {
-    /// The macOS 14/15 look: a group 32 pt wide with 8 pt corners.
+    /// The macOS 15 look: a group 32 pt wide with 8 pt corners.
     private let rect = CGRect(x: 0, y: 0, width: 32, height: 84)
     private let radius: CGFloat = 8
 

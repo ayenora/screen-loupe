@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import SwiftUI
 
 /// The look the palette's lists share: their inset, the width of the Size and Background lists, and
@@ -20,9 +21,11 @@ enum StudioListLook {
 }
 
 /// A row of the Size, Timer, Output or Background list, highlighted under the pointer as a menu item is.
+/// Disabled, it is greyed out as a disabled menu item, its check mark kept, and takes no clicks.
 struct StudioListRow: View {
     let title: String
     let isChecked: Bool
+    var isEnabled = true
     let action: () -> Void
     @State private var isHovered = false
 
@@ -38,13 +41,23 @@ struct StudioListRow: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .foregroundStyle(isHovered ? Color.white : Color.primary)
-            .background(RoundedRectangle(cornerRadius: 4).fill(isHovered ? Color.accentColor : .clear))
+            .foregroundStyle(isHighlighted ? Color.white : isEnabled ? Color.primary : Color(.tertiaryLabelColor))
+            .background(RoundedRectangle(cornerRadius: 4).fill(isHighlighted ? Color.accentColor : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
         .onHover { isHovered = $0 }
     }
+
+    private var isHighlighted: Bool { isHovered && isEnabled }
+}
+
+/// What a list beside the palette shows that changes while it is open: One Window turning on or off
+/// greys One Window Shadow in the Background list at once.
+@MainActor @Observable
+final class StudioListState {
+    var oneWindowMode = OneWindowMode.off
 }
 
 /// The Size, Timer, Output or Background list beside the palette: a non-activating panel in the

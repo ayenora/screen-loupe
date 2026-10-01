@@ -188,24 +188,17 @@ enum OverlayStyle {
     }
 
     private static func resizeCursor(for handle: OverlayHandle) -> NSCursor {
-        if #available(macOS 15.0, *) {
-            let position: NSCursor.FrameResizePosition
-            switch handle {
-            case .topLeft: position = .topLeft
-            case .top: position = .top
-            case .topRight: position = .topRight
-            case .left: position = .left
-            case .right: position = .right
-            case .bottomLeft: position = .bottomLeft
-            case .bottom: position = .bottom
-            case .bottomRight: position = .bottomRight
-            }
-            return NSCursor.frameResize(position: position, directions: .all)
-        }
+        let position: NSCursor.FrameResizePosition
         switch handle {
-        case .left, .right: return .resizeLeftRight
-        case .top, .bottom: return .resizeUpDown
-        default: return .crosshair
+        case .topLeft: position = .topLeft
+        case .top: position = .top
+        case .topRight: position = .topRight
+        case .left: position = .left
+        case .right: position = .right
+        case .bottomLeft: position = .bottomLeft
+        case .bottom: position = .bottom
+        case .bottomRight: position = .bottomRight
         }
+        return NSCursor.frameResize(position: position, directions: .all)
     }
 }

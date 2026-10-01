@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 
 /// The Screenshot studio: its frame, its palette, Capture,
 /// Copy and Save, the frame's sizes and Aspect Lock, the timer, the background and its backdrop,
-/// the pointer, and One Window.
+/// and One Window.
 /// Shown and hidden on its own, apart from the Viewer and the Capture Area.
 ///
 /// The frame is an `OverlayFrameController` of kind `.studio`: the Capture Area's window, drawing,
@@ -35,6 +35,7 @@ final class StudioController {
     private var savePanel: NSSavePanel?
     /// The Size, the Timer, the Output or the Background list beside the palette; the palette knows whose it is.
     private let listPanel = StudioListPanel()
+    private let listState = StudioListState()
     /// Built the first time Custom Size… is chosen, then kept.
     private var customSizesWindow: NSPanel?
     private let colorTarget = ColorPanelTarget()
@@ -68,7 +69,6 @@ final class StudioController {
         palette.onOutput = { [weak self] in self?.showOutput(beside: $0) }
         palette.onBackground = { [weak self] in self?.showBackgrounds(beside: $0) }
         palette.onToggleOneWindow = { [weak self] in self?.toggleOneWindow() }
-        palette.onTogglePointer = { [weak self] in self?.togglePointer() }
         palette.onHide = { [weak self] in self?.hide() }
         palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
         listPanel.onClose = { [weak self] in self?.palette.openListButton = nil }
@@ -98,7 +98,6 @@ final class StudioController {
             MainActor.assumeIsolated { self?.updateBackdrop() }
         }
         settings.observe(\.studioDelay) { [weak self] in self?.palette.hasDelay = $0 != .off }
-        settings.observe(\.studioIncludesPointer) { [weak self] in self?.palette.includesPointer = $0 }
         // The countdown moves with the frame, and the backdrop goes with it to another display.
         frame.onChange = { [weak self] in
             self?.updateCountdownPanel()
@@ -254,7 +253,8 @@ final class StudioController {
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.level = .normal
-        window.hidesOnDeactivate = true
+        // Shown while another app stays active: hiding on deactivation would hide it at once.
+        window.hidesOnDeactivate = false
         return window
     }
 
@@ -336,7 +336,8 @@ final class StudioController {
                 toggleWindowShadow: { [weak self] in
                     self?.listPanel.dismiss()
                     self?.toggleWindowShadow()
-                })
+                },
+                state: listState)
         }
     }
 
@@ -573,10 +574,6 @@ final class StudioController {
         StudioComposite.filled(fill, size: size, space: space)
     }
 
-    func togglePointer() {
-        settings.update { $0.studioIncludesPointer.toggle() }
-    }
-
     /// Another window picker of the app opened, which ended any of the studio's: a countdown stops.
     func windowPickerStarted() {
         advance(.pickerStarted)
@@ -613,6 +610,7 @@ final class StudioController {
         let new = old.after(event)
         guard new != old else { return }
         oneWindowMode = new
+        listState.oneWindowMode = new
         // Set first: stopping the picker reports a cancel, which then changes nothing.
         if old.isPicking { oneWindowPicker?.stop() }
         if new.isPicking { startOneWindowPicker() }
@@ -871,7 +869,9 @@ final class StudioController {
             return
         case .take: break
         }
-        guard let geometry = frame.captureGeometry else { return NSSound.beep() }
+        guard let geometry = frame.captureGeometry, let request = frame.screenshotRequest(for: geometry) else {
+            return NSSound.beep()
+        }
         isCapturing = true
         let included = (capturedAppWindows?() ?? []) + [backdrop.windowNumber]
         let current = settings.settings
@@ -885,8 +885,7 @@ final class StudioController {
                 } else {
                     // The backdrop is on screen: the picture is what the frame shows.
                     await backdropOnScreen()
-                    image = try await StudioCapture.image(
-                        of: geometry, including: included, pointer: current.studioIncludesPointer)
+                    image = try await StudioCapture.image(request, on: geometry.display, including: included)
                 }
                 if isVisible { await then(image, geometry.display.scale) }
             } catch  where ScreenCaptureManager.isPermissionError(error) {

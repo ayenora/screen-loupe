@@ -2,46 +2,60 @@ import AppKit
 import OSLog
 @preconcurrency import ScreenCaptureKit
 
-/// One screenshot of the Screenshot studio's frame with `SCScreenshotManager`. Like the Viewer's stream it leaves out
-/// every window of the app — the studio's
-/// frame, palette and hover label, menus, alerts — except the ones the caller names: the Viewer, the
-/// Capture Area frame and the studio's backdrop, which are captured like any other window on screen.
-/// So the picture is what the frame shows, the backdrop's background among it. Or, for One Window,
-/// takes one window alone and lays the background under it.
+/// One screenshot of the Screenshot studio's frame with `SCScreenshotManager`, as ⇧⌘3 takes the
+/// screen: windows with their shadows and outlines, which a capture with a content filter leaves
+/// out, and without the pointer. It leaves out every window of the app — the studio's frame, palette
+/// and hover label, alerts, panels — except the ones the caller names: the Viewer, the Capture Area
+/// frame and the studio's backdrop, which are captured like any other window on screen. So the
+/// picture is what the frame shows, the backdrop's background among it. Or, for One Window, takes
+/// one window alone and lays the background under it.
 @MainActor
 enum StudioCapture {
-    struct NoDisplayError: LocalizedError {
-        var errorDescription: String? { "The display isn't available for capture." }
-    }
-
     /// How long a ScreenCaptureKit call may take, as for the stream.
     private static let callTimeout: Double = 5
 
-    /// The pixels of `geometry` at the display's native resolution, with the pointer when `pointer`
-    /// says so, in the display's colour space. `includedWindows` are window numbers of this app's
+    struct PictureSizeError: LocalizedError {
+        var errorDescription: String?
+    }
+
+    /// The pixels `request` cuts out (`DisplayCoordinateConverter.screenshotRequest`), at `display`'s
+    /// native resolution, in its colour space. `includedWindows` are window numbers of this app's
     /// windows to keep.
+    ///
+    /// `captureImage(in:)` has no filter: it takes every window on screen in the rect. So this app's
+    /// other windows are hidden from screen capture (`sharingType` `.none`, which the call already
+    /// honours) while it runs, and put back as they were right after, whatever happens: they stay
+    /// visible to screen sharing. Menus aren't windows of `NSApp.windows` and can't be hidden: a
+    /// menu still fading out after its command, where it overlaps the frame, can be in the picture.
+    /// A window shown while the call runs isn't hidden.
     static func image(
-        of geometry: CaptureGeometry, including includedWindows: [Int], pointer: Bool
-    ) async throws
-        -> CGImage
-    {
-        // The desktop's levels too: the backdrop sits just above the desktop icons, and the filter
-        // keeps it only when it is listed.
-        let content = try await withTimeout(seconds: callTimeout) {
-            try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        _ request: ScreenshotRequest, on display: DisplayInfo, including includedWindows: [Int]
+    ) async throws -> CGImage {
+        let kept = Set(includedWindows)
+        let hidden = NSApp.windows.filter {
+            StudioFilter.hides(number: $0.windowNumber, isShared: $0.sharingType != .none, kept: kept)
         }
-        guard let display = content.displays.first(where: { $0.displayID == geometry.display.id }) else {
-            throw NoDisplayError()
-        }
-        let configuration = Self.configuration(size: geometry.outputSize)
-        configuration.sourceRect = geometry.sourceRect.rect
-        configuration.showsCursor = pointer
-        let filter = filter(
-            for: display, in: content, including: Set(includedWindows.map { CGWindowID($0) }))
+        let sharing = hidden.map(\.sharingType)
+        for window in hidden { window.sharingType = .none }
+        defer { for (window, type) in zip(hidden, sharing) { window.sharingType = type } }
+        let rect = request.rect.rect
         let image = try await withTimeout(seconds: callTimeout) {
-            try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+            try await SCScreenshotManager.captureImage(in: rect)
         }
-        return await converted(image, to: NSScreen.colorSpace(forDisplay: display.displayID)) ?? image
+        // Whole points come at their size exactly; anything else would put the crop off.
+        guard image.width == request.pictureSize.width, image.height == request.pictureSize.height,
+            let cut = image.cropping(
+                to: CGRect(x: request.crop.x, y: request.crop.y, width: request.crop.width, height: request.crop.height)
+            )
+        else {
+            // `StudioController` logs it, as every failure.
+            throw PictureSizeError(
+                errorDescription: """
+                    The capture of \(rect) pt on a \(display.scale)× display came \(image.width) × \(image.height) px, \
+                    not \(request.pictureSize.width) × \(request.pictureSize.height) px.
+                    """)
+        }
+        return await converted(cut, to: NSScreen.colorSpace(forDisplay: display.id)) ?? cut
     }
 
     /// One picture of `size` pixels at the display's native resolution, in BGRA, never scaled to fit.
@@ -145,24 +159,4 @@ enum StudioCapture {
     }
 
     private static let log = Logger(category: "studio")
-
-    /// The display minus every window of this app but `included` (`StudioFilter`): the app is
-    /// excluded as a whole, or, when it isn't listed, its windows are
-    /// named one by one.
-    private static func filter(
-        for display: SCDisplay, in content: SCShareableContent, including included: Set<CGWindowID>
-    ) -> SCContentFilter {
-        let pid = ProcessInfo.processInfo.processIdentifier
-        let listed = content.windows.map { ListedWindow(id: $0.windowID, ownerPID: $0.owningApplication?.processID) }
-        let app = content.applications.first { $0.processID == pid }
-        let path = StudioFilter.path(listed, ownPID: pid, appIsListed: app != nil, kept: included)
-        if case .excludingWindows(let ids) = path {
-            let excluded = Set(ids)
-            return SCContentFilter(
-                display: display, excludingWindows: content.windows.filter { excluded.contains($0.windowID) })
-        }
-        // `.excludingApp` comes only with the app listed.
-        let kept = content.windows.filter { included.contains($0.windowID) }
-        return SCContentFilter(display: display, excludingApplications: app.map { [$0] } ?? [], exceptingWindows: kept)
-    }
 }

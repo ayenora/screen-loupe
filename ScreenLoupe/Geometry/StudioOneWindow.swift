@@ -50,6 +50,10 @@ enum OneWindowMode: Equatable, Sendable {
     }
 
     var isPicking: Bool { self == .picking }
+
+    /// Whether One Window Shadow can be changed: only while One Window is on, its window picked or
+    /// chosen, since it applies to no other picture. Off, it is greyed out, still showing the setting.
+    var allowsShadowChoice: Bool { self != .off }
 }
 
 /// Reads of the chosen window's place, about 60 a second while the studio shows: where its outline goes, and when One
@@ -122,16 +126,6 @@ enum OneWindowShot: Equatable, Sendable {
     case window
     /// The frame's picture, as without One Window, which turns off.
     case frameInstead(OneWindowProblem)
-}
-
-/// A rect of whole pixels in an image, origin at its top-left corner, y down.
-struct PixelRect: Equatable, Sendable {
-    var x: Int
-    var y: Int
-    var width: Int
-    var height: Int
-
-    var size: PixelSize { PixelSize(width: width, height: height) }
 }
 
 /// How a lone window's capture becomes a picture: captured with

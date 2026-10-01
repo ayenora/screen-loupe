@@ -10,6 +10,8 @@ struct StudioBackgroundList: View {
     let chooseImage: () -> Void
     let windowShadow: Bool
     let toggleWindowShadow: () -> Void
+    /// One Window's mode, live: One Window Shadow can be changed only while it is on.
+    let state: StudioListState
     /// The swatch under the pointer, named in its section's header: tooltips don't show while
     /// another app is active.
     @State private var hovered: String?
@@ -52,7 +54,9 @@ struct StudioBackgroundList: View {
             Divider().padding(.vertical, 4)
             StudioListRow(title: imageTitle, isChecked: isImage, action: chooseImage)
             Divider().padding(.vertical, 4)
-            StudioListRow(title: "Window Shadow", isChecked: windowShadow, action: toggleWindowShadow)
+            StudioListRow(
+                title: "One Window Shadow", isChecked: windowShadow,
+                isEnabled: state.oneWindowMode.allowsShadowChoice, action: toggleWindowShadow)
         }
         .padding(StudioListLook.padding)
         .frame(width: StudioListLook.width)

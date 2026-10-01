@@ -40,7 +40,7 @@ The app collects no data and sends nothing anywhere: [privacy policy](https://ay
 
 ## Requirements
 
-- macOS 14 Sonoma or later, with Screen Recording permission granted to the app
+- macOS 15.2 Sequoia or later, with Screen Recording permission granted to the app
 - Xcode 26 or later to build; the 1.4.0 release is built with Xcode 27
 
 ## Build

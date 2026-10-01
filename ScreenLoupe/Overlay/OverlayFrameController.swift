@@ -117,6 +117,12 @@ final class OverlayFrameController {
         converter?.captureGeometry(for: GlobalRect(rect: captureRect))
     }
 
+    /// What `captureImage(in:)` is asked for to take `geometry`'s pixels, from `captureGeometry`, with
+    /// the same displays.
+    func screenshotRequest(for geometry: CaptureGeometry) -> ScreenshotRequest? {
+        converter?.screenshotRequest(for: geometry)
+    }
+
     private let kind: OverlayFrameKind
     private let window = CaptureOverlayWindow()
     private let view: CaptureOverlayView

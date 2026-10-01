@@ -191,10 +191,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.studio.chooseScale(scale)
     }
 
-    @objc func toggleStudioPointer(_ sender: Any?) {
-        windows.studio.togglePointer()
-    }
-
     /// Screenshot › Background: the item carries its `StudioBackground`.
     @objc func chooseStudioBackground(_ sender: NSMenuItem) {
         guard let background = sender.representedObject as? StudioBackground else { return }
@@ -442,9 +438,6 @@ extension AppController: NSMenuItemValidation {
     /// Reads the windows only when they exist: opening a menu doesn't build them.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let canExport = builtWindows?.export.canExport == true
-        // One Window takes a chosen window alone: the items for what else a picture holds are off,
-        // their settings kept.
-        let studioHasOneWindow = builtWindows?.studio.oneWindowMode.chosen != nil
         switch menuItem.action {
         case #selector(toggleCaptureArea(_:)):
             let isVisible = builtWindows?.captureArea.isVisible == true
@@ -503,9 +496,6 @@ extension AppController: NSMenuItemValidation {
             let scale = menuItem.representedObject as? StudioOutput.Scale
             menuItem.state = scale == settings.settings.studioOutput.scale ? .on : .off
             return true
-        case #selector(toggleStudioPointer(_:)):
-            menuItem.state = settings.settings.studioIncludesPointer ? .on : .off
-            return !studioHasOneWindow
         case #selector(chooseStudioBackground(_:)):
             let background = menuItem.representedObject as? StudioBackground
             menuItem.state = background == settings.settings.studioBackground ? .on : .off
@@ -530,8 +520,9 @@ extension AppController: NSMenuItemValidation {
             menuItem.state = mode.isPicking ? .on : .off
             return mode.chosen != nil || builtWindows?.studio.isVisible == true
         case #selector(toggleStudioWindowShadow(_:)):
+            // Greyed out while One Window is off, still checked as set.
             menuItem.state = settings.settings.studioWindowShadow ? .on : .off
-            return true
+            return (builtWindows?.studio.oneWindowMode ?? .off).allowsShadowChoice
         case #selector(toggleCornerRuler(_:)), #selector(toggleSelectionRuler(_:)):
             // Checked while that ruler is on.
             let mode: RulerMode = menuItem.action == #selector(toggleCornerRuler(_:)) ? .corner : .selection

@@ -29,7 +29,6 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
     /// Called with the Background button, to open the backgrounds beside it.
     var onBackground: ((NSView) -> Void)?
     var onToggleOneWindow: (() -> Void)?
-    var onTogglePointer: (() -> Void)?
     /// Called by the close button: the studio hides; the palette is only ordered out.
     var onHide: (() -> Void)?
     /// Called when a user's drag of the palette begins.
@@ -46,13 +45,9 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
         didSet { updateOneWindowButton() }
     }
 
-    /// Whether One Window has a window. Its pictures take the window alone, without the pointer, so
-    /// Include the Pointer is off meanwhile, showing its setting.
+    /// Whether One Window has a window.
     var hasOneWindow = false {
-        didSet {
-            updateOneWindowButton()
-            pointerButton.isEnabled = !hasOneWindow
-        }
+        didSet { updateOneWindowButton() }
     }
 
     /// Filled while the window is picked and while one is chosen.
@@ -68,11 +63,6 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
     /// Filled while a delay is set.
     var hasDelay = false {
         didSet { timerButton.state = hasDelay ? .on : .off }
-    }
-
-    /// Filled while pictures include the pointer.
-    var includesPointer = false {
-        didSet { pointerButton.state = includesPointer ? .on : .off }
     }
 
     /// Filled while Aspect Lock is on.
@@ -101,7 +91,6 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
     private let backgroundButton = PaletteButton()
     private let oneWindowButton = PaletteButton()
     private let timerButton = PaletteButton()
-    private let pointerButton = PaletteButton()
     private let saveButton = PaletteButton()
     private lazy var hoverLabel = ButtonNameLabel(parent: self)
     /// Set when the user starts dragging the palette, until the button is up after a move.
@@ -140,8 +129,6 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
         oneWindowButton.makeToggle()
         Self.configure(timerButton, "timer", "Timer", #selector(timerClicked))
         timerButton.makeToggle()
-        Self.configure(pointerButton, "cursorarrow", "Include the Pointer", #selector(pointerClicked))
-        pointerButton.makeToggle()
 
         // The toolbar's groups, apart as its items around a space are.
         let groups: [[NSView]] = [
@@ -157,7 +144,7 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
                 timerButton,
                 Self.button("slider.horizontal.3", "Output", #selector(outputClicked)),
             ],
-            [backgroundButton, oneWindowButton, pointerButton],
+            [backgroundButton, oneWindowButton],
         ]
         for case let button as NSButton in groups.joined() {
             button.target = self
@@ -195,10 +182,7 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
             [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                for button in [
-                    self.aspectLockButton, self.timerButton, self.backgroundButton, self.oneWindowButton,
-                    self.pointerButton,
-                ] {
+                for button in [self.aspectLockButton, self.timerButton, self.backgroundButton, self.oneWindowButton] {
                     button.needsDisplay = true
                 }
             }
@@ -285,12 +269,6 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
     @objc private func timerClicked(_ sender: NSButton) {
         sender.state = hasDelay ? .on : .off
         onTimer?(sender)
-    }
-
-    /// Shows the setting, not the click.
-    @objc private func pointerClicked(_ sender: NSButton) {
-        sender.state = includesPointer ? .on : .off
-        onTogglePointer?()
     }
 
     /// A stretchable mask with rounded corners for the background.

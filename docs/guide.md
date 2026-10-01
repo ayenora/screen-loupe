@@ -10,8 +10,8 @@ Screen Loupe shows one spot of your screen magnified in a window of its own, whi
 
 ## Getting started
 
-1. Open the DMG and drag Screen Loupe to Applications. It needs macOS 14 Sonoma or later.
-2. Open it. The first time, the Viewer asks for **Screen Recording** access: click Continue, turn Screen Loupe on in System Settings › Privacy & Security › Screen Recording, and reopen the app when macOS asks. On macOS 15 and later the list is called **Screen & System Audio Recording**; the app captures no audio.
+1. Open the DMG and drag Screen Loupe to Applications. It needs macOS 15.2 Sequoia or later.
+2. Open it. The first time, the Viewer asks for **Screen Recording** access: click Continue, turn Screen Loupe on in System Settings › Privacy & Security › **Screen & System Audio Recording**, and reopen the app when macOS asks. The app captures no audio.
 3. A blue frame — the **Capture Area** — appears on screen, and the **Viewer** window beside it shows what is inside the frame, live.
 
 Closing the Viewer hides the frame too; the app stays in the menu bar (the magnifier icon). Show Viewer there, or click the Dock icon, brings both back.
@@ -99,13 +99,12 @@ To copy just a part of the view:
 A screenshot tool of its own, for exact, clean pictures — App Store and website screenshots, docs, bug reports. Screenshot › Show Screenshot Studio, or the menu bar item, shows an orange frame and a floating palette; the palette's close button hides them. They are apart from the Capture Area and the Viewer, so the Viewer can be in the picture, and every palette button is also in the Screenshot menu.
 
 - **The frame** moves and resizes like the Capture Area: handles, Shift for a square, ⌘ to snap, arrow keys, and Fit to Window.
-- **Capture, Copy, Save:** Copy puts the picture on the clipboard, Save asks where to save it, Capture does both. The picture is exactly the pixels inside the frame, at the display's resolution; the studio's own frame and palette are never in it, though they stay on screen. A frame across two displays isn't captured.
+- **Capture, Copy, Save:** Copy puts the picture on the clipboard, Save asks where to save it, Capture does both. The picture is exactly the pixels inside the frame, at the display's resolution, as a macOS screenshot shows them, windows' shadows included, without the pointer; the studio's own frame and palette are never in it, though they stay on screen. A frame across two displays isn't captured.
 - **Size:** the Mac App Store sizes (1280 × 800 to 2880 × 1800 px), web sizes, a size you type, or up to four of your own (Custom Size…). Sizes are in pixels of the frame's display.
 - **Aspect Lock** keeps the frame's proportions while you resize it.
 - **Timer:** 3, 5 or 10 seconds, to catch an open menu or a hover. Pressing Capture, Copy or Save again stops the countdown.
 - **Background:** the real screen, a colour, a gradient or an image of your own. It covers the display under every window, so you see on screen what the picture will show. Hide the Dock yourself (⌥⌘D) if it shouldn't be in the picture.
-- **One Window:** click a window to capture it alone, whole even where it is covered, centred in a picture of the frame's size, with or without its shadow (Window Shadow in the Background list), on a transparent or the chosen background. A green outline marks it; it ends by itself when the window closes or hides.
-- **Include the Pointer** puts the pointer in the picture.
+- **One Window:** click a window to capture it alone, whole even where it is covered, centred in a picture of the frame's size, with or without its shadow (One Window Shadow in the Background list, which can be changed while One Window is on), on a transparent or the chosen background. A green outline marks it; it ends by itself when the window closes or hides.
 - **Output** (the palette's Output button, or Screenshot › Output): PNG, JPEG or HEIC; sRGB or the display's colours; native pixels or 1× for the web. No date, device or location is written into the file.
 
 ## Keyboard shortcuts

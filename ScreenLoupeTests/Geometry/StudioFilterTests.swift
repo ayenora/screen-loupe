@@ -83,4 +83,31 @@ struct StudioFilterTests {
             StudioFilter.path([viewer, safari], ownPID: ownPID, appIsListed: false, kept: [backdrop.id])
                 == .excludingWindows([viewer.id]))
     }
+
+    // MARK: Hidden from a studio picture
+
+    /// The studio's kept windows by number: the Viewer, the Capture Area frame and the backdrop.
+    private let keptNumbers: Set<Int> = [1, 2, 5]
+
+    @Test func aStudioPictureHidesEveryWindowButTheKeptOnes() {
+        let hidden = (1...6).filter { StudioFilter.hides(number: $0, isShared: true, kept: keptNumbers) }
+        #expect(hidden == [3, 4, 6])
+    }
+
+    @Test func aWindowScreenCaptureDoesNotSeeIsLeftAsItIs() {
+        // Nothing to put back: it stays hidden from screen capture.
+        #expect(!StudioFilter.hides(number: 3, isShared: false, kept: keptNumbers))
+        #expect(!StudioFilter.hides(number: 1, isShared: false, kept: keptNumbers))
+    }
+
+    @Test func withNothingKeptEveryWindowIsHidden() {
+        #expect([1, 2, 5].allSatisfy { StudioFilter.hides(number: $0, isShared: true, kept: []) })
+    }
+
+    @Test func aWindowNeverShownKeepsNothing() {
+        // The Viewer not shown yet has no number: other windows without one are still hidden.
+        #expect(StudioFilter.hides(number: -1, isShared: true, kept: [-1, 2]))
+        #expect(StudioFilter.hides(number: 0, isShared: true, kept: [0]))
+        #expect(!StudioFilter.hides(number: 2, isShared: true, kept: [-1, 2]))
+    }
 }

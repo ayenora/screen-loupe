@@ -8,7 +8,7 @@ title: Screen Loupe
 
 [Download for macOS](https://github.com/ayenora/screen-loupe/releases/latest) · [Guide](guide) · [Support](support) · [Source on GitHub](https://github.com/ayenora/screen-loupe)
 
-Free and open source (MIT). macOS 14 Sonoma or later. No account, no telemetry: the app collects no data.
+Free and open source (MIT). macOS 15.2 Sequoia or later. No account, no telemetry: the app collects no data.
 
 ## Who it is for
 

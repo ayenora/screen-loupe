@@ -27,6 +27,16 @@ struct PixelSize: Codable, Equatable, Sendable {
     var height: Int
 }
 
+/// A rect of whole pixels in an image, origin at its top-left corner, y down.
+struct PixelRect: Equatable, Sendable {
+    var x: Int
+    var y: Int
+    var width: Int
+    var height: Int
+
+    var size: PixelSize { PixelSize(width: width, height: height) }
+}
+
 /// A display as the geometry layer sees it.
 struct DisplayInfo: Equatable, Sendable {
     var id: CGDirectDisplayID

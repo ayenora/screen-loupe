@@ -195,11 +195,7 @@ enum MainMenu {
                 withTitle: mode.title, action: #selector(AppController.chooseColorVision(_:)), keyEquivalent: "")
             item.tag = index
             item.target = target
-            if #available(macOS 14.4, *) {
-                item.subtitle = mode.detail
-            } else {
-                item.toolTip = mode.detail
-            }
+            item.subtitle = mode.detail
         }
         return menu
     }
@@ -251,10 +247,6 @@ enum MainMenu {
             withTitle: "Capture One Window…", action: #selector(AppController.toggleStudioOneWindow(_:)),
             keyEquivalent: "")
         oneWindow.target = target
-        let pointer = menu.addItem(
-            withTitle: "Include the Pointer", action: #selector(AppController.toggleStudioPointer(_:)),
-            keyEquivalent: "")
-        pointer.target = target
         return menu
     }
 
@@ -308,7 +300,8 @@ enum MainMenu {
         image.target = target
         menu.addItem(.separator())
         let shadow = menu.addItem(
-            withTitle: "Window Shadow", action: #selector(AppController.toggleStudioWindowShadow(_:)), keyEquivalent: ""
+            withTitle: "One Window Shadow", action: #selector(AppController.toggleStudioWindowShadow(_:)),
+            keyEquivalent: ""
         )
         shadow.target = target
         return menu

@@ -35,8 +35,6 @@ struct Settings: Codable, Equatable {
     var studioWindowShadow = true
     /// How long Capture, Copy and Save wait before taking the picture.
     var studioDelay = StudioDelay.off
-    /// Whether studio pictures, but One Window's, include the pointer.
-    var studioIncludesPointer = false
     /// The format, colour space and scale of studio pictures.
     var studioOutput = StudioOutput()
     /// Where screenshots are saved; the Desktop when unset.
@@ -127,7 +125,6 @@ struct Settings: Codable, Equatable {
         studioBackground = c.studioBackground(.studioBackground)
         studioWindowShadow = c.value(.studioWindowShadow, or: d.studioWindowShadow)
         studioDelay = c.value(.studioDelay, or: d.studioDelay)
-        studioIncludesPointer = c.value(.studioIncludesPointer, or: d.studioIncludesPointer)
         studioOutput = c.value(.studioOutput, or: d.studioOutput)
         screenshotDirectory = c.value(.screenshotDirectory, or: d.screenshotDirectory)
         gridEnabled = c.value(.gridEnabled, or: d.gridEnabled)

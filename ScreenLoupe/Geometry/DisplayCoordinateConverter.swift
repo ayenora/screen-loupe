@@ -25,6 +25,20 @@ extension CaptureGeometry {
     }
 }
 
+/// What `SCScreenshotManager.captureImage(in:)` is asked for to take a `CaptureGeometry`'s pixels,
+/// and where they are in its picture. The call takes a rect in Quartz global points and captures it
+/// at the display's native pixels, rounding a rect that isn't on whole points outward; so the rect
+/// asked for is the geometry's pixels grown to whole points, which no rounding changes, and the
+/// picture is cut back to them.
+struct ScreenshotRequest: Equatable, Sendable {
+    /// Whole points holding the geometry's pixels, on its display.
+    var rect: QuartzRect
+    /// The size the picture comes at: `rect` in the display's pixels.
+    var pictureSize: PixelSize
+    /// The geometry's pixels in the picture: `outputSize` at the pixel its `sourceRect` starts on.
+    var crop: PixelRect
+}
+
 /// Tells a Capture Area resized by its left or top edge from one that moved, frame to frame, so the
 /// Viewer keeps showing the same pixels.
 struct AreaResizeTracker {
@@ -185,6 +199,29 @@ struct DisplayCoordinateConverter: Sendable {
     }
 
     // MARK: Capture
+
+    /// What `captureImage(in:)` is asked for to take `geometry`'s pixels: the pixels a stream with
+    /// its `sourceRect` and `outputSize` gives, grown to whole points of its display.
+    func screenshotRequest(for geometry: CaptureGeometry) -> ScreenshotRequest {
+        let scale = geometry.display.scale
+        let source = geometry.sourceRect.rect
+        // The first pixel as `CaptureGeometry.areaOrigin` rounds it.
+        let pixelX = (source.minX * scale).rounded()
+        let pixelY = (source.minY * scale).rounded()
+        let size = geometry.outputSize
+        let minX = (pixelX / scale).rounded(.down)
+        let minY = (pixelY / scale).rounded(.down)
+        let maxX = ((pixelX + CGFloat(size.width)) / scale).rounded(.up)
+        let maxY = ((pixelY + CGFloat(size.height)) / scale).rounded(.up)
+        // Display frames are whole points, so whole points of the display are whole global points.
+        let display = quartzRect(GlobalRect(rect: geometry.display.globalFrame)).rect.origin
+        return ScreenshotRequest(
+            rect: QuartzRect(
+                rect: CGRect(x: display.x + minX, y: display.y + minY, width: maxX - minX, height: maxY - minY)),
+            pictureSize: pixelSize(of: CGSize(width: maxX - minX, height: maxY - minY), scale: scale),
+            crop: PixelRect(
+                x: Int(pixelX - minX * scale), y: Int(pixelY - minY * scale), width: size.width, height: size.height))
+    }
 
     /// What to capture for a Capture Area. `nil` when the area is on no display.
     func captureGeometry(for area: GlobalRect) -> CaptureGeometry? {

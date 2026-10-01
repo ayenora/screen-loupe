@@ -109,6 +109,27 @@ struct OneWindowModeTests {
         #expect(OneWindowMode.picking.isPicking)
         #expect(!OneWindowMode.on(safari).isPicking)
     }
+
+    @Test func theShadowChoiceIsOpenOnlyWhileOneWindowIsOn() {
+        #expect(!OneWindowMode.off.allowsShadowChoice)
+        #expect(OneWindowMode.picking.allowsShadowChoice)
+        #expect(OneWindowMode.on(safari).allowsShadowChoice)
+    }
+
+    @Test func theShadowChoiceFollowsEveryWayOneWindowEnds() {
+        // Let go, the window gone, the picker cancelled or hidden: greyed out again.
+        let ends: [(OneWindowMode, OneWindowMode.Event)] = [
+            (.on(safari), .toggle(studioVisible: true)), (.on(notes), .unavailable),
+            (.picking, .cancelled), (.picking, .hidden), (.picking, .toggle(studioVisible: false)),
+        ]
+        for (mode, event) in ends {
+            #expect(!mode.after(event).allowsShadowChoice, "\(mode) \(event)")
+        }
+        // Hiding the studio keeps a chosen window, and its shadow choice with it.
+        #expect(OneWindowMode.on(safari).after(.hidden).allowsShadowChoice)
+        // Turning on with the studio hidden doesn't open it.
+        #expect(!OneWindowMode.off.after(.toggle(studioVisible: false)).allowsShadowChoice)
+    }
 }
 
 struct OneWindowPictureTests {
