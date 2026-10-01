@@ -37,8 +37,15 @@ enum StudioFilter {
     /// Whether a studio picture hides this app's window numbered `number` from screen capture while
     /// it is taken: every window but `kept` that screen capture sees now (`isShared`), so each one
     /// hidden goes back as it was. A number of zero or less is a window never shown, which keeps
-    /// nothing: a kept window not shown yet doesn't keep every other such window.
-    static func hides(number: Int, isShared: Bool, kept: Set<Int>) -> Bool {
-        isShared && !(number > 0 && kept.contains(number))
+    /// nothing: a kept window not shown yet doesn't keep every other such window. An open menu
+    /// (`isMenu`, its window at the pop-up menu level) is kept with `keepsMenus`, a picture taken
+    /// by the timer, whose wait is for opening a menu to show; a picture taken at once hides it, so
+    /// the menu of the command still fading out stays out.
+    static func hides(
+        number: Int, isShared: Bool, kept: Set<Int>, isMenu: Bool = false, keepsMenus: Bool = false
+    )
+        -> Bool
+    {
+        isShared && !(number > 0 && kept.contains(number)) && !(isMenu && keepsMenus)
     }
 }

@@ -799,7 +799,7 @@ final class StudioController {
         countdown = next
         switch outcome {
         case .none: break
-        case .shootNow(let shot), .refusedNow(let shot): take(shot)
+        case .shootNow(let shot), .refusedNow(let shot): take(shot, timed: false)
         case .started(let stopsPicker):
             if stopsPicker {
                 oneWindowPicker?.stop()
@@ -818,7 +818,7 @@ final class StudioController {
         if outcome == .frameOffDisplay { notice(Notice.notOnOneDisplay) }
         updateCountdownPanel()
         // Gone from the screen first; the filter leaves it out of the picture anyway.
-        if case .fire(let shot) = outcome { take(shot) }
+        if case .fire(let shot) = outcome { take(shot, timed: true) }
     }
 
     /// The frame's place matters only while it is in use: One Window's picture is the window's.
@@ -862,10 +862,11 @@ final class StudioController {
     }
 
     /// Takes the picture, then writes it as Output said at the press, once for both the clipboard
-    /// and the file, off the main actor: a large picture takes most of a second to encode.
-    private func take(_ shot: StudioShot) {
+    /// and the file, off the main actor: a large picture takes most of a second to encode. `timed`:
+    /// at the end of the countdown, so an open menu is in the picture.
+    private func take(_ shot: StudioShot, timed: Bool) {
         let output = pressedOutput
-        take { [weak self] image, pointScale in
+        take(keepsMenus: timed) { [weak self] image, pointScale in
             let written = await Self.write(image, pointScale: pointScale, output: output, forPasteboard: shot != .save)
             guard let self, isVisible else { return }
             guard let written else { return beep(Notice.captureFailed) }
@@ -906,7 +907,7 @@ final class StudioController {
     /// failure too, with no beep and no notice.
     /// While a save panel is open, brings it forward instead: one panel at a time, and none in the
     /// picture.
-    private func take(_ then: @escaping (CGImage, CGFloat) async -> Void) {
+    private func take(keepsMenus: Bool, _ then: @escaping (CGImage, CGFloat) async -> Void) {
         switch check {
         case .ignore: return
         case .bringSavePanelForward:
@@ -940,7 +941,8 @@ final class StudioController {
                 else { return NSSound.beep() }
                 // The backdrop is on screen: the picture is what the frame shows.
                 await backdropOnScreen()
-                let image = try await StudioCapture.image(request, on: geometry.display, including: included)
+                let image = try await StudioCapture.image(
+                    request, on: geometry.display, including: included, keepsMenus: keepsMenus)
                 if isVisible { await then(image, geometry.display.scale) }
             } catch {
                 // Hidden meanwhile: the capture is cancelled, and nothing is said.

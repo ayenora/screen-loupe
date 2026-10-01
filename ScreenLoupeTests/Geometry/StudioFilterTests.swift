@@ -110,4 +110,20 @@ struct StudioFilterTests {
         #expect(StudioFilter.hides(number: 0, isShared: true, kept: [0]))
         #expect(!StudioFilter.hides(number: 2, isShared: true, kept: [-1, 2]))
     }
+
+    /// A picture taken at once hides an open menu, the one of the command still fading out.
+    @Test func aPictureAtOnceHidesAnOpenMenu() {
+        #expect(StudioFilter.hides(number: 7, isShared: true, kept: [], isMenu: true, keepsMenus: false))
+    }
+
+    /// A picture taken by the timer keeps an open menu: the wait is for opening one to show.
+    @Test func aTimedPictureKeepsAnOpenMenu() {
+        #expect(!StudioFilter.hides(number: 7, isShared: true, kept: [], isMenu: true, keepsMenus: true))
+        // Other windows of the app are hidden as ever.
+        #expect(StudioFilter.hides(number: 8, isShared: true, kept: [], isMenu: false, keepsMenus: true))
+        // A kept window stays, a menu or not.
+        #expect(!StudioFilter.hides(number: 9, isShared: true, kept: [9], isMenu: false, keepsMenus: false))
+        // A menu already hidden from capture isn't touched.
+        #expect(!StudioFilter.hides(number: 7, isShared: false, kept: [], isMenu: true, keepsMenus: false))
+    }
 }

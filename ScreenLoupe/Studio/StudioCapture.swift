@@ -25,15 +25,18 @@ enum StudioCapture {
     /// `captureImage(in:)` has no filter: it takes every window on screen in the rect. So this app's
     /// other windows are hidden from screen capture (`sharingType` `.none`, which the call already
     /// honours) while it runs, and put back as they were right after, whatever happens: they stay
-    /// visible to screen sharing. Menus aren't windows of `NSApp.windows` and can't be hidden: a
-    /// menu still fading out after its command, where it overlaps the frame, can be in the picture.
-    /// A window shown while the call runs isn't hidden.
+    /// visible to screen sharing. An open menu is a window of `NSApp.windows` too
+    /// (`NSPopupMenuWindow`, at the pop-up menu level, measured on macOS 27): `keepsMenus`, a
+    /// picture taken by the timer, keeps it (`StudioFilter.hides`). A window shown while the call
+    /// runs isn't hidden.
     static func image(
-        _ request: ScreenshotRequest, on display: DisplayInfo, including includedWindows: [Int]
+        _ request: ScreenshotRequest, on display: DisplayInfo, including includedWindows: [Int], keepsMenus: Bool
     ) async throws -> CGImage {
         let kept = Set(includedWindows)
         let hidden = NSApp.windows.filter {
-            StudioFilter.hides(number: $0.windowNumber, isShared: $0.sharingType != .none, kept: kept)
+            StudioFilter.hides(
+                number: $0.windowNumber, isShared: $0.sharingType != .none, kept: kept,
+                isMenu: $0.level >= .popUpMenu, keepsMenus: keepsMenus)
         }
         let sharing = hidden.map(\.sharingType)
         for window in hidden { window.sharingType = .none }
