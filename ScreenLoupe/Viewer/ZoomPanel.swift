@@ -12,7 +12,7 @@ import AppKit
 @MainActor
 final class ZoomPanel: NSPanel {
     let controls: ZoomControls
-    /// Called by the close button: the zoom panel is turned off; the window is only ordered out.
+    /// Called by the close button and ⌘W: the zoom panel is turned off; the window is only ordered out.
     var onClose: (() -> Void)?
     /// Called after every move of the panel; the Viewer tells its own moves from the user's.
     var onMoved: (() -> Void)?
@@ -37,6 +37,10 @@ final class ZoomPanel: NSPanel {
         collectionBehavior = [.ignoresCycle]
         contentView = controls
         setContentSize(controls.fittingSize)
+        // The close button turns the panel off, not `close()`: AppKit also calls `close()` on every
+        // window when the app quits, which mustn't turn it off for the next launch.
+        standardWindowButton(.closeButton)?.target = self
+        standardWindowButton(.closeButton)?.action = #selector(performClose(_:))
 
         // Posted on the main thread and delivered at once, so the Viewer's moves are still marked.
         _ = NotificationCenter.default.addObserver(forName: NSWindow.didMoveNotification, object: self, queue: nil) {
@@ -62,7 +66,6 @@ final class ZoomPanel: NSPanel {
         makeFirstResponder(nil)
     }
 
-    /// The close button turns the zoom panel off; the panel stays, to be shown again. The button's
-    /// action calls `close()` directly, not `performClose(_:)`.
-    override func close() { onClose?() }
+    /// The close button and ⌘W turn the zoom panel off; the panel stays, to be shown again.
+    override func performClose(_ sender: Any?) { onClose?() }
 }
