@@ -414,3 +414,145 @@ struct StudioOutputEncodingTests {
         #expect(written.pasteboard.isEmpty)
     }
 }
+
+struct StudioOutputAlphaTests {
+    /// `width` × `height` opaque pixels of many values, with alpha, as a capture of the screen gives
+    /// them, in `space`; with `alpha` at each of `translucent` (column, row from the top).
+    private func capture(
+        width: Int = 8, height: Int = 6, space: CGColorSpace = sRGB, translucent: [(x: Int, y: Int)] = [],
+        alpha: UInt8 = 0
+    ) -> CGImage {
+        var rows = (0..<(width * height)).map { index -> [UInt8] in
+            [UInt8(index * 37 % 256), UInt8(index * 91 % 256), UInt8(255 - index * 13 % 256), 255]
+        }
+        // Premultiplied: a translucent pixel's colour is no more than its alpha.
+        for point in translucent { rows[point.y * width + point.x] = [0, alpha / 2, alpha, alpha] }
+        return picture(width: width, height: height, space: space, rows)
+    }
+
+    /// `image`'s pixels without alpha, as a context of its own space draws them.
+    private func withoutAlpha(_ image: CGImage) -> CGImage {
+        let context = CGContext(
+            data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: image.colorSpace!,
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return context.makeImage()!
+    }
+
+    @Test func anOpaqueCaptureIsWrittenWithoutAlphaAndItsPixelsUnchanged() throws {
+        for (space, colors) in [(sRGB, StudioOutput.Colors.sRGB), (displayP3, .display)] {
+            let image = capture(space: space)
+            for format in StudioOutput.Format.allCases {
+                let prepared = try #require(StudioOutput(format: format, colors: colors).prepared(image, pointScale: 2))
+                #expect(prepared !== image, "\(format) \(colors)")
+                #expect(!StudioComposite.hasAlpha(prepared), "\(format) \(colors)")
+                #expect(prepared.colorSpace == space, "\(format) \(colors)")
+                #expect((prepared.width, prepared.height) == (8, 6), "\(format) \(colors)")
+                #expect(pixels(prepared, in: space) == pixels(image, in: space), "\(format) \(colors)")
+            }
+        }
+    }
+
+    @Test func oneTranslucentPixelKeepsAlphaWhereTheFormatKeepsIt() throws {
+        let (width, height) = (8, 6)
+        let places = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1), (3, 2)]
+        for (x, y) in places {
+            for alpha: UInt8 in [0, 1, 128, 254] {
+                let image = capture(width: width, height: height, translucent: [(x, y)], alpha: alpha)
+                for format in [StudioOutput.Format.png, .heic] {
+                    let prepared = try #require(StudioOutput(format: format).prepared(image, pointScale: 2))
+                    // Nothing else to change: the capture itself, every pixel exact.
+                    #expect(prepared === image, "\(format) (\(x), \(y)) alpha \(alpha)")
+                }
+                let flat = try #require(StudioOutput(format: .jpeg).prepared(image, pointScale: 2))
+                #expect(!StudioComposite.hasAlpha(flat), "(\(x), \(y)) alpha \(alpha)")
+            }
+        }
+    }
+
+    @Test func aTranslucentPictureConvertedOrScaledKeepsAlpha() throws {
+        let image = capture(space: displayP3, translucent: [(7, 5)], alpha: 254)
+        for format in [StudioOutput.Format.png, .heic] {
+            let converted = try #require(StudioOutput(format: format).prepared(image, pointScale: 2))
+            #expect(StudioComposite.hasAlpha(converted))
+            #expect(pixels(converted, in: sRGB)[47][3] == 254)
+            // Averaged with three opaque pixels, 254 would round back to 255: a transparent pixel.
+            let clear = capture(space: displayP3, translucent: [(7, 5)], alpha: 0)
+            let scaled = try #require(
+                StudioOutput(format: format, colors: .display, scale: .points).prepared(clear, pointScale: 2))
+            #expect(StudioComposite.hasAlpha(scaled))
+            #expect((scaled.width, scaled.height) == (4, 3))
+            // (255 × 3 + 0) / 4: about 191.
+            #expect(near([pixels(scaled, in: displayP3)[11][3]], [191], within: 1))
+        }
+    }
+
+    @Test func jpegOfAnOpaqueCaptureIsItsPixelsWithoutAlpha() throws {
+        let image = capture()
+        let flat = try #require(StudioOutput(format: .jpeg).prepared(image, pointScale: 1))
+        #expect(!StudioComposite.hasAlpha(flat))
+        #expect(pixels(flat, in: sRGB) == pixels(image, in: sRGB))
+    }
+
+    @Test func aPictureWithoutAlphaIsKeptAsItIsInEveryFormat() {
+        let image = withoutAlpha(capture())
+        for format in StudioOutput.Format.allCases {
+            #expect(StudioOutput(format: format).prepared(image, pointScale: 2) === image, "\(format)")
+        }
+    }
+
+    @Test func anOpaqueCaptureScaledToOneXHasNoAlpha() throws {
+        // 2 × 2 blocks of red and blue, with alpha: each becomes one opaque pixel of its colour.
+        let red: [UInt8] = [0, 0, 255, 255]
+        let blue: [UInt8] = [255, 0, 0, 255]
+        let rows = (0..<8).map { y in (0..<8).map { x in (x / 2 + y / 2).isMultiple(of: 2) ? red : blue } }
+        let image = picture(width: 8, height: 8, space: sRGB, rows.flatMap { $0 })
+        for format in [StudioOutput.Format.png, .heic] {
+            let scaled = try #require(StudioOutput(format: format, scale: .points).prepared(image, pointScale: 2))
+            #expect(!StudioComposite.hasAlpha(scaled), "\(format)")
+            let expected = (0..<4).flatMap { y in (0..<4).map { x in (x + y).isMultiple(of: 2) ? red : blue } }
+            #expect(pixels(scaled, in: sRGB) == expected, "\(format)")
+        }
+    }
+
+    @Test func anOpaqueCaptureConvertedToSRGBHasNoAlphaAndTheSamePixelsAsWithoutIt() throws {
+        let image = capture(space: displayP3)
+        for format in [StudioOutput.Format.png, .heic] {
+            let converted = try #require(StudioOutput(format: format).prepared(image, pointScale: 1))
+            #expect(!StudioComposite.hasAlpha(converted), "\(format)")
+            #expect(converted.colorSpace?.name == CGColorSpace.sRGB, "\(format)")
+            let reference = try #require(StudioOutput(format: format).prepared(withoutAlpha(image), pointScale: 1))
+            #expect(pixels(converted, in: sRGB) == pixels(reference, in: sRGB), "\(format)")
+        }
+    }
+
+    @Test func anOpaqueCaptureIsEncodedWithoutAlphaInTheFileAndOnTheClipboard() throws {
+        let image = capture(space: displayP3)
+        for format in StudioOutput.Format.allCases {
+            let output = StudioOutput(format: format, colors: .display)
+            let written = try #require(output.written(image, pointScale: 2, forPasteboard: true))
+            for item in [(type: format.typeIdentifier, data: written.data)] + written.pasteboard {
+                let decoded = try Decoded(item.data)
+                #expect(
+                    decoded.properties[kCGImagePropertyHasAlpha as String] as? Bool != true, "\(format) \(item.type)")
+                #expect(!StudioComposite.hasAlpha(decoded.image), "\(format) \(item.type)")
+            }
+        }
+        let prepared = try #require(StudioOutput(colors: .display).prepared(image, pointScale: 1))
+        let png = try Decoded(try #require(StudioOutput.encoded(prepared, as: .png)))
+        #expect(pixels(png.image, in: displayP3) == pixels(image, in: displayP3))
+    }
+
+    @Test func aCaptureWithOneTranslucentPixelIsEncodedWithAlpha() throws {
+        let image = capture(translucent: [(7, 5)], alpha: 254)
+        for format in [StudioOutput.Format.png, .heic] {
+            let written = try #require(StudioOutput(format: format).written(image, pointScale: 1, forPasteboard: true))
+            for item in [(type: format.typeIdentifier, data: written.data)] + written.pasteboard {
+                let decoded = try Decoded(item.data)
+                #expect(
+                    decoded.properties[kCGImagePropertyHasAlpha as String] as? Bool == true, "\(format) \(item.type)")
+            }
+        }
+    }
+}

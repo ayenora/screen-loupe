@@ -50,6 +50,33 @@ enum StudioComposite {
         }
     }
 
+    /// Whether every pixel of `image` is opaque: true without reading when it has no alpha
+    /// (`hasAlpha`); otherwise its alpha is drawn once into an 8-bit alpha-only bitmap, with no
+    /// colour work, and read until the first pixel under 255. A capture comes with alpha although
+    /// every pixel is opaque, so the alpha info alone doesn't tell. False when no context can be
+    /// made, so alpha is kept. Reads every pixel of a large picture: call it off the main actor.
+    static func isOpaque(_ image: CGImage) -> Bool {
+        guard hasAlpha(image) else { return true }
+        let width = image.width
+        let height = image.height
+        guard
+            let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue),
+            let data = context.data
+        else { return false }
+        context.interpolationQuality = .none
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let rowBytes = context.bytesPerRow
+        for row in 0..<height {
+            let alpha = UnsafeBufferPointer(
+                start: (data + row * rowBytes).assumingMemoryBound(to: UInt8.self), count: width)
+            if alpha.contains(where: { $0 != 255 }) { return false }
+        }
+        return true
+    }
+
     /// `image` in `space`: kept when already tagged with it, tagged when untagged, converted
     /// otherwise, so the pixels and the saved profile agree. `nil` when no context can be made.
     static func converted(_ image: CGImage, to space: CGColorSpace) -> CGImage? {

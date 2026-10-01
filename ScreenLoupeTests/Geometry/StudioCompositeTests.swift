@@ -191,6 +191,87 @@ struct StudioCompositeTests {
         #expect(!StudioComposite.hasAlpha(context.makeImage()!))
     }
 
+    // MARK: Opaque pixels
+
+    /// `width` × `height` opaque pixels with alpha, as a capture of the screen gives them, with
+    /// `alpha` at each of `translucent` (column, row from the top).
+    private func opaqueCapture(
+        width: Int, height: Int, translucent: [(x: Int, y: Int)] = [], alpha: UInt8 = 0
+    ) -> CGImage {
+        var rows = Array(repeating: [UInt8]([40, 80, 120, 255]), count: width * height)
+        for point in translucent { rows[point.y * width + point.x] = [0, 0, alpha, alpha] }
+        return capture(width: width, height: height, space: sRGB, rows)
+    }
+
+    @Test func aCaptureWithAlphaWhoseEveryPixelIsOpaqueIsOpaque() {
+        let image = opaqueCapture(width: 7, height: 5)
+        #expect(StudioComposite.hasAlpha(image))
+        #expect(StudioComposite.isOpaque(image))
+        #expect(StudioComposite.isOpaque(opaqueCapture(width: 1, height: 1)))
+    }
+
+    @Test func anImageWithoutAlphaIsOpaque() {
+        let context = CGContext(
+            data: nil, width: 3, height: 2, bitsPerComponent: 8, bytesPerRow: 0, space: sRGB,
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
+        #expect(StudioComposite.isOpaque(context.makeImage()!))
+    }
+
+    @Test func oneTranslucentPixelAnywhereMakesItNotOpaque() {
+        let (width, height) = (9, 6)
+        let corners = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1), (4, 3)]
+        for (x, y) in corners {
+            for alpha: UInt8 in [0, 1, 128, 254] {
+                let image = opaqueCapture(width: width, height: height, translucent: [(x, y)], alpha: alpha)
+                #expect(!StudioComposite.isOpaque(image), "(\(x), \(y)) alpha \(alpha)")
+            }
+        }
+    }
+
+    @Test func aTransparentPictureIsNotOpaque() {
+        #expect(!StudioComposite.isOpaque(capture(width: 2, height: 2, space: sRGB, picture.prefix(4).map { $0 })))
+        #expect(!StudioComposite.isOpaque(capture(width: 1, height: 1, space: sRGB, [[0, 0, 0, 0]])))
+    }
+
+    @Test func rowPaddingIsNotRead() {
+        // Each row padded with 8 transparent bytes past its last pixel.
+        let (width, height) = (3, 4)
+        let row =
+            Array(repeating: [UInt8]([1, 2, 3, 255]), count: width).flatMap { $0 } + Array(repeating: 0, count: 8)
+        let provider = CGDataProvider(data: Data(Array(repeating: row, count: height).flatMap { $0 }) as CFData)!
+        let image = CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4 + 8,
+            space: sRGB,
+            bitmapInfo: CGBitmapInfo(
+                rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        #expect(StudioComposite.isOpaque(image))
+    }
+
+    @Test func otherLayoutsAreReadToo() {
+        // Two pixels: opaque, then one with `alpha`; `bytes` per pixel, alpha last, straight.
+        func image(bits: Int, order: CGBitmapInfo, _ bytes: [UInt8]) -> CGImage {
+            CGImage(
+                width: 2, height: 1, bitsPerComponent: bits, bitsPerPixel: bits * 4, bytesPerRow: bytes.count,
+                space: sRGB, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue | order.rawValue),
+                provider: CGDataProvider(data: Data(bytes) as CFData)!, decode: nil, shouldInterpolate: false,
+                intent: .defaultIntent)!
+        }
+        func rgba8(_ alpha: UInt8) -> CGImage { image(bits: 8, order: [], [10, 20, 30, 255, 40, 50, 60, alpha]) }
+        // Little-endian 16-bit components.
+        func rgba16(_ alpha: UInt16) -> CGImage {
+            let components: [UInt16] = [1000, 2000, 3000, .max, 4000, 5000, 6000, alpha]
+            return image(
+                bits: 16, order: .byteOrder16Little, components.flatMap { [UInt8($0 & 0xff), UInt8($0 >> 8)] })
+        }
+        #expect(StudioComposite.isOpaque(rgba8(255)))
+        #expect(!StudioComposite.isOpaque(rgba8(254)))
+        #expect(!StudioComposite.isOpaque(rgba8(0)))
+        #expect(StudioComposite.isOpaque(rgba16(.max)))
+        #expect(!StudioComposite.isOpaque(rgba16(0x8000)))
+        #expect(!StudioComposite.isOpaque(rgba16(0)))
+    }
+
     // MARK: Background image size
 
     @Test func aLargeImageIsDecodedJustLargeEnoughToCover() {

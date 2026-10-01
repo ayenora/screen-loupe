@@ -105,7 +105,7 @@ A screenshot tool of its own, for exact, clean pictures — App Store and websit
 - **Timer:** 3, 5 or 10 seconds, to catch an open menu or a hover. Pressing Capture, Copy or Save again stops the countdown.
 - **Background:** the real screen, a colour, a gradient or an image of your own. It covers the display under every window, so you see on screen what the picture will show. Hide the Dock yourself (⌥⌘D) if it shouldn't be in the picture.
 - **One Window:** click a window to capture it alone, whole even where it is covered, centred in a picture of the frame's size, with or without its shadow (One Window Shadow in the Background list, which can be changed while One Window is on), on a transparent or the chosen background. A green outline marks it; it ends by itself when the window closes or hides.
-- **Output** (the palette's Output button, or Screenshot › Output): PNG, JPEG or HEIC; sRGB or the display's colours; native pixels or 1× for the web. No date, device or location is written into the file.
+- **Output** (the palette's Output button, or Screenshot › Output): PNG, JPEG or HEIC; sRGB or the display's colours; native pixels or 1× for the web. A PNG or HEIC has an alpha channel only when the picture has transparent pixels — One Window on a transparent background — so a store that refuses alpha takes every other picture as it is; JPEG lays transparent pixels on white. No date, device or location is written into the file.
 
 ## Keyboard shortcuts
 

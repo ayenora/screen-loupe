@@ -89,8 +89,12 @@ struct StudioOutput: Codable, Equatable, Sendable {
     }
 
     /// `image`, captured at `pointScale`, as it is written: in sRGB or kept in its own (the
-    /// display's) space, scaled to 1× or not, and laid on white when the format has no alpha. An
-    /// image that needs none of that is returned as it is, so its pixels stay exact. Scaling is
+    /// display's) space, scaled to 1× or not, and laid on white when the format has no alpha. Alpha
+    /// is kept only where the format keeps it and a pixel is not opaque (`StudioComposite.isOpaque`):
+    /// a capture comes with alpha although every pixel is opaque, and the App Store takes no
+    /// screenshot with an alpha channel, so such a picture is redrawn without one, its pixels
+    /// unchanged. An image that needs none of that is returned as it is, so its pixels stay exact.
+    /// Reads every pixel of a picture with alpha: call it off the main actor. Scaling is
     /// CoreGraphics' `.medium` interpolation, an area average: at exactly 2× each pixel is the mean
     /// of the four it covers, so edges stay without ringing. `nil` when no context can be made.
     func prepared(_ image: CGImage, pointScale: CGFloat) -> CGImage? {
@@ -99,7 +103,7 @@ struct StudioOutput: Codable, Equatable, Sendable {
         let native = PixelSize(width: image.width, height: image.height)
         let size = pixelSize(of: native, pointScale: pointScale)
         let hasAlpha = StudioComposite.hasAlpha(image)
-        let keepsAlpha = hasAlpha && format.keepsAlpha
+        let keepsAlpha = hasAlpha && format.keepsAlpha && !StudioComposite.isOpaque(image)
         if size == native, keepsAlpha == hasAlpha, image.colorSpace == space { return image }
         guard
             let context = CGContext(
