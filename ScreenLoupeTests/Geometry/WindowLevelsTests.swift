@@ -24,9 +24,10 @@ struct WindowLevelsTests {
         }
     }
 
-    /// Above the wallpaper and the desktop icons; below ordinary windows, the Dock and the menu bar.
+    /// Above the wallpaper, the desktop icons and the menu bar's legibility gradient one above them;
+    /// below ordinary windows, the Dock and the menu bar.
     @Test func theBackdropIsJustAboveTheDesktopIcons() {
-        #expect(WindowLevels.studioBackdrop == level(.desktopIconWindow) + 1)
+        #expect(WindowLevels.studioBackdrop == level(.desktopIconWindow) + 2)
         #expect(WindowLevels.studioBackdrop > level(.desktopWindow))
         for key in [CGWindowLevelKey.normalWindow, .floatingWindow, .dockWindow, .mainMenuWindow] {
             #expect(WindowLevels.studioBackdrop < level(key), "\(key)")

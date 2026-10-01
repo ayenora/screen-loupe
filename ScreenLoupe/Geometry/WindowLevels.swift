@@ -8,8 +8,9 @@ import CoreGraphics
 /// down: just above the desktop icons.
 enum WindowLevels {
     /// The studio's backdrop: above the wallpaper and the desktop icons, below every ordinary
-    /// window, the Dock and the menu bar.
-    static let studioBackdrop = Int(CGWindowLevelForKey(.desktopIconWindow)) + 1
+    /// window, the Dock and the menu bar. Two above the icons: the window server's legibility
+    /// gradient under the menu bar sits one above them and would cover the backdrop's top.
+    static let studioBackdrop = Int(CGWindowLevelForKey(.desktopIconWindow)) + 2
     /// The Capture Area's and the studio's frames and their overlays (`NSWindow.Level.statusBar`).
     static let frames = Int(CGWindowLevelForKey(.statusWindow))
     /// The window picker's panels: above the frames, so a click on a frame picks the window under it.

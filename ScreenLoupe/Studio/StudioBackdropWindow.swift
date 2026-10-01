@@ -3,10 +3,13 @@ import AppKit
 /// The Screenshot studio's backdrop (`StudioBackdrop`): a
 /// borderless window over a whole display, just above the desktop icons, showing the chosen
 /// background as one picture at the display's pixels. Click-through, never key, not in ⌘Tab or
-/// the Window menu, on every Space and still in Mission Control, like the desktop it covers.
+/// the Window menu, on every Space and still in Mission Control, like the desktop it covers. Under
+/// the menu bar it shows a grey strip (`StudioBackdrop.menuBarGray`) instead, so the menu reads
+/// whatever the background, and the strip is plainly not a part of it.
 @MainActor
 final class StudioBackdropWindow: NSWindow {
     private let backdropView = BackdropView()
+    private let menuBarStrip = MenuBarStrip()
 
     init() {
         // Not deferred: the window number is there from the start, for the capture filters.
@@ -21,6 +24,11 @@ final class StudioBackdropWindow: NSWindow {
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         contentView = backdropView
+        backdropView.addSubview(menuBarStrip)
+        // The menu bar hiding or showing itself changes the screen's visible frame.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(screenParametersChanged),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     override var canBecomeKey: Bool { false }
@@ -30,7 +38,19 @@ final class StudioBackdropWindow: NSWindow {
     func show(_ image: CGImage, over frame: CGRect) {
         backdropView.image = image
         setFrame(frame, display: false)
+        layOutMenuBarStrip()
         orderFrontRegardless()
+    }
+
+    /// The strip over the top of the backdrop, as tall as the menu bar on its screen.
+    private func layOutMenuBarStrip() {
+        let bounds = backdropView.bounds
+        let height = screen.map { StudioBackdrop.menuBarHeight(frame: $0.frame, visible: $0.visibleFrame) } ?? 0
+        menuBarStrip.frame = CGRect(x: 0, y: bounds.maxY - height, width: bounds.width, height: height)
+    }
+
+    @objc private func screenParametersChanged() {
+        layOutMenuBarStrip()
     }
 
     /// The picture is let go with the window, so a large one isn't held while nothing shows.
@@ -68,6 +88,23 @@ private final class BackdropView: NSView {
         // way, the old one is stretched without blending.
         layer.magnificationFilter = .nearest
         layer.minificationFilter = .nearest
+    }
+}
+
+/// The grey strip under the menu bar.
+private final class MenuBarStrip: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        let gray = StudioBackdrop.menuBarGray
+        layer?.backgroundColor = CGColor(srgbRed: gray, green: gray, blue: gray, alpha: 1)
     }
 }
 

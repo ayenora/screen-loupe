@@ -33,6 +33,17 @@ enum StudioBackdrop {
             height: Int((display.globalFrame.height * display.scale).rounded()))
     }
 
+    /// The menu bar's height over a screen of `frame` whose `visible` frame is below it, both in
+    /// AppKit's coordinates: 0 with no menu bar on that screen, or one that hides itself.
+    static func menuBarHeight(frame: CGRect, visible: CGRect) -> CGFloat {
+        max(0, frame.maxY - visible.maxY)
+    }
+
+    /// The grey of the strip under the menu bar, in sRGB: white and black symbols on it are equally
+    /// legible, as the menu bar's are white or black by the wallpaper, not by the backdrop. Its
+    /// relative luminance is √(1.05 × 0.05) − 0.05, where both contrasts are 4.58:1.
+    static let menuBarGray: CGFloat = 118 / 255
+
     /// A backdrop picture: the placement, drawn in `space`, its display's colour space.
     struct Target: Equatable {
         var placement: Placement

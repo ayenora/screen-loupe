@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 
 /// A Retina primary display, a non-Retina one left of it and lower, and a Retina one above it.
@@ -155,5 +156,40 @@ struct StudioBackdropTests {
         #expect(
             StudioComposite.backgroundMaxPixelSize(image: PixelSize(width: 12000, height: 8000), display: largest)
                 == 6016)
+    }
+
+    // MARK: The strip under the menu bar
+
+    @Test func theMenuBarIsWhatTheVisibleFrameLeavesAtTheTop() {
+        // The Dock at the bottom takes from the visible frame too, but not from the strip.
+        let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        #expect(
+            StudioBackdrop.menuBarHeight(frame: frame, visible: CGRect(x: 0, y: 70, width: 1440, height: 806)) == 24)
+        // A notched display's taller menu bar.
+        #expect(
+            StudioBackdrop.menuBarHeight(frame: frame, visible: CGRect(x: 0, y: 0, width: 1440, height: 863)) == 37)
+    }
+
+    @Test func aScreenWithoutAMenuBarHasNoStrip() {
+        // A hidden menu bar, or a display without one when displays share Spaces.
+        let frame = CGRect(x: -1920, y: -300, width: 1920, height: 1080)
+        #expect(StudioBackdrop.menuBarHeight(frame: frame, visible: frame) == 0)
+        #expect(
+            StudioBackdrop.menuBarHeight(frame: frame, visible: CGRect(x: -1920, y: -200, width: 1920, height: 980))
+                == 0)
+    }
+
+    @Test func aVisibleFrameReachingPastTheScreenGivesNoNegativeStrip() {
+        let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        #expect(StudioBackdrop.menuBarHeight(frame: frame, visible: CGRect(x: 0, y: 0, width: 1440, height: 910)) == 0)
+    }
+
+    @Test func whiteAndBlackSymbolsAreEquallyLegibleOnTheStrip() {
+        func linear(_ c: CGFloat) -> CGFloat { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        let luminance = linear(StudioBackdrop.menuBarGray)
+        let onWhite = 1.05 / (luminance + 0.05)
+        let onBlack = (luminance + 0.05) / 0.05
+        #expect(onWhite >= 4.5 && onBlack >= 4.5)
+        #expect(abs(onWhite - onBlack) < 0.15)
     }
 }
