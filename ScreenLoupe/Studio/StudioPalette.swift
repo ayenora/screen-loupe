@@ -24,6 +24,8 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
     var onToggleAspectLock: (() -> Void)?
     /// Called with the Timer button, to open the delays beside it.
     var onTimer: ((NSView) -> Void)?
+    /// Called with the Output button, to open the format, colour and scale beside it.
+    var onOutput: ((NSView) -> Void)?
     /// Called with the Background button, to open the backgrounds beside it.
     var onBackground: ((NSView) -> Void)?
     var onToggleOneWindow: (() -> Void)?
@@ -84,7 +86,7 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
         didSet { fitToWindowButton.isPicking = isPickingWindow }
     }
 
-    /// The Size, Timer or Background button whose list is open: it shows pressed until the list
+    /// The Size, Timer, Output or Background button whose list is open: it shows pressed until the list
     /// closes. Set by the studio when it opens a list, cleared when the list is ordered out.
     var openListButton: NSView? {
         didSet {
@@ -153,6 +155,7 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
                 fitToWindowButton,
                 aspectLockButton,
                 timerButton,
+                Self.button("slider.horizontal.3", "Output", #selector(outputClicked)),
             ],
             [backgroundButton, oneWindowButton, pointerButton],
         ]
@@ -258,6 +261,7 @@ final class StudioPalette: NSPanel, PaletteButtonHost {
     @objc private func saveClicked() { onSave?() }
     @objc private func sizeClicked(_ sender: NSButton) { onSize?(sender) }
     @objc private func fitToWindowClicked() { onFitToWindow?() }
+    @objc private func outputClicked(_ sender: NSButton) { onOutput?(sender) }
 
     /// Shows the setting, not the click: the setting sets it back.
     @objc private func aspectLockClicked(_ sender: NSButton) {

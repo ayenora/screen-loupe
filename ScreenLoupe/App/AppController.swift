@@ -178,17 +178,17 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// Screenshot › Output: each item carries its choice.
     @objc func chooseStudioFormat(_ sender: NSMenuItem) {
         guard let format = sender.representedObject as? StudioOutput.Format else { return }
-        settings.update { $0.studioOutput.format = format }
+        windows.studio.chooseFormat(format)
     }
 
     @objc func chooseStudioColors(_ sender: NSMenuItem) {
         guard let colors = sender.representedObject as? StudioOutput.Colors else { return }
-        settings.update { $0.studioOutput.colors = colors }
+        windows.studio.chooseColors(colors)
     }
 
     @objc func chooseStudioScale(_ sender: NSMenuItem) {
         guard let scale = sender.representedObject as? StudioOutput.Scale else { return }
-        settings.update { $0.studioOutput.scale = scale }
+        windows.studio.chooseScale(scale)
     }
 
     @objc func toggleStudioPointer(_ sender: Any?) {

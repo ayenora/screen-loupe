@@ -258,7 +258,8 @@ enum MainMenu {
         return menu
     }
 
-    /// Screenshot › Output: how studio pictures are written. Each item carries its choice;
+    /// Screenshot › Output: how studio pictures are written, the same choices as the palette's
+    /// Output list. Each item carries its choice;
     /// `validateMenuItem` checks the current ones.
     private static func outputMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "Output")

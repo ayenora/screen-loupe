@@ -53,7 +53,18 @@ enum StudioPlacement {
         return CGPoint(x: x.rounded(), y: y.rounded())
     }
 
-    /// Between the palette and its Size, Timer or Background list.
+    /// A saved palette origin for a palette `size` big, moved as little as needed to keep the palette
+    /// inside `visibleFrame`: a palette left at the top grows upward from its bottom-left corner when
+    /// it gets taller, and its level is above the menu bar's. The user parked it there, so no margin is
+    /// added. Larger than `visibleFrame`, its top-left corner stays inside, so the title bar stays in
+    /// reach.
+    static func restoredPaletteOrigin(_ saved: CGPoint, size: CGSize, in visibleFrame: CGRect) -> CGPoint {
+        let x = max(min(saved.x, visibleFrame.maxX - size.width), visibleFrame.minX)
+        let y = min(max(saved.y, visibleFrame.minY), visibleFrame.maxY - size.height)
+        return CGPoint(x: x, y: y)
+    }
+
+    /// Between the palette and its Size, Timer, Output or Background list.
     static let popoverGap: CGFloat = 6
 
     /// A list's origin: right of `palette`, towards the frame it sits left of, or left of it when

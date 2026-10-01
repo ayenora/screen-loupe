@@ -61,6 +61,51 @@ struct StudioPlacementTests {
         #expect(origin.y == CGFloat(8))
     }
 
+    @Test func restoredPaletteInsideTheDisplayStaysWhereItWas() {
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875)
+        let saved = CGPoint(x: 100, y: 300)
+        #expect(StudioPlacement.restoredPaletteOrigin(saved, size: palette, in: visible) == saved)
+        // Touching every edge exactly is inside: no margin is added.
+        let corner = CGPoint(x: 1440 - 40, y: 875 - 220)
+        #expect(StudioPlacement.restoredPaletteOrigin(corner, size: palette, in: visible) == corner)
+        #expect(StudioPlacement.restoredPaletteOrigin(.zero, size: palette, in: visible) == .zero)
+    }
+
+    @Test func restoredPaletteThatGrewUpUnderTheMenuBarMovesDownJustEnough() {
+        // Parked against the menu bar, 196 pt tall; now 220 pt, its top 24 pt above the visible frame.
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875)
+        let saved = CGPoint(x: 600, y: 875 - 196)
+        let origin = StudioPlacement.restoredPaletteOrigin(saved, size: palette, in: visible)
+        #expect(origin == CGPoint(x: 600, y: 875 - 220))
+    }
+
+    @Test func restoredPaletteStickingOutAtAnySideComesBackOn() {
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875)
+        let left = StudioPlacement.restoredPaletteOrigin(CGPoint(x: -15, y: 300), size: palette, in: visible)
+        #expect(left == CGPoint(x: 0, y: 300))
+        let right = StudioPlacement.restoredPaletteOrigin(CGPoint(x: 1420, y: 300), size: palette, in: visible)
+        #expect(right == CGPoint(x: 1400, y: 300))
+        // Below the visible frame: over the Dock.
+        let bottom = StudioPlacement.restoredPaletteOrigin(CGPoint(x: 100, y: -50), size: palette, in: visible)
+        #expect(bottom == CGPoint(x: 100, y: 0))
+        let corner = StudioPlacement.restoredPaletteOrigin(CGPoint(x: 1430, y: 870), size: palette, in: visible)
+        #expect(corner == CGPoint(x: 1400, y: 655))
+    }
+
+    @Test func restoredPaletteOnADisplayWithNegativeCoordinates() {
+        let visible = CGRect(x: -1920, y: -300, width: 1920, height: 1055)
+        let saved = CGPoint(x: -1930, y: 600)
+        let origin = StudioPlacement.restoredPaletteOrigin(saved, size: palette, in: visible)
+        #expect(origin == CGPoint(x: -1920, y: 755 - 220))
+        #expect(visible.contains(CGRect(origin: origin, size: palette)))
+    }
+
+    @Test func restoredPaletteLargerThanTheDisplayKeepsItsTopLeftOn() {
+        let visible = CGRect(x: 0, y: 0, width: 30, height: 200)
+        let origin = StudioPlacement.restoredPaletteOrigin(CGPoint(x: 50, y: 100), size: palette, in: visible)
+        #expect(origin == CGPoint(x: 0, y: 200 - 220))
+    }
+
     @Test func paletteBesideAFrameOnADisplayWithNegativeCoordinates() {
         let visible = CGRect(x: -1920, y: -300, width: 1920, height: 1080)
         let frame = CGRect(x: -1500, y: -100, width: 800, height: 500)

@@ -33,7 +33,7 @@ final class StudioController {
     private var isCapturing = false
     /// The last save panel; while it is open, the commands bring it forward instead.
     private var savePanel: NSSavePanel?
-    /// The Size, the Timer or the Background list beside the palette; the palette knows whose it is.
+    /// The Size, the Timer, the Output or the Background list beside the palette; the palette knows whose it is.
     private let listPanel = StudioListPanel()
     /// Built the first time Custom Size… is chosen, then kept.
     private var customSizesWindow: NSPanel?
@@ -65,6 +65,7 @@ final class StudioController {
         palette.onFitToWindow = { [weak self] in self?.toggleFitToWindow() }
         palette.onToggleAspectLock = { [weak self] in self?.toggleAspectLock() }
         palette.onTimer = { [weak self] in self?.showDelays(beside: $0) }
+        palette.onOutput = { [weak self] in self?.showOutput(beside: $0) }
         palette.onBackground = { [weak self] in self?.showBackgrounds(beside: $0) }
         palette.onToggleOneWindow = { [weak self] in self?.toggleOneWindow() }
         palette.onTogglePointer = { [weak self] in self?.togglePointer() }
@@ -272,6 +273,41 @@ final class StudioController {
                 self?.listPanel.dismiss()
                 self?.chooseDelay(delay)
             }
+        }
+    }
+
+    // MARK: Output
+
+    /// Screenshot › Output and the palette's Output list.
+    func chooseFormat(_ format: StudioOutput.Format) {
+        settings.update { $0.studioOutput.format = format }
+    }
+
+    func chooseColors(_ colors: StudioOutput.Colors) {
+        settings.update { $0.studioOutput.colors = colors }
+    }
+
+    func chooseScale(_ scale: StudioOutput.Scale) {
+        settings.update { $0.studioOutput.scale = scale }
+    }
+
+    /// The Output list beside the palette's Output button, or closes it while it shows.
+    private func showOutput(beside button: NSView) {
+        toggleList(beside: button) {
+            StudioOutputList(
+                current: settings.settings.studioOutput,
+                chooseFormat: { [weak self] format in
+                    self?.listPanel.dismiss()
+                    self?.chooseFormat(format)
+                },
+                chooseColors: { [weak self] colors in
+                    self?.listPanel.dismiss()
+                    self?.chooseColors(colors)
+                },
+                chooseScale: { [weak self] scale in
+                    self?.listPanel.dismiss()
+                    self?.chooseScale(scale)
+                })
         }
     }
 
@@ -679,9 +715,11 @@ final class StudioController {
         guard let converter else { return }
         let size = palette.frame.size
         if !besideFrame, let saved = settings.settings.studioPaletteOrigin,
-            converter.owningDisplay(for: GlobalRect(rect: CGRect(origin: saved, size: size))) != nil
+            let display = converter.owningDisplay(for: GlobalRect(rect: CGRect(origin: saved, size: size)))
         {
-            palette.setFrameOrigin(saved)
+            let visible = NSScreen.screen(forDisplay: display.id)?.visibleFrame
+            palette.setFrameOrigin(
+                visible.map { StudioPlacement.restoredPaletteOrigin(saved, size: size, in: $0) } ?? saved)
             return
         }
         let area = frame.captureRect

@@ -19,7 +19,7 @@ enum StudioListLook {
     }
 }
 
-/// A row of the Size, Timer or Background list, highlighted under the pointer as a menu item is.
+/// A row of the Size, Timer, Output or Background list, highlighted under the pointer as a menu item is.
 struct StudioListRow: View {
     let title: String
     let isChecked: Bool
@@ -47,7 +47,7 @@ struct StudioListRow: View {
     }
 }
 
-/// The Size, Timer or Background list beside the palette: a non-activating panel in the
+/// The Size, Timer, Output or Background list beside the palette: a non-activating panel in the
 /// pop-over's look. A click on an entry works without activating the app; a click in a text field
 /// makes only this panel key, so typing reaches it while the app the user works in stays active
 /// and none of this app's other windows come forward. Closed by an entry, Escape, the button that
