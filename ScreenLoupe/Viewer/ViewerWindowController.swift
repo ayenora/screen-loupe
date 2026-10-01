@@ -2,6 +2,8 @@ import AppKit
 
 /// The Viewer: a regular, resizable window that can go full screen or live on another display. It
 /// shows `ViewerContentView`, or the permission explanation while Screen Recording access is missing.
+/// Its zoom panel shows as the strip under its toolbar or as a panel of its own beside it
+/// (`updateZoomPanel`).
 @MainActor
 final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     /// Called when the user closes the Viewer.
@@ -16,6 +18,17 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     private let zoomPan: ZoomPanController
     private let content: ViewerContentView
     private let toolbar: ViewerToolbar
+    private let zoomStrip: ViewerZoomStrip
+    private let zoomPanel: ZoomPanel
+    /// While the window is going into full screen, before its style mask says it is.
+    private var isEnteringFullScreen = false
+    /// Set while the Viewer moves the panel itself, so only the user's moves are kept.
+    private var isPlacingZoomPanel = false
+    /// The Viewer's frame when it last placed the panel, and where it put it. A panel move with the
+    /// Viewer elsewhere is AppKit taking the child along, and one that ends where the Viewer put it
+    /// is the Viewer's own, whichever notification comes first; neither is the user's.
+    private var zoomPanelViewerFrame: CGRect?
+    private var zoomPanelPlacedOrigin: CGPoint?
     private var showsPermissionView: Bool?
     /// Screen Recording access as last checked.
     private var hasAccess: Bool?
@@ -33,8 +46,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         self.zoomPan = zoomPan
         content = ViewerContentView(
             settings: settings, frameStore: frameStore, zoomPan: zoomPan, inspector: inspector, project: project)
+        zoomStrip = ViewerZoomStrip(zoomPan: zoomPan)
+        zoomPanel = ZoomPanel(zoomPan: zoomPan)
         toolbar = ViewerToolbar(
-            zoomPan: zoomPan, settings: settings, ruler: content.ruler, selection: content.selection,
+            settings: settings, ruler: content.ruler, selection: content.selection,
             colorVision: content.colorVision)
 
         let window = NSWindow(
@@ -49,6 +64,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.toolbarStyle = .unified
+        window.addTitlebarAccessoryViewController(zoomStrip)
         hasSavedFrame = window.setFrameUsingName("Viewer")
         super.init(window: window)
         window.delegate = self
@@ -56,6 +72,26 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
             window.center()
         }
         window.setFrameAutosaveName("Viewer")
+        zoomStrip.controls.onDoneEditing = { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(content.viewerView)
+        }
+        // The panel's field had the keys: they go back to the Viewer's image.
+        zoomPanel.controls.onDoneEditing = { [weak self] in
+            guard let self, let window = self.window else { return }
+            window.makeKey()
+            window.makeFirstResponder(content.viewerView)
+        }
+        zoomPanel.onClose = { [weak self] in self?.settings.update { $0.zoomPanelVisible = false } }
+        zoomPanel.onMoved = { [weak self] in
+            guard let self, let window = self.window, !isPlacingZoomPanel, zoomPanel.parent != nil,
+                window.frame == zoomPanelViewerFrame, zoomPanel.frame.origin != zoomPanelPlacedOrigin
+            else { return }
+            let offset = ZoomPanelPlacement.offset(of: zoomPanel.frame, from: window.frame)
+            settings.update { $0.zoomPanelOffset = offset }
+            // Where it now is, so a drag back to where the Viewer put it counts too.
+            zoomPanelPlacedOrigin = zoomPanel.frame.origin
+        }
 
         content.statusView.onRetry = { [weak self] in self?.onRetry?() }
         content.onShowCapture = { [weak self] in
@@ -69,7 +105,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.statusView.onRestart = { [weak self] in self?.permissions.relaunch() }
         // A floating window stays above other apps' windows even while another app is active. The
         // Capture Area frame sits higher still (`.statusBar`), so the Viewer never covers it.
-        settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.window?.level = $0 ? .floating : .normal }
+        settings.observe(\.viewerAlwaysOnTop) { [weak self] in
+            self?.window?.level = $0 ? .floating : .normal
+            self?.updateZoomPanel()
+        }
+        settings.observe(\.zoomPanelVisible) { [weak self] _ in self?.updateZoomPanel() }
+        settings.observe(\.zoomPanelStyle) { [weak self] _ in self?.updateZoomPanel() }
         // Before the content or the permission explanation comes in: a capture shown when the app
         // quit shows again, without access too, and before the first live frame.
         content.restoreCaptures()
@@ -331,7 +372,96 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         content.newImageRequest()
+        isEnteringFullScreen = false
+        hideZoomPanel()
         onClose?()
+    }
+
+    // MARK: Zoom panel
+
+    /// After AppKit has shown the window, so the panel can go beside it.
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        updateZoomPanel()
+    }
+
+    func windowDidMove(_ notification: Notification) { followViewer() }
+    func windowDidResize(_ notification: Notification) { followViewer() }
+    func windowDidChangeScreen(_ notification: Notification) { followViewer() }
+    func windowDidMiniaturize(_ notification: Notification) { updateZoomPanel() }
+    func windowDidDeminiaturize(_ notification: Notification) { updateZoomPanel() }
+
+    /// A child window doesn't go into the Viewer's full-screen Space with it, so in full screen the
+    /// floating style shows as the strip, which does: from the start of the transition, and then as
+    /// long as the style mask says full screen.
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        isEnteringFullScreen = true
+        updateZoomPanel()
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        isEnteringFullScreen = false
+        updateZoomPanel()
+    }
+
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        isEnteringFullScreen = false
+        updateZoomPanel()
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) { updateZoomPanel() }
+
+    /// The strip or the panel, as the settings say, while the capture shows (not the permission
+    /// explanation): the floating style in full screen, and while the Viewer is hidden or
+    /// minimized, has no panel.
+    private func updateZoomPanel() {
+        guard let window else { return }
+        let current = settings.settings
+        let isOn = current.zoomPanelVisible && showsPermissionView == false
+        let isFullScreen = isEnteringFullScreen || window.styleMask.contains(.fullScreen)
+        let floats = current.zoomPanelStyle == .floating && !isFullScreen
+        zoomStrip.isHidden = !isOn || floats
+        guard isOn, floats, window.isVisible, !window.isMiniaturized else { return hideZoomPanel() }
+        zoomPanel.level = window.level
+        placeZoomPanel()
+        if zoomPanel.parent == nil {
+            window.addChildWindow(zoomPanel, ordered: .above)
+        }
+    }
+
+    /// The Viewer moved, resized or changed screen: the panel, while it shows, goes to its offset.
+    private func followViewer() {
+        guard zoomPanel.parent != nil else { return }
+        placeZoomPanel()
+    }
+
+    private func hideZoomPanel() {
+        guard zoomPanel.parent != nil || zoomPanel.isVisible else { return }
+        window?.removeChildWindow(zoomPanel)
+        zoomPanel.orderOut(nil)
+    }
+
+    /// Where the user left the panel from the Viewer, kept on screen. The first time, beside the
+    /// Viewer's right edge, or its left (`ZoomPanelPlacement.defaultOffset`), chosen once and kept
+    /// as the offset, so the panel never changes sides as the Viewer moves.
+    private func placeZoomPanel() {
+        guard let window, let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        let size = zoomPanel.frame.size
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        let offset =
+            settings.settings.zoomPanelOffset
+            ?? ZoomPanelPlacement.defaultOffset(size: size, viewer: window.frame, visibleFrames: screens)
+        if settings.settings.zoomPanelOffset == nil {
+            settings.update { $0.zoomPanelOffset = offset }
+        }
+        let origin = ZoomPanelPlacement.origin(
+            size: size, offset: offset, viewer: window.frame, visibleFrames: screens, fallback: visible)
+        zoomPanelViewerFrame = window.frame
+        zoomPanelPlacedOrigin = origin
+        guard zoomPanel.frame.origin != origin else { return }
+        isPlacingZoomPanel = true
+        zoomPanel.setFrameOrigin(origin)
+        isPlacingZoomPanel = false
     }
 
     /// Swaps between the permission explanation and the capture when the permission state changes.
@@ -353,6 +483,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         showsPermissionView = !showsContent
         window?.toolbar = showsContent ? toolbar.toolbar : nil
         window?.contentView = showsContent ? content : PermissionView(permissions: permissions)
+        updateZoomPanel()
         if showsContent {
             window?.makeFirstResponder(content.viewerView)
         }

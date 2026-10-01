@@ -38,11 +38,13 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 
 ![The Viewer at 2000% with the ruler and the pixel grid, beside the Simulator with the Capture Area over it](images/01-zoom-ruler-grid.png)
 
-- **Zoom:** the toolbar's presets Fit, 1×, 2×, 4×, 8× and 16× (100% to 1600%), pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom field. Pinch, the wheel, and `+` / `-` with the pointer over the Viewer keep the point under the pointer in place; a preset or a typed zoom brings the middle of what you see to the middle of the Viewer. Presets, `+` / `-` and Reset Zoom glide there in a fifth of a second, or change at once with Reduce Motion on.
+- **Zoom:** the presets Fit, 1×, 2×, 4×, 8×, 16×, 32× and 64× (100% to 6400%) in the zoom panel, the loupe's ▾ or View › Zoom, pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom panel's field and press Return (Escape leaves it). Pinch, the wheel, and `+` / `-` with the pointer over the Viewer keep the point under the pointer in place; a preset or a typed zoom brings the middle of what you see to the middle of the Viewer. Presets, `+` / `-` and Reset Zoom glide there in a fifth of a second, or change at once with Reduce Motion on.
+- **Zoom panel:** the presets, the one matching the zoom highlighted, and the zoom in percent. The loupe, the first button in the toolbar, shows and hides it; its ▾ also chooses where it goes: **In the Toolbar**, a strip under the toolbar, or **Floating Panel**, a small window beside the Viewer that moves with it. Drag the floating panel anywhere — left, right or below the Viewer — and it keeps that place next to the Viewer, also after a relaunch; its close button hides it. In full screen it shows as the strip.
 - **Pan:** drag, or scroll with two fingers.
 - **Nothing moves on its own.** Moving or resizing the frame keeps the Viewer's zoom and framing; Fit applies only when you ask for it.
 - **Size Window to Area** (View menu, ⌥⌘0) sizes the window to show the whole magnified area.
 - **Keep on Top** (the pin at the right of the toolbar) keeps the Viewer above other apps.
+- **Side panels:** the Color Meter, References and Recent Captures are the three segments of one toolbar control; each turns its panel on and off. A window too narrow for the whole toolbar puts the rest in its » menu.
 - The pointer inside the frame shows in the Viewer as a crosshair, an arrow, or the original cursor captured with the pixels; the ▾ beside its button chooses.
 
 ## Copying and saving
@@ -52,6 +54,8 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 | **Copy View** ⌘C | Exactly what the Viewer shows, at its zoom — with a colour vision simulation while one is on. |
 | **Copy Source** ⇧⌘C | The area as it is on screen, unmagnified, at native resolution. |
 | **Save View…** ⌘S / **Save Source…** ⇧⌘S | The same as a PNG file. |
+
+The toolbar's Copy button copies the view and its ▾ offers Copy Source too; Save saves the view and its ▾ offers Save Source.
 
 To copy just a part of the view:
 
@@ -69,7 +73,7 @@ To copy just a part of the view:
 
 ![The Color Meter with the crosshair on a pixel](images/02-color-meter.png)
 
-- **Color Meter** (eyedropper button): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a colour below — recent, favourite, Text or Background — to see it in every format instead; the line above the swatch names it, and a recent row is highlighted. Move the pointer over the image — in the Viewer or inside the Capture Area — and the pixel under it is back.
+- **Color Meter** (the eyedropper segment in the toolbar): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a colour below — recent, favourite, Text or Background — to see it in every format instead; the line above the swatch names it, and a recent row is highlighted. Move the pointer over the image — in the Viewer or inside the Capture Area — and the pixel under it is back.
   - **Recent:** every click on a pixel keeps its colour — the last eight, kept between launches — except a click that fills a favourite. Right-click a row to copy it as HEX, CSS, SwiftUI or AppKit, add it to Favorites, or remove it.
   - **Favorites:** eight slots for the colours you want to keep. Right-click one to copy or remove it.
   - **Contrast:** Text and Background with an "Aa" preview, the WCAG 2 contrast ratio and Pass or Fail for Text AA, Large AA, Text AAA and Large AAA (large = 18 pt, or 14 pt bold). Swap exchanges them.

@@ -86,9 +86,6 @@ final class ZoomPanController {
         changed()
     }
 
-    /// Whether the current zoom is the Fit zoom, for the toolbar.
-    var isFit: Bool { state.isFit }
-
     /// The zoom kept from the last session, applied to the first frame instead of Fit.
     var restoredZoom: CGFloat?
 
@@ -158,6 +155,16 @@ final class ZoomPanController {
         keptForFirstViewport = nil
         state.contentSize = .zero
         changed()
+    }
+
+    /// A preset by its index in `ZoomPanState.presetNames`: Fit, or one of `ZoomPanState.presets`.
+    /// The zoom panel, the loupe button's ▾ and View › Zoom.
+    func zoom(toPreset index: Int) {
+        if index == 0 {
+            fit()
+        } else if ZoomPanState.presets.indices.contains(index - 1) {
+            setZoom(ZoomPanState.presets[index - 1])
+        }
     }
 
     /// The Fit command: glides.

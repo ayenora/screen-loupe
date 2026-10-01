@@ -58,6 +58,7 @@
 				Geometry/StudioPlacement.swift,
 				Geometry/StudioSizes.swift,
 				Geometry/StudioTimer.swift,
+				Geometry/ToolbarSelection.swift,
 				Geometry/ViewerHints.swift,
 				Geometry/ViewerSelection.swift,
 				Geometry/ViewerWindowFit.swift,
@@ -65,6 +66,7 @@
 				Geometry/WindowMagnet.swift,
 				Geometry/ZoomAnimation.swift,
 				Geometry/ZoomPanMath.swift,
+				Geometry/ZoomPanelPlacement.swift,
 			);
 			target = 5C3000000000000000000002 /* ScreenLoupeTests */;
 		};

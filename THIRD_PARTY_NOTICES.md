@@ -4,10 +4,11 @@ Screen Loupe bundles the following third-party material. The app carries the sam
 
 ## Lucide
 
-Two icons from [Lucide](https://lucide.dev), with the stroke width adjusted to match SF Symbols:
+Three icons from [Lucide](https://lucide.dev), with the stroke width adjusted to match SF Symbols:
 
 - `anchor` — `ScreenLoupe/Resources/Assets.xcassets/anchor.imageset/anchor.svg`, the Fixed Position pin mode.
 - `magnet` — `ScreenLoupe/Resources/Assets.xcassets/magnet.imageset/magnet.svg`, the Magnet to Window pin mode.
+- `pause` — `ScreenLoupe/Resources/Assets.xcassets/pause.imageset/pause.svg`, the Viewer toolbar's Freeze button.
 
 Lucide's licence, from its [LICENSE](https://github.com/lucide-icons/lucide/blob/main/LICENSE):
 

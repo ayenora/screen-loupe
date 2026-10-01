@@ -697,4 +697,53 @@ struct ZoomPanStateTests {
         #expect(moved.offset == CGPoint(x: -220, y: 100))
         #expect(moved.visibleSourceRect == CGRect(x: 110, y: 0, width: 200, height: 100))
     }
+
+    // MARK: Presets
+
+    /// A 400 × 300 image in an 800 × 450 viewport: Fit is 1.5×.
+    private func state(zoom: CGFloat) -> ZoomPanState {
+        ZoomPanState(
+            zoom: zoom, offset: .zero, contentSize: CGSize(width: 400, height: 300),
+            viewportSize: CGSize(width: 800, height: 450))
+    }
+
+    @Test func presetNamesAreFitThenThePresets() {
+        #expect(ZoomPanState.presetNames == ["Fit", "1×", "2×", "4×", "8×", "16×", "32×", "64×"])
+    }
+
+    @Test func eachPresetZoomMatchesItsPreset() {
+        for (index, zoom) in ZoomPanState.presets.enumerated() {
+            #expect(state(zoom: zoom).preset == index + 1)
+        }
+    }
+
+    @Test func theFittingZoomIsFit() {
+        #expect(state(zoom: 1.5).preset == 0)
+        #expect(state(zoom: 7).fitted().preset == 0)
+    }
+
+    @Test func fitWinsWhenItIsAlsoAPresetsZoom() {
+        // An 800 × 450 image fits the viewport at 1×.
+        let state = ZoomPanState(
+            zoom: 1, offset: .zero, contentSize: CGSize(width: 800, height: 450),
+            viewportSize: CGSize(width: 800, height: 450))
+        #expect(state.preset == 0)
+    }
+
+    @Test func aZoomBetweenPresetsMatchesNone() {
+        #expect(state(zoom: 3).preset == nil)
+        #expect(state(zoom: 0.5).preset == nil)
+        #expect(state(zoom: 24).preset == nil)
+    }
+
+    @Test func theTopPresetsAreTheZoomsLimit() {
+        #expect(state(zoom: 32).preset == 6)
+        #expect(state(zoom: 64).preset == 7)
+        #expect(ZoomPanState.presets.last == ZoomPanState.zoomRange.upperBound)
+    }
+
+    @Test func aZoomWithinTheSameZoomToleranceMatches() {
+        #expect(state(zoom: 8 + ZoomPanState.sameZoom / 2).preset == 4)
+        #expect(state(zoom: 8 + ZoomPanState.sameZoom * 2).preset == nil)
+    }
 }

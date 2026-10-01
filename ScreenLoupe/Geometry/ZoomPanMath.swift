@@ -6,7 +6,7 @@ import CoreGraphics
 /// image, and drawable pixels of the Viewer. `zoom` is drawable pixels per source pixel, so 8 means
 /// every source pixel covers exactly 8×8 drawable pixels.
 struct ZoomPanState: Equatable, Sendable {
-    static let presets: [CGFloat] = [1, 2, 4, 8, 16]
+    static let presets: [CGFloat] = [1, 2, 4, 8, 16, 32, 64]
     /// Steps for `+`/`-` and for snapping keyboard zoom.
     static let ladder: [CGFloat] = [0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64]
     static let zoomRange: ClosedRange<CGFloat> = 0.05...64
@@ -94,6 +94,16 @@ struct ZoomPanState: Equatable, Sendable {
     /// Whether the zoom is the one that fits the whole image, as the Fit preset does.
     var isFit: Bool {
         abs(zoom - fitZoom) < Self.sameZoom
+    }
+
+    /// The presets' names, in the zoom panel and View › Zoom: Fit, then `presets` as 1×, 2×….
+    static let presetNames = ["Fit"] + presets.map { "\(Int($0))×" }
+
+    /// The preset the zoom matches, as an index into `presetNames`: 0 for Fit, then one for each of
+    /// `presets`; `nil` between them. Fit wins when the fitting zoom is also a preset's.
+    var preset: Int? {
+        if isFit { return 0 }
+        return Self.presets.firstIndex { abs($0 - zoom) < Self.sameZoom }.map { $0 + 1 }
     }
 
     /// Zoom that fits the whole image into the viewport.

@@ -65,6 +65,11 @@ struct Settings: Codable, Equatable {
     var meterColors = SavedMeterColors()
     /// The Viewer's zoom when the app last quit or the Viewer closed.
     var viewerZoom: Double?
+    /// The zoom presets and field, turned on and off by the loupe button, and where they show.
+    var zoomPanelVisible = true
+    var zoomPanelStyle = ZoomPanelStyle.toolbar
+    /// Where the user left the floating zoom panel, from the Viewer; beside its right edge while unset.
+    var zoomPanelOffset: ZoomPanelOffset?
 
     // Settings › General
     var showsDockIcon = true
@@ -138,6 +143,9 @@ struct Settings: Codable, Equatable {
         pinnedColors = c.value(.pinnedColors, or: [Lenient<PickedColor>]()).compactMap(\.value)
         meterColors = c.value(.meterColors, or: d.meterColors)
         viewerZoom = c.value(.viewerZoom, or: d.viewerZoom)
+        zoomPanelVisible = c.value(.zoomPanelVisible, or: d.zoomPanelVisible)
+        zoomPanelStyle = c.value(.zoomPanelStyle, or: d.zoomPanelStyle)
+        zoomPanelOffset = c.value(.zoomPanelOffset, or: d.zoomPanelOffset)
         showsDockIcon = c.value(.showsDockIcon, or: d.showsDockIcon)
         showsWindowsOnLaunch = c.value(.showsWindowsOnLaunch, or: d.showsWindowsOnLaunch)
         frameColor = c.value(.frameColor, or: d.frameColor)
@@ -226,6 +234,19 @@ enum PointerStyle: String, Codable, CaseIterable, Sendable {
     case cursor
     /// The real pointer, recorded by the capture into its pixels.
     case capturedCursor
+}
+
+/// Where the Viewer's zoom presets and field show: in a strip under its toolbar, or in a small
+/// panel of their own beside the Viewer.
+enum ZoomPanelStyle: String, Codable, CaseIterable, Sendable {
+    case toolbar, floating
+
+    var title: String {
+        switch self {
+        case .toolbar: "In the Toolbar"
+        case .floating: "Floating Panel"
+        }
+    }
 }
 
 /// What the Viewer shows around the image and where nothing is captured.

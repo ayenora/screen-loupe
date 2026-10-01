@@ -96,6 +96,7 @@ enum MainMenu {
         let reset = menu.addItem(
             withTitle: "Reset Zoom", action: #selector(AppController.resetZoom(_:)), keyEquivalent: "0")
         reset.target = target
+        menu.addItem(submenuItem(zoomMenu(withToggle: true, target: target)))
         let sizeToArea = menu.addItem(
             withTitle: "Size Window to Area", action: #selector(AppController.sizeViewerToArea(_:)),
             keyEquivalent: "0")
@@ -143,6 +144,34 @@ enum MainMenu {
         let fullScreen = menu.addItem(
             withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreen.keyEquivalentModifierMask = [.command, .control]
+        return menu
+    }
+
+    /// View › Zoom and the loupe button's overflow form, which start with Show Zoom Panel, and its ▾,
+    /// which doesn't: the presets, for the menu bar and the keyboard, then the panel's two styles,
+    /// as `AppController` commands, which check the current preset and the chosen style. The ▾'s
+    /// go up the responder chain (`target` `nil`).
+    static func zoomMenu(withToggle: Bool, target: AppController?) -> NSMenu {
+        let menu = NSMenu(title: "Zoom")
+        if withToggle {
+            let toggle = menu.addItem(
+                withTitle: "Show Zoom Panel", action: #selector(AppController.toggleZoomPanel(_:)), keyEquivalent: "")
+            toggle.target = target
+            menu.addItem(.separator())
+        }
+        for (index, name) in ZoomPanState.presetNames.enumerated() {
+            let item = menu.addItem(
+                withTitle: name, action: #selector(AppController.zoomToPreset(_:)), keyEquivalent: "")
+            item.tag = index
+            item.target = target
+        }
+        menu.addItem(.separator())
+        for (index, style) in ZoomPanelStyle.allCases.enumerated() {
+            let item = menu.addItem(
+                withTitle: style.title, action: #selector(AppController.chooseZoomPanelStyle(_:)), keyEquivalent: "")
+            item.tag = index
+            item.target = target
+        }
         return menu
     }
 

@@ -12,7 +12,7 @@ import AppKit
 /// `NSToolbar` draws its own look: a `.toolbar`-bezel button outside a toolbar is bordered and shows
 /// its on state in the accent colour. So the palette draws the toolbar's look itself (`ToolbarLook`).
 @MainActor
-final class StudioPalette: NSPanel {
+final class StudioPalette: NSPanel, PaletteButtonHost {
     /// The window's width.
     static var width: CGFloat { StudioPlacement.paletteWidth(buttonWidth: ToolbarLook.current.buttonSize.width) }
     var onCapture: (() -> Void)?
@@ -160,7 +160,7 @@ final class StudioPalette: NSPanel {
             button.target = self
         }
         let look = ToolbarLook.current
-        let stack = NSStackView(views: groups.map(look.group))
+        let stack = NSStackView(views: groups.map { look.group($0) })
         stack.orientation = .vertical
         stack.spacing = look.groupSpacing
         let margin = StudioPlacement.paletteMargin
@@ -220,7 +220,7 @@ final class StudioPalette: NSPanel {
     /// Names `button` beside the palette after a short rest, or at once while the pointer goes on
     /// from a named button (`ButtonNameLabel`): on the palette's side away from the studio's frame
     /// (`StudioPlacement.hoverLabelX`), level with the button.
-    fileprivate func pointerEntered(_ button: PaletteButton) {
+    func pointerEntered(_ button: PaletteButton) {
         guard let name = button.name else { return }
         hoverLabel.pointerEntered(ObjectIdentifier(button), name: name) { [weak self, weak button] size in
             guard let self, let button else { return nil }
@@ -231,12 +231,12 @@ final class StudioPalette: NSPanel {
         }
     }
 
-    fileprivate func pointerExited(_ button: PaletteButton) {
+    func pointerExited(_ button: PaletteButton) {
         hoverLabel.pointerExited(ObjectIdentifier(button))
     }
 
     /// A click or hiding: the name goes, and the next button waits the full rest.
-    fileprivate func endHover() {
+    func endHover() {
         hoverLabel.end()
     }
 
@@ -249,18 +249,8 @@ final class StudioPalette: NSPanel {
     }
 
     private static func configure(_ button: PaletteButton, _ symbol: String, _ title: String, _ action: Selector) {
-        button.isBordered = false
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.imagePosition = .imageOnly
-        // At the symbol scale `NSToolbar` gives a `.toolbar`-bezel button's image.
-        button.symbolConfiguration = NSImage.SymbolConfiguration(scale: .large)
-        button.imageScaling = .scaleNone
-        button.contentTintColor = .labelColor
-        button.name = title
+        button.show(symbol: symbol, name: title)
         button.action = action
-        let size = ToolbarLook.current.buttonSize
-        button.widthAnchor.constraint(equalToConstant: size.width).isActive = true
-        button.heightAnchor.constraint(equalToConstant: size.height).isActive = true
     }
 
     @objc private func captureClicked() { onCapture?() }
@@ -310,135 +300,5 @@ final class StudioPalette: NSPanel {
         image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
         image.resizingMode = .stretch
         return image
-    }
-}
-
-/// A button that takes the first click although the palette never becomes key, and tells the
-/// palette while the pointer rests on it.
-private final class PaletteButton: NSButton {
-    /// Shown in the hover label.
-    var name: String?
-
-    /// Whether the button shows a setting, filled while it is on; the palette sets `state` from the
-    /// setting. Any other button just acts, or opens a list, and is filled only while pressed.
-    private(set) var isToggle = false
-
-    func makeToggle() {
-        setButtonType(.pushOnPushOff)
-        isToggle = true
-    }
-
-    /// While the list the button opened shows, it is filled as though pressed.
-    var isListOpen = false {
-        didSet { needsDisplay = true }
-    }
-
-    /// While the window picker it started runs, it is filled as though pressed.
-    var isPicking = false {
-        didSet { needsDisplay = true }
-    }
-
-    /// Whether the pointer is on the button where it takes the mouse, as the palette was last told.
-    private var isHovered = false
-
-    /// The toolbar's near-white symbol on the accent fill.
-    private static let onAccentWhite: CGFloat = 0.9375
-    /// A disabled toggle that is on, faded as the toolbar's: its accent fill, and its symbol.
-    private static let disabledAccentAlpha: CGFloat = 0.5
-    private static let disabledOnAccentAlpha: CGFloat = 0.55
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    /// Only inside its slot in the group and the group's rounded outline, `point` in the superview's
-    /// coordinates: the group's stack, which fills the group. The slot is the alignment rect the
-    /// stack lays out, `buttonSize`; the frame is taller by the symbol's alignment insets and
-    /// overlaps the neighbours. The square corners outside the outline fall through to the stack,
-    /// which lets a mouse-down drag the palette.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let group = superview?.bounds,
-            PaletteHitShape.buttonTakes(
-                point, buttonFrame: alignmentRect(forFrame: frame), group: group,
-                radius: ToolbarLook.current.groupRadius)
-        else { return nil }
-        return super.hitTest(point)
-    }
-
-    /// The toolbar's on and pressed look (`PaletteButtonLook`), in the button's slot: the bounds are
-    /// taller by the symbol's alignment insets. The colours resolve here, so an appearance or accent
-    /// change shows at the next draw.
-    override func draw(_ dirtyRect: NSRect) {
-        let slot = convert(alignmentRect(forFrame: frame), from: superview)
-        let look = PaletteButtonLook.look(
-            isHighlighted: isHighlighted, isListOpen: isListOpen, isPicking: isPicking, isToggle: isToggle,
-            isOn: state == .on, isEnabled: isEnabled)
-        switch look.fill {
-        case .none: break
-        case .pressed: ToolbarLook.current.drawFill(.systemFill, in: slot)
-        case .accent(let enabled):
-            ToolbarLook.current.drawFill(
-                .controlAccentColor.withAlphaComponent(enabled ? 1 : Self.disabledAccentAlpha), in: slot)
-        }
-        let tint: NSColor =
-            switch look.symbol {
-            case .label: .labelColor
-            case .tertiary: .tertiaryLabelColor
-            case .onAccent(let enabled):
-                NSColor(white: Self.onAccentWhite, alpha: enabled ? 1 : Self.disabledOnAccentAlpha)
-            }
-        // Unchanged, setting it would ask for another draw.
-        if contentTintColor != tint { contentTintColor = tint }
-        super.draw(dirtyRect)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
-        addTrackingArea(
-            NSTrackingArea(
-                rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
-                owner: self))
-    }
-
-    /// From outside the frame, so not hovered yet, even if hiding the palette sent no exit.
-    override func mouseEntered(with event: NSEvent) {
-        isHovered = false
-        updateHover(event)
-    }
-    override func mouseMoved(with event: NSEvent) { updateHover(event) }
-
-    override func mouseExited(with event: NSEvent) {
-        guard isHovered else { return }
-        isHovered = false
-        (window as? StudioPalette)?.pointerExited(self)
-    }
-
-    /// Hovered only where the button takes the mouse: not in a square corner outside the outline.
-    private func updateHover(_ event: NSEvent) {
-        guard let superview else { return }
-        let inside = hitTest(superview.convert(event.locationInWindow, from: nil)) != nil
-        guard inside != isHovered else { return }
-        isHovered = inside
-        if inside {
-            (window as? StudioPalette)?.pointerEntered(self)
-        } else {
-            (window as? StudioPalette)?.pointerExited(self)
-        }
-    }
-
-    /// Off, the toolbar's disabled look (`draw(_:)`): the symbol in the tertiary label colour, a
-    /// toggle's on fill kept but faded, as a disabled menu item keeps its check mark.
-    override var isEnabled: Bool {
-        didSet {
-            // Else the cell halves the tinted symbol's alpha again, below the toolbar's.
-            (cell as? NSButtonCell)?.imageDimsWhenDisabled = false
-            needsDisplay = true
-        }
-    }
-
-    /// A click on a button that is off does nothing, and its name stays.
-    override func mouseDown(with event: NSEvent) {
-        guard isEnabled else { return }
-        (window as? StudioPalette)?.endHover()
-        super.mouseDown(with: event)
     }
 }

@@ -5,7 +5,7 @@ import CoreGraphics
 enum ViewerWindowFit {
     /// - Parameters:
     ///   - imageSize: the magnified Capture Area, in points.
-    ///   - chrome: what the window adds around the image: title bar, toolbar, the Color Meter.
+    ///   - chrome: what the window adds around the image: title bar, toolbar, the zoom strip, the Color Meter.
     ///   - window: the window's current frame. Its top-left corner stays put when the new frame fits
     ///     there; otherwise the window moves just enough to stay on screen.
     ///   - visible: the screen's visible frame (without the menu bar and the Dock). The window is

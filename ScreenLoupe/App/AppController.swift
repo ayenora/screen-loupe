@@ -221,6 +221,27 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.resetZoom()
     }
 
+    /// View › Zoom: the item's tag is the preset's index in `ZoomPanState.presetNames`.
+    @objc func zoomToPreset(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem else { return }
+        windows.zoom(toPreset: item.tag)
+    }
+
+    /// The loupe button and View › Zoom › Show Zoom Panel.
+    @objc func toggleZoomPanel(_ sender: Any?) {
+        settings.update { $0.zoomPanelVisible.toggle() }
+    }
+
+    /// The item's tag is the style's index in `ZoomPanelStyle.allCases`. Choosing a style also shows
+    /// the panel, as choosing a ruler turns it on.
+    @objc func chooseZoomPanelStyle(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem, ZoomPanelStyle.allCases.indices.contains(item.tag) else { return }
+        settings.update {
+            $0.zoomPanelStyle = ZoomPanelStyle.allCases[item.tag]
+            $0.zoomPanelVisible = true
+        }
+    }
+
     /// The ruler button, in the chosen mode. Not `toggleRuler(_:)`: that is an `NSText` action,
     /// which a text field being edited would take.
     @objc func toggleMeasuringRuler(_ sender: Any?) {
@@ -437,6 +458,17 @@ extension AppController: NSMenuItemValidation {
             return builtWindows?.captureArea.areMarginsAvailable == true
         case #selector(toggleViewerAlwaysOnTop(_:)):
             menuItem.state = settings.settings.viewerAlwaysOnTop ? .on : .off
+            return true
+        case #selector(zoomToPreset(_:)):
+            // Checked as the zoom presets show; enabled always, as their buttons are.
+            menuItem.state = builtWindows?.zoomPreset == menuItem.tag ? .on : .off
+            return true
+        case #selector(toggleZoomPanel(_:)):
+            menuItem.state = settings.settings.zoomPanelVisible ? .on : .off
+            return true
+        case #selector(chooseZoomPanelStyle(_:)):
+            let isChosen = ZoomPanelStyle.allCases.firstIndex(of: settings.settings.zoomPanelStyle) == menuItem.tag
+            menuItem.state = isChosen ? .on : .off
             return true
         case #selector(toggleScreenshotStudio(_:)):
             let isVisible = builtWindows?.studio.isVisible == true

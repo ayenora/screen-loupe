@@ -1,7 +1,7 @@
 Screen Loupe uses these third-party resources:
 
 Lucide (lucide.dev)
-The anchor and magnet icons of the Capture Area's pin modes.
+The anchor and magnet icons of the Capture Area's pin modes, and the pause icon of the Viewer's Freeze button.
 
 ISC License
 

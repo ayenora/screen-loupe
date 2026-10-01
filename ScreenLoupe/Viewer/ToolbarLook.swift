@@ -4,8 +4,9 @@ import AppKit
 /// flush in Liquid Glass capsules as tall as the bar, 36 pt, 8 pt apart around a space, and a pressed
 /// button shows a grey 30 × 28 pt capsule. Before, the items sit on the titlebar's material, and
 /// a pressed button shows a rounded grey rect. A toggle that is on, in an active app, fills the same
-/// shape with the accent colour under a near-white symbol. Also the size and
-/// pressed shape of Recent Captures' camera button.
+/// shape with the accent colour under a near-white symbol. Drawn by the studio's palette and the
+/// Viewer's zoom presets (`PaletteButton`); also the size and pressed shape of Recent Captures'
+/// camera button.
 struct ToolbarLook {
     let isGlass: Bool
     let buttonSize: CGSize
@@ -26,10 +27,10 @@ struct ToolbarLook {
                 fillRadius: 6, groupRadius: 8)
         }
 
-    /// `views` one under another on a group's background.
-    @MainActor func group(_ views: [NSView]) -> NSView {
+    /// `views` one under another, or side by side, on a group's background.
+    @MainActor func group(_ views: [NSView], orientation: NSUserInterfaceLayoutOrientation = .vertical) -> NSView {
         let stack = NSStackView(views: views)
-        stack.orientation = .vertical
+        stack.orientation = orientation
         stack.spacing = 0
         if #available(macOS 26.0, *), isGlass {
             let glass = NSGlassEffectView()

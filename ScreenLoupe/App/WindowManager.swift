@@ -441,6 +441,13 @@ final class WindowManager {
         zoomPan.fit()
     }
 
+    func zoom(toPreset index: Int) {
+        zoomPan.zoom(toPreset: index)
+    }
+
+    /// The preset the Viewer's zoom matches, as `ZoomPanState.preset`.
+    var zoomPreset: Int? { zoomPan.state.preset }
+
     /// The zoom is kept between launches; the Viewer's frame is kept by AppKit.
     /// Writes the project now, before the app quits.
     func saveProject() {

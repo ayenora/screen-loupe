@@ -1,31 +1,31 @@
 import AppKit
 
-/// The Viewer's toolbar: zoom presets and the current zoom on the left; Freeze
-/// with its menu of delays, the Select tool, the Ruler with its menu of rulers, the Grid toggle, the
-/// pointer toggle with its menu of styles, the Color Meter, the colour vision simulation with its
-/// menu of modes, References and Recent Captures toggles, Copy, Save and the keep-on-top pin on the
-/// right.
+/// The Viewer's toolbar: the loupe, which shows the zoom panel, with its menu of the zoom presets and
+/// the panel's styles, Freeze with its menu of delays, the Select tool, the Ruler with its menu
+/// of rulers, the Grid toggle, the pointer toggle with its menu of styles, the colour vision
+/// simulation with its menu of modes, the side panels (Color Meter, References, Recent Captures) as
+/// one segmented control, Copy and Save each with its menu of the view and the source, and the
+/// keep-on-top pin on the right. The zoom panel itself is a strip under the toolbar
+/// (`ViewerZoomStrip`) or a panel beside the Viewer (`ZoomPanel`).
 ///
 /// Every item has a menu form, so when a narrow window moves items into the overflow (») menu they
-/// stay usable: Zoom becomes a submenu of presets, the buttons become commands, the Ruler a submenu of
-/// its two rulers, the simulation a submenu of its toggle and modes, the pin a checkmark.
+/// stay usable: the buttons become commands, the loupe a submenu of its toggle, the presets and the
+/// styles, the Ruler a submenu of its two rulers, the simulation a submenu of its toggle and modes,
+/// the panels a submenu of their toggles, the pin a checkmark.
 ///
-/// Freeze, Select, Ruler, the simulation, Copy, Save and Keep on Top are app commands: they go up the responder chain to
-/// `AppController`, as the menus' do. The toggles are settings and change them directly. Every
-/// button shows the state of its model, never just its own click.
+/// The loupe, Freeze, Select, Ruler, the simulation, Copy, Save and Keep on Top are app commands: they go up the
+/// responder chain to `AppController`, as the menus' do. The toggles are settings and change them directly. Every
+/// button and segment shows the state of its model, never just its own click.
 @MainActor
-final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
-    private static let presetsID = NSToolbarItem.Identifier("zoomPresets")
-    private static let zoomLabelID = NSToolbarItem.Identifier("zoomLabel")
+final class ViewerToolbar: NSObject, NSToolbarDelegate {
+    private static let zoomID = NSToolbarItem.Identifier("zoomPanel")
     private static let freezeID = NSToolbarItem.Identifier("freeze")
     private static let selectID = NSToolbarItem.Identifier("select")
     private static let rulerID = NSToolbarItem.Identifier("ruler")
     private static let gridID = NSToolbarItem.Identifier("grid")
     private static let crosshairID = NSToolbarItem.Identifier("crosshair")
-    private static let meterID = NSToolbarItem.Identifier("colorMeter")
     private static let visionID = NSToolbarItem.Identifier("colorVision")
-    private static let referencesID = NSToolbarItem.Identifier("references")
-    private static let capturesID = NSToolbarItem.Identifier("recentCaptures")
+    private static let panelsID = NSToolbarItem.Identifier("sidePanels")
     private static let copyID = NSToolbarItem.Identifier("copyView")
     private static let saveID = NSToolbarItem.Identifier("saveView")
     private static let onTopID = NSToolbarItem.Identifier("alwaysOnTop")
@@ -52,20 +52,25 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             case .captures: "photo"
             }
         }
+
+        /// The side panels, in the order of their segments.
+        static let panels: [Toggle] = [.meter, .references, .captures]
     }
 
+    /// Grid and the pointer; the panels are segments of `panels`.
     private var toggleButtons: [Toggle: NSButton] = [:]
     private var toggleMenuItems: [Toggle: NSMenuItem] = [:]
+    private let panels = NSSegmentedControl(
+        images: Toggle.panels.map {
+            NSImage(systemSymbolName: $0.symbol, accessibilityDescription: $0.title) ?? NSImage()
+        },
+        trackingMode: .selectAny, target: nil, action: nil)
+    private let panelsMenuItem = NSMenuItem(title: "Panels", action: nil, keyEquivalent: "")
 
-    /// Segment 0 is Fit; the rest are `ZoomPanState.presets`.
-    private static let presetTitles = ["Fit"] + ZoomPanState.presets.map { "\(Int($0))×" }
-    private let presets = NSSegmentedControl(
-        labels: presetTitles, trackingMode: .selectOne, target: nil, action: nil)
-    /// The current zoom in percent; typing a number and Return sets it.
-    /// Leaving the field any other way drops what was typed.
-    private let zoomLabel = NSTextField(string: "")
-    /// The zoom the label last showed, to tell a zoom change from a pan.
-    private var shownZoom: CGFloat?
+    private let zoomButton = NSButton()
+    /// The ▾ beside the loupe: the zoom presets and the zoom panel's styles.
+    private let zoomMenuButton = NSButton()
+    private let zoomMenuItem = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
     private let freezeButton = NSButton()
     /// The ▾ beside the pause button: Freeze Now, Freeze in 3, 5 or 10 seconds, and Use Frozen Frame
     /// as Reference.
@@ -85,14 +90,15 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private let freezeMenuItem = NSMenuItem(title: "Freeze Frame", action: nil, keyEquivalent: "")
     private let onTopButton = NSButton()
     private let copyButton = NSButton()
+    /// The ▾ beside Copy: Copy View or Copy Source.
+    private let copyMenuButton = NSButton()
     private let saveButton = NSButton()
+    /// The ▾ beside Save: Save View… or Save Source….
+    private let saveMenuButton = NSButton()
 
     /// The overflow-menu forms.
-    private let presetsMenuItem = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
-    private let zoomLabelMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let onTopMenuItem = NSMenuItem(title: "Keep on Top", action: nil, keyEquivalent: "")
 
-    private let zoomPan: ZoomPanController
     private let settings: SettingsStore
     private let ruler: RulerController
     private let selection: SelectionController
@@ -102,38 +108,43 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     let toolbar = NSToolbar(identifier: "Viewer")
 
     init(
-        zoomPan: ZoomPanController, settings: SettingsStore, ruler: RulerController, selection: SelectionController,
+        settings: SettingsStore, ruler: RulerController, selection: SelectionController,
         colorVision: ColorVisionController
     ) {
-        self.zoomPan = zoomPan
         self.settings = settings
         self.ruler = ruler
         self.selection = selection
         self.colorVision = colorVision
         super.init()
-        presets.target = self
-        presets.action = #selector(presetChosen(_:))
-        presets.segmentStyle = .separated
-        for index in 0..<presets.segmentCount {
-            presets.setWidth(index == 0 ? 40 : 34, forSegment: index)
-        }
-        zoomLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-        zoomLabel.alignment = .right
-        zoomLabel.bezelStyle = .roundedBezel
-        zoomLabel.controlSize = .small
-        zoomLabel.toolTip = "Zoom — type a percentage and press Return"
-        zoomLabel.target = self
-        zoomLabel.action = #selector(zoomEntered(_:))
-        zoomLabel.cell?.sendsActionOnEndEditing = false
-        zoomLabel.delegate = self
-        zoomLabel.widthAnchor.constraint(equalToConstant: 64).isActive = true
-
         configure(copyButton, symbol: "doc.on.doc", title: "Copy View (⌘C)", action: #selector(copyClicked(_:)))
         configure(
+            copyMenuButton, symbol: "chevron.down", title: "Copy View or Source", action: #selector(copyMenuClicked(_:))
+        )
+        configure(
             saveButton, symbol: "square.and.arrow.down", title: "Save View… (⌘S)", action: #selector(saveClicked(_:)))
+        configure(
+            saveMenuButton, symbol: "chevron.down", title: "Save View or Source", action: #selector(saveMenuClicked(_:))
+        )
+        for button in [copyMenuButton, saveMenuButton] {
+            button.image = button.image?.withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
+            button.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        }
+        configure(zoomButton, symbol: "plus.magnifyingglass", title: "Zoom Panel", action: #selector(zoomClicked(_:)))
+        zoomButton.setButtonType(.pushOnPushOff)
+        configure(
+            zoomMenuButton, symbol: "chevron.down", title: "Zoom Presets and Panel Style",
+            action: #selector(zoomMenuClicked(_:)))
+        zoomMenuButton.image = zoomMenuButton.image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
+        zoomMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        zoomMenuItem.submenu = MainMenu.zoomMenu(withToggle: true, target: nil)
         configure(onTopButton, symbol: "pin", title: "Keep on Top", action: #selector(onTopClicked(_:)))
         onTopButton.setButtonType(.pushOnPushOff)
         configure(freezeButton, symbol: "pause", title: "Freeze Frame (Space)", action: #selector(freezeClicked(_:)))
+        // Lucide's pause, two outlined bars: SF Symbols has only solid ones.
+        freezeButton.image = NSImage(named: "pause")
+        freezeButton.image?.accessibilityDescription = "Freeze Frame (Space)"
         freezeButton.setButtonType(.pushOnPushOff)
         configure(
             freezeMenuButton, symbol: "chevron.down", title: "Freeze Later", action: #selector(freezeMenuClicked(_:)))
@@ -176,34 +187,35 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold))
         visionMenuButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
         visionMenuItem.submenu = MainMenu.colorVisionMenu(withToggle: true, target: nil)
-        for toggle in Toggle.allCases {
-            let button = NSButton()
-            configure(button, symbol: toggle.symbol, title: toggle.title, action: #selector(toggleClicked(_:)))
-            button.setButtonType(.pushOnPushOff)
-            button.tag = Toggle.allCases.firstIndex(of: toggle) ?? 0
-            toggleButtons[toggle] = button
+        for (index, toggle) in Toggle.allCases.enumerated() {
+            if !Toggle.panels.contains(toggle) {
+                let button = NSButton()
+                configure(button, symbol: toggle.symbol, title: toggle.title, action: #selector(toggleClicked(_:)))
+                button.setButtonType(.pushOnPushOff)
+                button.tag = index
+                toggleButtons[toggle] = button
+            }
             let item = NSMenuItem(title: toggle.title, action: #selector(toggleClicked(_:)), keyEquivalent: "")
             item.target = self
-            item.tag = button.tag
+            item.tag = index
             toggleMenuItems[toggle] = item
         }
+        panels.target = self
+        panels.setAccessibilityLabel("Panels")
+        panels.action = #selector(panelClicked(_:))
+        let panelsMenu = NSMenu()
+        for (index, toggle) in Toggle.panels.enumerated() {
+            panels.setToolTip(toggle.title, forSegment: index)
+            if let item = toggleMenuItems[toggle] { panelsMenu.addItem(item) }
+        }
+        panelsMenuItem.submenu = panelsMenu
         onTopButton.alternateImage = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Keep on Top")
 
-        let presetsMenu = NSMenu()
-        for (index, title) in Self.presetTitles.enumerated() {
-            let item = presetsMenu.addItem(withTitle: title, action: #selector(presetMenuChosen(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = index
-        }
-        presetsMenuItem.submenu = presetsMenu
-        zoomLabelMenuItem.isEnabled = false
         onTopMenuItem.action = #selector(AppController.toggleViewerAlwaysOnTop(_:))
 
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
-        zoomPan.observe { [weak self] in self?.refresh() }
-        refresh()
         ruler.observe { [weak self] in self?.showRuler() }
         showRuler()
         selection.observe { [weak self] in self?.showSelectTool() }
@@ -211,6 +223,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         colorVision.observe { [weak self] in self?.showColorVision() }
         showColorVision()
         settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.show($0, on: self?.onTopButton) }
+        settings.observe(\.zoomPanelVisible) { [weak self] in self?.show($0, on: self?.zoomButton) }
         settings.observe(\.gridEnabled) { [weak self] in self?.showToggle(.grid, isOn: $0) }
         settings.observe(\.crosshairEnabled) { [weak self] in self?.showToggle(.crosshair, isOn: $0) }
         settings.observe(\.meterVisible) { [weak self] in self?.showToggle(.meter, isOn: $0) }
@@ -227,58 +240,15 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         button.action = action
     }
 
-    /// Reflects the current zoom: the matching preset is selected, and the label shows the percentage.
-    private func refresh() {
-        let state = zoomPan.state
-        let percent = "\(Int((state.zoom * 100).rounded()))%"
-        // A zoom set another way (Fit, a preset, a pinch) replaces a half-typed value.
-        if state.zoom != shownZoom, zoomLabel.currentEditor() != nil {
-            zoomLabel.abortEditing()
-        }
-        shownZoom = state.zoom
-        if zoomLabel.currentEditor() == nil {
-            zoomLabel.stringValue = percent
-        }
-        zoomLabelMenuItem.title = "Zoom: \(percent)"
-        let selected: Int
-        if zoomPan.isFit {
-            selected = 0
-        } else if let index = ZoomPanState.presets.firstIndex(where: { abs($0 - state.zoom) < ZoomPanState.sameZoom }) {
-            selected = index + 1
-        } else {
-            selected = -1
-        }
-        presets.selectedSegment = selected
-        for item in presetsMenuItem.submenu?.items ?? [] {
-            item.state = item.tag == selected ? .on : .off
-        }
-    }
-
-    @objc private func zoomEntered(_ sender: NSTextField) {
-        let digits = sender.stringValue.filter { $0.isNumber || $0 == "." || $0 == "," }
-            .replacingOccurrences(of: ",", with: ".")
-        if let percent = Double(digits), percent > 0 {
-            zoomPan.setZoom(CGFloat(percent / 100))
-        }
-        sender.window?.makeFirstResponder(nil)
-        refresh()
-    }
-
-    /// Focus left the field without Return: show the current zoom again.
-    func controlTextDidEndEditing(_ notification: Notification) {
-        // The field editor is detached only after this notification.
-        DispatchQueue.main.async { [weak self] in
-            self?.shownZoom = nil
-            self?.refresh()
-        }
-    }
-
     private func show(_ isOn: Bool, on button: NSButton?) {
         button?.state = isOn ? .on : .off
     }
 
     private func showToggle(_ toggle: Toggle, isOn: Bool) {
         show(isOn, on: toggleButtons[toggle])
+        if let index = Toggle.panels.firstIndex(of: toggle) {
+            panels.setSelected(isOn, forSegment: index)
+        }
         toggleMenuItems[toggle]?.state = isOn ? .on : .off
     }
 
@@ -397,8 +367,25 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
 
     @objc private func toggleClicked(_ sender: Any) {
         let tag = (sender as? NSButton)?.tag ?? (sender as? NSMenuItem)?.tag ?? 0
+        apply(Toggle.allCases[tag])
+    }
+
+    /// A clicked segment flips itself, so it is the one that differs from its panel's state. It goes
+    /// back to that state before the panel toggles, and the settings then report the new state of
+    /// every panel.
+    @objc private func panelClicked(_ sender: NSSegmentedControl) {
+        let current = settings.settings
+        // In the order of `Toggle.panels`.
+        let isOn = [current.meterVisible, current.referencesVisible, current.capturesVisible]
+        let shown = isOn.indices.map { sender.isSelected(forSegment: $0) }
+        guard let index = ToolbarSelection.clicked(shown: shown, model: isOn) else { return }
+        sender.setSelected(isOn[index], forSegment: index)
+        apply(Toggle.panels[index])
+    }
+
+    private func apply(_ toggle: Toggle) {
         settings.update {
-            switch Toggle.allCases[tag] {
+            switch toggle {
             case .grid: $0.gridEnabled.toggle()
             case .crosshair: $0.crosshairEnabled.toggle()
             case .meter:
@@ -427,6 +414,16 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     private func send(_ action: Selector, from button: NSButton, isOn: Bool) {
         show(isOn, on: button)
         NSApp.sendAction(action, to: nil, from: button)
+    }
+
+    @objc private func zoomClicked(_ sender: NSButton) {
+        send(#selector(AppController.toggleZoomPanel(_:)), from: sender, isOn: settings.settings.zoomPanelVisible)
+    }
+
+    /// The presets, the current one checked, and the panel's styles, the chosen one checked.
+    @objc private func zoomMenuClicked(_ sender: NSButton) {
+        let below = NSPoint(x: -zoomButton.frame.width, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4)
+        MainMenu.zoomMenu(withToggle: false, target: nil).popUp(positioning: nil, at: below, in: sender)
     }
 
     @objc private func freezeClicked(_ sender: NSButton) {
@@ -490,30 +487,43 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
         NSApp.sendAction(#selector(AppController.saveView(_:)), to: nil, from: sender)
     }
 
-    @objc private func presetChosen(_ sender: NSSegmentedControl) {
-        choosePreset(sender.selectedSegment)
+    /// Copy View and Copy Source, as `AppController` commands, which also enable them, with their
+    /// shortcuts.
+    @objc private func copyMenuClicked(_ sender: NSButton) {
+        popUp(
+            [
+                ("Copy View", #selector(AppController.copyView(_:)), "c"),
+                ("Copy Source", #selector(AppController.copySource(_:)), "C"),
+            ], below: sender, beside: copyButton)
     }
 
-    @objc private func presetMenuChosen(_ sender: NSMenuItem) {
-        choosePreset(sender.tag)
+    /// Save View… and Save Source…, as Copy's ▾.
+    @objc private func saveMenuClicked(_ sender: NSButton) {
+        popUp(
+            [
+                ("Save View…", #selector(AppController.saveView(_:)), "s"),
+                ("Save Source…", #selector(AppController.saveSource(_:)), "S"),
+            ], below: sender, beside: saveButton)
     }
 
-    private func choosePreset(_ index: Int) {
-        if index == 0 {
-            zoomPan.fit()
-        } else if index > 0 {
-            zoomPan.setZoom(ZoomPanState.presets[index - 1])
+    /// A ▾'s menu of commands, under the button it belongs to. The shortcuts show only here: the
+    /// overflow forms show none, as the toolbar's other menu forms, so no item outside the main menu
+    /// holds them.
+    private func popUp(_ commands: [(String, Selector, String)], below sender: NSButton, beside button: NSButton) {
+        let menu = NSMenu()
+        for (title, action, key) in commands {
+            menu.addItem(withTitle: title, action: action, keyEquivalent: key)
         }
+        let below = NSPoint(x: -button.frame.width, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4)
+        menu.popUp(positioning: nil, at: below, in: sender)
     }
 
     // MARK: NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            Self.presetsID, Self.zoomLabelID, .flexibleSpace, Self.freezeID, Self.selectID, Self.rulerID, Self.gridID,
-            Self.crosshairID,
-            Self.meterID, Self.visionID, Self.referencesID, Self.capturesID, .space,
-            Self.copyID, Self.saveID, Self.onTopID,
+            .flexibleSpace, Self.zoomID, Self.freezeID, Self.selectID, Self.rulerID, Self.gridID, Self.crosshairID,
+            Self.visionID, Self.panelsID, .space, Self.copyID, Self.saveID, Self.onTopID,
         ]
     }
 
@@ -527,13 +537,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
     ) -> NSToolbarItem? {
         let item = NSToolbarItem(itemIdentifier: identifier)
         switch identifier {
-        case Self.presetsID:
-            item.view = presets
+        case Self.zoomID:
+            let group = NSStackView(views: [zoomButton, zoomMenuButton])
+            group.spacing = 0
+            item.view = group
             item.label = "Zoom"
-            item.menuFormRepresentation = presetsMenuItem
-        case Self.zoomLabelID:
-            item.view = zoomLabel
-            item.menuFormRepresentation = zoomLabelMenuItem
+            item.menuFormRepresentation = zoomMenuItem
         case Self.freezeID:
             let group = NSStackView(views: [freezeButton, freezeMenuButton])
             group.spacing = 0
@@ -562,22 +571,26 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate, NSTextFieldDelegate {
             item.view = group
             item.label = "Pointer"
             item.menuFormRepresentation = toggleMenuItems[.crosshair]
-        case Self.gridID, Self.meterID, Self.referencesID, Self.capturesID:
-            let toggles: [NSToolbarItem.Identifier: Toggle] = [
-                Self.gridID: .grid, Self.meterID: .meter, Self.referencesID: .references, Self.capturesID: .captures,
-            ]
-            let toggle = toggles[identifier] ?? .grid
-            item.view = toggleButtons[toggle]
-            item.label = toggle.title
-            item.menuFormRepresentation = toggleMenuItems[toggle]
+        case Self.gridID:
+            item.view = toggleButtons[.grid]
+            item.label = Toggle.grid.title
+            item.menuFormRepresentation = toggleMenuItems[.grid]
+        case Self.panelsID:
+            item.view = panels
+            item.label = "Panels"
+            item.menuFormRepresentation = panelsMenuItem
         case Self.copyID:
-            item.view = copyButton
+            let group = NSStackView(views: [copyButton, copyMenuButton])
+            group.spacing = 0
+            item.view = group
             item.label = "Copy View"
             // An `AppController` command, which also enables it.
             item.menuFormRepresentation = NSMenuItem(
                 title: "Copy View", action: #selector(AppController.copyView(_:)), keyEquivalent: "")
         case Self.saveID:
-            item.view = saveButton
+            let group = NSStackView(views: [saveButton, saveMenuButton])
+            group.spacing = 0
+            item.view = group
             item.label = "Save View…"
             item.menuFormRepresentation = NSMenuItem(
                 title: "Save View…", action: #selector(AppController.saveView(_:)), keyEquivalent: "")
