@@ -80,6 +80,43 @@ struct StudioCompositeTests {
         #expect(pixels(result, in: displayP3) == board)
     }
 
+    @Test func convertedWithoutKeepingAlphaIsOpaque() {
+        let image = capture(width: 3, height: 2, space: sRGB, picture)
+        let result = StudioComposite.converted(image, to: displayP3)!
+        #expect(!StudioComposite.hasAlpha(result))
+    }
+
+    @Test func convertedKeepingAlphaKeepsEveryPixelsAlpha() {
+        // A lone window's picture in another space: the transparent pixel stays transparent, the
+        // half-transparent black stays half covered and black.
+        let image = capture(width: 3, height: 2, space: sRGB, picture)
+        let result = StudioComposite.converted(image, to: displayP3, keepingAlpha: true)!
+        #expect(result.colorSpace == displayP3)
+        #expect(StudioComposite.hasAlpha(result))
+        let out = pixels(result, in: displayP3)
+        #expect(out.map { $0[3] } == picture.map { $0[3] })
+        #expect(out[2] == [0, 0, 0, 0])
+        #expect(out[4] == [0, 0, 0, 128])
+        #expect(out[3] == [255, 255, 255, 255])
+    }
+
+    @Test func keepingAlphaInTheDisplaysSpaceKeepsTheImage() {
+        let image = capture(width: 3, height: 2, space: displayP3, picture)
+        #expect(StudioComposite.converted(image, to: displayP3, keepingAlpha: true) === image)
+    }
+
+    @Test func aConvertedTransparentPictureIsCopiedWithoutInterpolation() {
+        // Single pixels alternating opaque white and wholly transparent: any resampling would mix them.
+        let width = 33
+        let height = 21
+        let board = (0..<(width * height)).map { index -> [UInt8] in
+            (index % width + index / width) % 2 == 0 ? [0, 0, 0, 0] : [255, 255, 255, 255]
+        }
+        let image = capture(width: width, height: height, space: sRGB, board)
+        let result = StudioComposite.converted(image, to: displayP3, keepingAlpha: true)!
+        #expect(pixels(result, in: displayP3) == board)
+    }
+
     // MARK: The backdrop's picture
 
     @Test func aColourFillsTheWholeBackdrop() {
@@ -123,17 +160,6 @@ struct StudioCompositeTests {
         let result = StudioComposite.filled(.color(red), size: PixelSize(width: 1, height: 1), space: displayP3)!
         let pixel = pixels(result, in: displayP3)[0]
         #expect(near(pixel[2], 234, within: 2) && near(pixel[1], 51, within: 3) && near(pixel[0], 35, within: 3))
-    }
-
-    /// The backdrop's colour is the same pixels One Window lays under its window: both draw with
-    /// `StudioFill.draw`.
-    @Test func theBackdropsColourMatchesOneWindowsBackground() {
-        let colour = BackgroundColor(70, 82, 140)
-        let window = capture(width: 1, height: 1, space: displayP3, [[0, 0, 0, 0]])
-        let lone = StudioComposite.centred(
-            window, in: PixelSize(width: 3, height: 3), space: displayP3, over: .color(colour))!
-        let backdrop = StudioComposite.filled(.color(colour), size: PixelSize(width: 3, height: 3), space: displayP3)!
-        #expect(pixels(lone, in: displayP3)[0] == pixels(backdrop, in: displayP3)[0])
     }
 
     @Test func aGradientRunsFromTheTopColourToTheBottomOne() {

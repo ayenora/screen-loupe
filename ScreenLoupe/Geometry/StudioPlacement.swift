@@ -64,23 +64,29 @@ enum StudioPlacement {
         return CGPoint(x: x, y: y)
     }
 
-    /// Between the palette and its Size, Timer, Output or Background list.
-    static let popoverGap: CGFloat = 6
+    /// Between the palette and a menu it pops up.
+    static let menuGap: CGFloat = 6
 
-    /// A list's origin: right of `palette`, towards the frame it sits left of, or left of it when
-    /// there is no room on the right, its top level with `anchorTop` (the top of the button that
-    /// opened it); always inside `visibleFrame`, vertically.
-    static func popoverOrigin(
-        size: CGSize, beside palette: CGRect, anchorTop: CGFloat, in visibleFrame: CGRect
-    )
-        -> CGPoint
-    {
-        var x = palette.maxX + popoverGap
-        if x + size.width > visibleFrame.maxX - screenMargin { x = palette.minX - popoverGap - size.width }
-        let y = min(
-            max(anchorTop - size.height, visibleFrame.minY + screenMargin),
-            visibleFrame.maxY - screenMargin - size.height)
-        return CGPoint(x: x.rounded(), y: y.rounded())
+    /// Where a menu the palette pops up goes, `size` big, as the top-left corner
+    /// `NSMenu.popUp(positioning:at:in:)` takes in screen coordinates: beside `palette` on its side
+    /// away from the studio's `frame` (right of it without a frame), or on the other side when that
+    /// one has no room in `visibleFrame` and the other has; its top level with `anchorTop`, the top
+    /// of the button that opened it. Where neither side has room, or the menu would pass the
+    /// display's top or bottom, the system moves it onto the screen. Whole points.
+    static func menuTopLeft(
+        size: CGSize, beside palette: CGRect, anchorTop: CGFloat, frame: CGRect?, in visibleFrame: CGRect
+    ) -> CGPoint {
+        let left = palette.minX - menuGap - size.width
+        let right = palette.maxX + menuGap
+        let fitsLeft = left >= visibleFrame.minX
+        let fitsRight = right + size.width <= visibleFrame.maxX
+        let x: CGFloat
+        if let frame, frame.midX > palette.midX {
+            x = fitsLeft || !fitsRight ? left : right
+        } else {
+            x = fitsRight || !fitsLeft ? right : left
+        }
+        return CGPoint(x: x.rounded(), y: anchorTop.rounded())
     }
 
     /// Between the palette and a button's hover label.
@@ -103,5 +109,22 @@ enum StudioPlacement {
             x = fitsRight || !fitsLeft ? right : left
         }
         return x.rounded()
+    }
+
+    /// Between One Window's notice or countdown and what it sits beside.
+    static let oneWindowNoticeGap: CGFloat = 6
+
+    /// Where One Window's notice or countdown goes while the frame is hidden, `size` big: right of
+    /// `anchor` — the chosen window's name, or the palette level with its One Window button while no
+    /// window is chosen — or left of it when `visibleFrame` has no room on the right; centred on
+    /// its row and kept inside `visibleFrame`, on whole points.
+    static func oneWindowNotice(size: CGSize, beside anchor: CGRect, in visibleFrame: CGRect) -> CGRect {
+        var x = anchor.maxX + oneWindowNoticeGap
+        if x + size.width > visibleFrame.maxX - screenMargin { x = anchor.minX - oneWindowNoticeGap - size.width }
+        x = min(max(x, visibleFrame.minX + screenMargin), visibleFrame.maxX - screenMargin - size.width)
+        let y = min(
+            max(anchor.midY - size.height / 2, visibleFrame.minY + screenMargin),
+            visibleFrame.maxY - screenMargin - size.height)
+        return CGRect(origin: CGPoint(x: x.rounded(), y: y.rounded()), size: size)
     }
 }

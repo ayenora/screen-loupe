@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The Recent Captures panel at the right of the Viewer: the
+/// The Recent Captures panel at the right of the Viewer: Paste and Add… in the header, the
 /// live view on top, which can't be deleted, with Take Snapshot beside it, then one row per capture,
 /// newest first — square thumbnail, "Snapshot" or the image file's name, its size, its date and time,
 /// Link View and Delete. Clicking a row shows it in the Viewer; its context menu uses it as a
@@ -13,12 +13,11 @@ struct RecentCapturesPanel: View {
     var body: some View {
         let s = captures.scale
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack {
                 Text("Recent Captures").font(.system(size: 13 * s, weight: .bold))
                 Spacer()
-                Text("\(captures.captures.count) of \(RecentCaptures.limit)")
-                    .font(.system(size: 11 * s).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                PanelButton(title: "Paste", scale: s) { captures.onPaste?() }
+                PanelButton(title: "Add…", scale: s) { captures.onOpenImage?() }
             }
             .padding(.horizontal, 14 * s)
             .padding(.top, 12 * s)
@@ -53,7 +52,7 @@ struct RecentCapturesPanel: View {
             }
 
             Divider()
-            Text("Last \(RecentCaptures.limit) snapshots and images · kept until deleted")
+            Text("\(captures.captures.count) of \(RecentCaptures.limit) · kept until deleted")
                 .font(.system(size: 10.5 * s))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14 * s)

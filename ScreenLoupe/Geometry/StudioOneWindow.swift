@@ -9,51 +9,115 @@ struct OneWindowChoice: Equatable, Sendable {
 }
 
 /// The Screenshot studio's One Window mode: off, picking the
-/// window, or on for one window. Kept for the session only, never saved.
+/// first window, picking another while one stays chosen, or on for one window. Kept for the session
+/// only, never saved.
 enum OneWindowMode: Equatable, Sendable {
     case off
+    /// Picking the first window: none is chosen yet.
     case picking
+    /// Pick Another Window: picking, while this window stays chosen until another is picked; a
+    /// cancel goes back to it.
+    case repicking(OneWindowChoice)
     case on(OneWindowChoice)
 
     enum Event: Equatable, Sendable {
         /// The palette's One Window button or the menu item.
         case toggle(studioVisible: Bool)
+        /// Pick Another Window in the One Window list.
+        case pickAnother
+        /// End One Window in the One Window list.
+        case end
         /// The picker's click on a window.
         case picked(OneWindowChoice)
         /// The picker ended without a window: Escape, a right click, a click on no window, another
         /// app becoming active.
         case cancelled
+        /// Capture, Copy or Save pressed when a picture can be taken now (`OneWindowMode.press`).
+        case pressed
         /// The studio was hidden.
         case hidden
-        /// The chosen window is no longer on screen here (`OneWindowWatch`), or a press found it
-        /// can't be captured (`OneWindowPicture.shot`).
-        case unavailable
+        /// The chosen window can't be captured any more: no longer on screen here
+        /// (`OneWindowWatch`), or found so by a press (`OneWindowPicture.shot`).
+        case unavailable(OneWindowProblem)
     }
 
-    /// The mode after `event`. Turning on needs the studio shown; hiding ends picking but keeps a
+    /// The mode after `event`. Turning on needs the studio shown; the toggle and End One Window
+    /// turn it off from any mode. A re-pick keeps the chosen window: its cancel, hiding the studio
+    /// and a press go back to it, a pick replaces it. Hiding ends the first picking and keeps a
     /// chosen window, inert until the studio shows again; the chosen window becoming unavailable
-    /// turns it off.
+    /// turns One Window off, re-picking or not.
     func after(_ event: Event) -> OneWindowMode {
         switch (self, event) {
         case (.off, .toggle(let visible)): visible ? .picking : .off
-        case (.picking, .toggle), (.on, .toggle): .off
-        case (.picking, .picked(let choice)): .on(choice)
+        case (_, .toggle), (_, .end): .off
+        case (.on(let choice), .pickAnother): .repicking(choice)
+        case (.picking, .picked(let choice)), (.repicking, .picked(let choice)): .on(choice)
         case (.picking, .cancelled), (.picking, .hidden): .off
-        case (.on, .unavailable): .off
+        case (.repicking(let choice), .cancelled), (.repicking(let choice), .hidden),
+            (.repicking(let choice), .pressed):
+            .on(choice)
+        case (.on, .unavailable), (.repicking, .unavailable): .off
         default: self
         }
     }
 
+    /// The window a press captures and the outline marks: chosen, also while another is picked.
     var chosen: OneWindowChoice? {
-        if case .on(let choice) = self { return choice }
-        return nil
+        switch self {
+        case .on(let choice), .repicking(let choice): choice
+        case .off, .picking: nil
+        }
     }
 
-    var isPicking: Bool { self == .picking }
+    /// The window picker runs: the first picking or a re-pick.
+    var isPicking: Bool {
+        switch self {
+        case .picking, .repicking: true
+        case .off, .on: false
+        }
+    }
 
-    /// Whether One Window Shadow can be changed: only while One Window is on, its window picked or
-    /// chosen, since it applies to no other picture. Off, it is greyed out, still showing the setting.
-    var allowsShadowChoice: Bool { self != .off }
+    /// Whether the studio's frame is in use: shown, and what a picture is cut to; with it, Size, Fit
+    /// to Window, Aspect Lock and Background, which set the frame and what lies under it. Only while
+    /// One Window is off; otherwise the picture is the window alone, so the frame hides and comes
+    /// back where it was when One Window ends, and those controls are disabled.
+    var usesFrame: Bool { self == .off }
+
+    /// Pick Another Window in the One Window list: enabled while a window is chosen and not
+    /// already being replaced.
+    var canPickAnother: Bool {
+        if case .on = self { return true }
+        return false
+    }
+
+    /// End One Window in the One Window list: enabled in every mode but off.
+    var canEnd: Bool { self != .off }
+
+    /// What a press of Capture, Copy or Save that can take a picture now does: the frame's picture
+    /// while off, the chosen window's while one is chosen (a re-pick ends first, `.pressed`), and
+    /// none during the first picking.
+    var press: OneWindowPress {
+        switch self {
+        case .off: .frame
+        case .picking: .pickFirst
+        case .repicking(let choice), .on(let choice): .window(choice)
+        }
+    }
+
+    /// The line on top of Screenshot › Size and Screenshot › Background while the frame isn't in
+    /// use (`usesFrame`), above their disabled items.
+    static let frameControlsNote = "Not used in One Window: the picture is the window alone, on transparency."
+}
+
+/// What a press that can take a picture now takes (`OneWindowMode.press`).
+enum OneWindowPress: Equatable, Sendable {
+    case frame
+    case window(OneWindowChoice)
+    /// Nothing: no window is chosen yet. The press is refused with "Pick a window first", the
+    /// picking goes on.
+    case pickFirst
+
+    static let pickFirstNotice = "Pick a window first"
 }
 
 /// Reads of the chosen window's place, about 60 a second while the studio shows: where its outline goes, and when One
@@ -67,7 +131,7 @@ struct OneWindowWatch: Equatable, Sendable {
         case shows(CGRect)
         /// One odd read: the outline stays where it was.
         case unsure
-        /// Gone from the screen: One Window turns off.
+        /// Gone from the screen: One Window turns off (`OneWindowProblem.notListed`).
         case unavailable
     }
 
@@ -113,24 +177,40 @@ struct OneWindowOutline: Equatable, Sendable {
     }
 }
 
-/// Why a chosen window can't be captured alone at a press.
+/// Why the chosen window can't be captured alone: One Window turns off, the frame comes back, and
+/// no picture is taken.
 enum OneWindowProblem: Error, Equatable, Sendable {
-    /// Not among the on-screen windows: closed, minimised, hidden, on another Space.
+    /// Not among the on-screen windows: closed, minimised, hidden, on another Space, gone full
+    /// screen.
     case notListed
-    /// Its pixels aren't the frame display's: it would have to be scaled.
+    /// Its pixels aren't its display's: it would have to be scaled.
     case otherScale
+
+    /// What losing the window says, with a beep, beside the frame's tab, the frame back on screen:
+    /// nothing when the loss `cancels` nothing — the window closed or hidden while nothing waited
+    /// for it — and nothing while the studio is hidden, where a capture or countdown is simply
+    /// dropped; otherwise, when it cancels a running countdown or a pressed Capture, Copy or Save,
+    /// why nothing was captured.
+    func notice(cancels: Bool, studioVisible: Bool) -> String? {
+        guard cancels, studioVisible else { return nil }
+        return switch self {
+        case .notListed: "Window gone · nothing captured"
+        case .otherScale: "Window can't be captured · nothing captured"
+        }
+    }
 }
 
 /// What a press takes while a window is chosen (`OneWindowPicture.shot`).
 enum OneWindowShot: Equatable, Sendable {
     case window
-    /// The frame's picture, as without One Window, which turns off.
-    case frameInstead(OneWindowProblem)
+    /// Nothing: the window can't be captured unscaled, or at all.
+    case unavailable(OneWindowProblem)
 }
 
 /// How a lone window's capture becomes a picture: captured with
-/// room to spare, cut to its visible pixels, and centred on whole pixels in a picture of the frame's
-/// size, grown where the window with its shadow needs more, never scaled.
+/// room to spare, then cut to its visible pixels — the window and, when captured, its shadow —
+/// at its native pixels, never scaled. Nothing is laid under it: around the window and through
+/// its shadow the picture is transparent.
 enum OneWindowPicture {
     /// Points of room on every side of the window for the capture's output: more than the largest
     /// shadow macOS draws (the active window's), so the window with its shadow is never scaled
@@ -157,32 +237,12 @@ enum OneWindowPicture {
     }
 
     /// What a press takes for a window listed on screen at `windowScale` pixels per point (`nil`
-    /// when it isn't listed on screen at all) and a frame on a display of `frameScale`: the window,
-    /// or, when it can't be captured unscaled, the frame's picture instead, One Window released.
-    static func shot(windowScale: CGFloat?, frameScale: CGFloat) -> OneWindowShot {
-        guard let windowScale else { return .frameInstead(.notListed) }
-        return windowScale == frameScale ? .window : .frameInstead(.otherScale)
-    }
-
-    /// Whether a picture of `size` pixels fits a frame of `frame` pixels: equal fits, one pixel over
-    /// in either axis doesn't.
-    static func fits(_ size: PixelSize, in frame: PixelSize) -> Bool {
-        size.width <= frame.width && size.height <= frame.height
-    }
-
-    /// The picture's size for a frame of `frame` pixels and a window whose visible pixels, its
-    /// shadow's among them, are `visible`: the frame's, grown on each axis only as far as `visible`
-    /// needs, so a window larger than the frame comes whole, as if the frame were fitted to it. The
-    /// frame on screen stays as it is.
-    static func pictureSize(frame: PixelSize, visible: PixelSize) -> PixelSize {
-        PixelSize(width: max(frame.width, visible.width), height: max(frame.height, visible.height))
-    }
-
-    /// The top-left corner, in whole pixels from the frame's top-left, of a picture of `size`
-    /// centred in `frame`. An odd pixel left over goes right of it and below it; in a picture
-    /// grown to `size` (`pictureSize`), that axis starts at 0.
-    static func centredOrigin(of size: PixelSize, in frame: PixelSize) -> (x: Int, y: Int) {
-        ((frame.width - size.width) / 2, (frame.height - size.height) / 2)
+    /// when it isn't listed on screen at all) on a display of `displayScale` — the display holding
+    /// most of the window, whose pixels the picture is in: the window, or, when it can't be captured
+    /// unscaled, nothing, One Window released.
+    static func shot(windowScale: CGFloat?, displayScale: CGFloat) -> OneWindowShot {
+        guard let windowScale else { return .unavailable(.notListed) }
+        return windowScale == displayScale ? .window : .unavailable(.otherScale)
     }
 
     /// The smallest rect holding every pixel of `image` that isn't wholly transparent — the window

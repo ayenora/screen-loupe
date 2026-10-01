@@ -1,22 +1,4 @@
 import AppKit
-import SwiftUI
-
-/// The Timer list beside the palette: how long Capture, Copy
-/// and Save wait. Shown in `StudioListPanel`, as the Size list is.
-struct StudioTimerList: View {
-    let current: StudioDelay
-    let choose: (StudioDelay) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(StudioDelay.allCases, id: \.self) { delay in
-                StudioListRow(title: delay.title, isChecked: delay == current) { choose(delay) }
-            }
-        }
-        .padding(StudioListLook.padding)
-        .frame(width: 120)
-    }
-}
 
 /// The studio's countdown beside its frame's tab: `CountdownPill` in the studio's orange.
 ///

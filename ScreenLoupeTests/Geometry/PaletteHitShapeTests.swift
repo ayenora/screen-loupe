@@ -197,4 +197,104 @@ struct PaletteHitShapeTests {
         #expect(!take(bottom, 35, 1))
         #expect(take(bottom, 35, 35.5))
     }
+
+    /// The glass group of One Window and its ▾ alone, bottom-up: One Window's 36 pt slot, then the
+    /// ▾'s view, 28 pt wide as its highlight, overlapping One Window by 6 pt, so the group is 58 ×
+    /// 36 pt, a capsule, and the ▾'s 16 pt hit slot is 36…52.
+    private let wideGroup = CGRect(x: 0, y: 0, width: 58, height: 36)
+    private let oneWindow = CGRect(x: 0, y: 0, width: 36, height: 36)
+    private var menu: CGRect { PaletteMenuButton.hitSlot(in: CGRect(x: 30, y: 0, width: 28, height: 36)) }
+
+    private func takesWide(_ button: CGRect, _ x: CGFloat, _ y: CGFloat) -> Bool {
+        PaletteHitShape.buttonTakes(CGPoint(x: x, y: y), buttonFrame: button, group: wideGroup, radius: 18)
+    }
+
+    @Test func theMenusHitSlotIsItsMiddle16Points() {
+        #expect(menu == CGRect(x: 36, y: 0, width: 16, height: 36))
+    }
+
+    @Test func eachButtonOfTheWiderGroupTakesItsMiddle() {
+        #expect(takesWide(oneWindow, 18, 18))
+        #expect(takesWide(menu, 44, 18))
+    }
+
+    @Test func oneWindowKeepsWhatTheMenusHighlightOverlaps() {
+        // 30…36 is under the ▾'s view, but only One Window takes it.
+        #expect(takesWide(oneWindow, 31, 18))
+        #expect(!takesWide(menu, 31, 18))
+        #expect(takesWide(menu, 36, 18))
+        #expect(!takesWide(oneWindow, 36, 18))
+    }
+
+    @Test func pastTheMenusSlotIsTheGroupsBackground() {
+        // 52…58: the ▾'s highlight reaches there, the mouse drags the palette.
+        #expect(!takesWide(menu, 52, 18))
+        #expect(!takesWide(menu, 55, 18))
+        #expect(takesWide(menu, 51.9, 18))
+    }
+
+    @Test func oneWindowsLeftEndIsTheCapsulesRoundEnd() {
+        // The left arc's centre is (18, 18): 17.5 pt to its left is inside, the corners outside.
+        #expect(takesWide(oneWindow, 0.5, 18))
+        #expect(!takesWide(oneWindow, 1, 1))
+        #expect(!takesWide(oneWindow, 1, 33))
+        // Between the arcs, its top and bottom edges are straight.
+        #expect(takesWide(oneWindow, 26, 35.9))
+        #expect(takesWide(oneWindow, 26, 0))
+        #expect(!takesWide(oneWindow, 26, 36))
+    }
+
+    @Test func theMenusHighlightFitsTheGroupsRoundedEnd() {
+        // A 28 pt circle centred on the ▾'s slot, (44, 18), stays inside the 58 × 36 pt capsule:
+        // its rightmost, lowest and highest points are inside.
+        let r = PaletteHitShape.contains
+        #expect(r(CGPoint(x: 58, y: 18), wideGroup, 18))
+        #expect(r(CGPoint(x: 44, y: 4), wideGroup, 18))
+        #expect(r(CGPoint(x: 44, y: 32), wideGroup, 18))
+        // 45° down-right and up-right on the circle, 17.1 pt from the arc's centre at (40, 18).
+        #expect(r(CGPoint(x: 44 + 14 / 2.squareRoot(), y: 18 - 14 / 2.squareRoot()), wideGroup, 18))
+        #expect(r(CGPoint(x: 44 + 14 / 2.squareRoot(), y: 18 + 14 / 2.squareRoot()), wideGroup, 18))
+    }
+}
+
+struct PaletteMenuButtonTests {
+    @Test func theHighlightIsAsTallAsTheButtonsFillAndAtLeastTheSlotAnd5() {
+        // Measured: 20 pt tall, 21 wide; 24 tall, 24 wide.
+        #expect(PaletteMenuButton.fillWidth(fillHeight: 20) == CGFloat(21))
+        #expect(PaletteMenuButton.fillWidth(fillHeight: 24) == CGFloat(24))
+        // The palette from macOS 26: a 28 pt fill, a 28 pt circle.
+        #expect(PaletteMenuButton.fillWidth(fillHeight: 28) == CGFloat(28))
+        #expect(PaletteMenuButton.fillWidth(fillHeight: 0) == CGFloat(21))
+    }
+
+    @Test func theHighlightReachesEquallyPastBothSidesOfTheSlot() {
+        #expect(PaletteMenuButton.overhang(fillHeight: 28) == CGFloat(6))
+        #expect(PaletteMenuButton.overhang(fillHeight: 24) == CGFloat(4))
+        #expect(PaletteMenuButton.overhang(fillHeight: 20) == CGFloat(2.5))
+    }
+
+    @Test func theMeasuredHighlightMeetsTheButtonsFill() {
+        // A 36.5 pt button, its fill inset 2 pt: it ends at 34.5; the ▾'s 24 pt highlight around
+        // 36.5…52.5 starts at 32.5, 2 pt over it, as measured.
+        let slot = CGRect(x: 36.5, y: 0, width: 16, height: 28)
+        let start = slot.midX - PaletteMenuButton.fillWidth(fillHeight: 24) / 2
+        #expect(start == CGFloat(32.5))
+    }
+
+    @Test func theHitSlotIsTheMiddleOfTheView() {
+        #expect(
+            PaletteMenuButton.hitSlot(in: CGRect(x: 30, y: 0, width: 28, height: 36))
+                == CGRect(x: 36, y: 0, width: 16, height: 36))
+        #expect(
+            PaletteMenuButton.hitSlot(in: CGRect(x: 28, y: -4, width: 24, height: 28))
+                == CGRect(x: 32, y: -4, width: 16, height: 28))
+        // A view no wider than the slot is all slot.
+        #expect(PaletteMenuButton.hitSlot(in: CGRect(x: 0, y: 0, width: 16, height: 36)).width == CGFloat(16))
+        #expect(PaletteMenuButton.hitSlot(in: CGRect(x: 0, y: 0, width: 10, height: 36)).width == CGFloat(10))
+    }
+
+    @Test func theRowIsTheButtonTheSlotAndTheOverhang() {
+        #expect(PaletteMenuButton.rowWidth(buttonWidth: 36, fillHeight: 28) == CGFloat(58))
+        #expect(PaletteMenuButton.rowWidth(buttonWidth: 32, fillHeight: 24) == CGFloat(52))
+    }
 }

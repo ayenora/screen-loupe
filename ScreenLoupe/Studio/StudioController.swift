@@ -33,9 +33,6 @@ final class StudioController {
     private var isCapturing = false
     /// The last save panel; while it is open, the commands bring it forward instead.
     private var savePanel: NSSavePanel?
-    /// The Size, the Timer, the Output or the Background list beside the palette; the palette knows whose it is.
-    private let listPanel = StudioListPanel()
-    private let listState = StudioListState()
     /// Built the first time Custom Size… is chosen, then kept.
     private var customSizesWindow: NSPanel?
     private let colorTarget = ColorPanelTarget()
@@ -62,26 +59,35 @@ final class StudioController {
         palette.onCapture = { [weak self] in self?.capture() }
         palette.onCopy = { [weak self] in self?.copy() }
         palette.onSave = { [weak self] in self?.save() }
-        palette.onSize = { [weak self] in self?.showSizes(beside: $0) }
+        palette.onSize = { [weak self] in self?.showSizes(from: $0) }
         palette.onFitToWindow = { [weak self] in self?.toggleFitToWindow() }
         palette.onToggleAspectLock = { [weak self] in self?.toggleAspectLock() }
-        palette.onTimer = { [weak self] in self?.showDelays(beside: $0) }
-        palette.onOutput = { [weak self] in self?.showOutput(beside: $0) }
-        palette.onBackground = { [weak self] in self?.showBackgrounds(beside: $0) }
+        palette.onTimer = { [weak self] in
+            guard let self, let menu = delayMenu?() else { return }
+            palette.popUp(menu, from: $0)
+        }
+        palette.onOutput = { [weak self] in
+            guard let self, let menu = outputMenu?() else { return }
+            palette.popUp(menu, from: $0)
+        }
+        palette.onBackground = { [weak self] in self?.showBackgrounds(from: $0) }
         palette.onToggleOneWindow = { [weak self] in self?.toggleOneWindow() }
+        palette.onOneWindowMenu = { [weak self] in self?.showOneWindowMenu() }
         palette.onHide = { [weak self] in self?.hide() }
-        palette.onDragStarted = { [weak self] in self?.listPanel.dismiss() }
-        listPanel.onClose = { [weak self] in self?.palette.openListButton = nil }
         palette.studioFrame = { [weak self] in self?.frame.captureRect }
         palette.onMoved = { [weak self] in
             guard let self else { return }
             settings.update { $0.studioPaletteOrigin = self.palette.frame.origin }
         }
-        // The frame's position box keeps off the palette, wherever it is moved.
+        // The frame's position box keeps off the palette, wherever it is moved, and One Window's
+        // notice beside the palette follows it.
         paletteMoveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification, object: palette, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updatePositionAvoiding() }
+            MainActor.assumeIsolated {
+                self?.updatePositionAvoiding()
+                self?.placeOneWindowNotice()
+            }
         }
         settings.observe(\.studioAspectLocked) { [weak self] in self?.palette.aspectLocked = $0 }
         settings.observe(\.activeStudioAspectRatio) { [weak self] in self?.frame.aspectRatio = $0.map { CGFloat($0) } }
@@ -113,12 +119,14 @@ final class StudioController {
 
     // MARK: Visibility
 
-    var isVisible: Bool { frame.isVisible }
+    /// Whether the studio shows: its palette, and its frame unless One Window hides it.
+    private(set) var isVisible = false
 
-    /// Shows the frame where it was, or centred on the main display the first time, and the palette
-    /// where it was, or beside the frame.
+    /// Shows the frame where it was, or centred on the main display the first time, unless One
+    /// Window keeps a window chosen, and the palette where it was, or beside the frame.
     func show() {
-        frame.show()
+        isVisible = true
+        if oneWindowMode.usesFrame { frame.show() }
         if !palette.isVisible { placePalette() }
         palette.orderFrontRegardless()
         updatePositionAvoiding()
@@ -129,9 +137,10 @@ final class StudioController {
     /// Ends Fit to Window's picker too, or a pick would show the frame alone; One Window's ends
     /// with `.hidden`.
     func hide() {
-        listPanel.dismiss()
+        isVisible = false
         frame.stopPickingWindow()
         frame.hide()
+        noticePanel.hide()
         palette.orderOut(nil)
         updatePositionAvoiding()
         advance(.hidden)
@@ -150,7 +159,7 @@ final class StudioController {
 
     // MARK: Sizes
 
-    /// The frame's size in pixels of its display, for the checkmark in the size lists.
+    /// The frame's size in pixels of its display, for the checkmark in the size menus.
     var pixelSize: PixelSize? { frame.pixelSize }
 
     /// Gives the frame `size` pixels (`OverlayFrameController.resize(toPixels:)`), unless its display
@@ -166,7 +175,6 @@ final class StudioController {
     func toggleFitToWindow() {
         if frame.isPickingWindow { return frame.stopPickingWindow() }
         advance(.pickerStarted)
-        listPanel.dismiss()
         // A window picked with Aspect Lock on gives the lock its ratio, as a size does.
         frame.pickWindow { [weak self] in self?.retakeAspectRatio() }
     }
@@ -193,38 +201,22 @@ final class StudioController {
         return Double(frame.captureRect.width / frame.captureRect.height)
     }
 
-    /// The Size list beside the palette's Size button, or closes it while it shows. Nothing is
-    /// activated.
-    private func showSizes(beside button: NSView) {
-        toggleList(beside: button) {
-            StudioSizeList(
-                current: frame.pixelSize, custom: settings.settings.studioCustomSizes,
-                apply: { [weak self] size in
-                    self?.listPanel.dismiss()
-                    self?.applySize(size)
-                },
-                editCustomSizes: { [weak self] in
-                    self?.listPanel.dismiss()
-                    self?.showCustomSizes()
-                })
-        }
-    }
+    /// Screenshot › Size's menu, filled as it is now, which the palette's Size button pops up; set
+    /// by the app.
+    var sizeMenu: (() -> NSMenu?)?
 
-    /// Shows `list` in the list panel beside `button`, or closes the panel when it already shows
-    /// that button's list; another list in it is replaced.
-    private func toggleList<List: View>(beside button: NSView, _ list: () -> List) {
-        if palette.openListButton === button {
-            listPanel.dismiss()
-            return
+    /// The Size menu from the palette, with a row to type a size in (`StudioSizeTypingItem`, a pilot)
+    /// above Custom Size….
+    private func showSizes(from button: PaletteButton) {
+        guard let menu = sizeMenu?() else { return }
+        if oneWindowMode.usesFrame,
+            let index = menu.items.firstIndex(where: { $0.action == #selector(AppController.showStudioCustomSizes(_:)) }
+            )
+        {
+            menu.insertItem(.separator(), at: index)
+            menu.insertItem(StudioSizeTypingItem.make { [weak self] in self?.applySize($0) }, at: index)
         }
-        listPanel.dismiss()
-        let paletteFrame = palette.frame
-        let anchorTop = palette.convertToScreen(button.convert(button.bounds, to: nil)).maxY
-        let visible = palette.screen?.visibleFrame ?? paletteFrame
-        listPanel.show(list(), beside: palette) {
-            StudioPlacement.popoverOrigin(size: $0, beside: paletteFrame, anchorTop: anchorTop, in: visible)
-        }
-        palette.openListButton = button
+        palette.popUp(menu, from: button)
     }
 
     /// The Custom Sizes window: four slots for sizes of the user's own. A non-activating panel, so
@@ -266,19 +258,14 @@ final class StudioController {
         settings.update { $0.studioDelay = delay }
     }
 
-    /// The Timer list beside the palette's Timer button, or closes it while it shows.
-    private func showDelays(beside button: NSView) {
-        toggleList(beside: button) {
-            StudioTimerList(current: delay) { [weak self] delay in
-                self?.listPanel.dismiss()
-                self?.chooseDelay(delay)
-            }
-        }
-    }
+    /// Screenshot › Delay's menu, which the palette's Timer button pops up; set by the app.
+    var delayMenu: (() -> NSMenu?)?
+    /// Screenshot › Output's menu, which the palette's Output button pops up; set by the app.
+    var outputMenu: (() -> NSMenu?)?
 
     // MARK: Output
 
-    /// Screenshot › Output and the palette's Output list.
+    /// Screenshot › Output, also as the palette's Output menu.
     func chooseFormat(_ format: StudioOutput.Format) {
         settings.update { $0.studioOutput.format = format }
     }
@@ -291,54 +278,26 @@ final class StudioController {
         settings.update { $0.studioOutput.scale = scale }
     }
 
-    /// The Output list beside the palette's Output button, or closes it while it shows.
-    private func showOutput(beside button: NSView) {
-        toggleList(beside: button) {
-            StudioOutputList(
-                current: settings.settings.studioOutput,
-                chooseFormat: { [weak self] format in
-                    self?.listPanel.dismiss()
-                    self?.chooseFormat(format)
-                },
-                chooseColors: { [weak self] colors in
-                    self?.listPanel.dismiss()
-                    self?.chooseColors(colors)
-                },
-                chooseScale: { [weak self] scale in
-                    self?.listPanel.dismiss()
-                    self?.chooseScale(scale)
-                })
-        }
-    }
-
     // MARK: Background
 
     var background: StudioBackground { settings.settings.studioBackground }
 
-    /// The Background list beside the palette's Background button, or closes it while it shows.
-    private func showBackgrounds(beside button: NSView) {
-        toggleList(beside: button) {
-            StudioBackgroundList(
-                current: background,
-                choose: { [weak self] background in
-                    self?.listPanel.dismiss()
-                    self?.chooseBackground(background)
-                },
-                chooseCustomColor: { [weak self] in
-                    self?.listPanel.dismiss()
-                    self?.chooseCustomColor()
-                },
-                chooseImage: { [weak self] in
-                    self?.listPanel.dismiss()
-                    self?.chooseBackgroundImage()
-                },
-                windowShadow: settings.settings.studioWindowShadow,
-                toggleWindowShadow: { [weak self] in
-                    self?.listPanel.dismiss()
-                    self?.toggleWindowShadow()
-                },
-                state: listState)
+    /// Screenshot › Background's menu with its colours and gradients as rows of swatches, which the
+    /// palette's Background button pops up; set by the app.
+    var backgroundMenu: ((@escaping MainMenu.SwatchRow) -> NSMenu?)?
+
+    /// The Background menu from the palette: each section's swatches in one row
+    /// (`StudioSwatchRow`), the current one ringed, greyed while One Window is on.
+    private func showBackgrounds(from button: PaletteButton) {
+        let current = background
+        let isEnabled = oneWindowMode.usesFrame
+        let row: MainMenu.SwatchRow = { [weak self] entries, header in
+            StudioSwatchRow.view(entries: entries, current: current, isEnabled: isEnabled, header: header) {
+                self?.chooseBackground($0)
+            }
         }
+        guard let menu = backgroundMenu?(row) else { return }
+        palette.popUp(menu, from: button)
     }
 
     func chooseBackground(_ background: StudioBackground) {
@@ -603,27 +562,65 @@ final class StudioController {
         settings.update { $0.studioWindowShadow.toggle() }
     }
 
+    /// The One Window menu's items' target, for as long as the menu may call it.
+    private lazy var oneWindowMenu = StudioOneWindowMenu(
+        mode: { [weak self] in self?.oneWindowMode ?? .off },
+        windowShadow: { [weak self] in self?.settings.settings.studioWindowShadow ?? true },
+        toggleWindowShadow: { [weak self] in self?.toggleWindowShadow() },
+        pickAnother: { [weak self] in self?.send(.pickAnother) },
+        end: { [weak self] in self?.send(.end) })
+
+    /// The One Window menu beside the palette, made anew each time, so it reads the mode and the
+    /// setting as they are.
+    private func showOneWindowMenu() {
+        palette.popUpOneWindowMenu(oneWindowMenu.makeMenu())
+    }
+
     /// Moves One Window on by `event` (`OneWindowMode.after`) and shows the result: the picker,
-    /// the palette's button and the chosen window's outline.
+    /// the palette's buttons, the chosen window's outline, and the frame, hidden while One Window
+    /// is on and back where it was when it ends. Turning on closes the colour panel while it
+    /// sets the background: Background is out of use, so a colour taken there would change it
+    /// unseen.
     private func send(_ event: OneWindowMode.Event) {
         let old = oneWindowMode
         let new = old.after(event)
         guard new != old else { return }
         oneWindowMode = new
-        listState.oneWindowMode = new
         // Set first: stopping the picker reports a cancel, which then changes nothing.
-        if old.isPicking { oneWindowPicker?.stop() }
-        if new.isPicking { startOneWindowPicker() }
-        palette.isPickingOneWindow = new.isPicking
-        palette.hasOneWindow = new.chosen != nil
+        if old.isPicking, !new.isPicking { oneWindowPicker?.stop() }
+        if new.usesFrame != old.usesFrame {
+            if new.usesFrame {
+                noticePanel.hide()
+                if isVisible { frame.show() }
+            } else {
+                if colorTarget.isActive { NSColorPanel.shared.close() }
+                frame.stopPickingWindow()
+                frame.hide()
+            }
+        }
+        if new.isPicking, !old.isPicking { startOneWindowPicker() }
+        palette.oneWindowMode = new
         updateOneWindowWatch()
+    }
+
+    /// The chosen window can't be captured any more (`problem`): One Window turns off, the frame
+    /// comes back where it was, a running countdown stops, and no picture is taken. Quietly, unless
+    /// the loss cancels something the user waits for — the countdown, or a capture they pressed
+    /// (`pressed`), also one on its way whose window went meanwhile: then a beep and why, beside the
+    /// frame's tab (`OneWindowProblem.notice`). While the studio is hidden, nothing is said.
+    private func loseWindow(_ chosen: OneWindowChoice, _ problem: OneWindowProblem, pressed: Bool = false) {
+        let cancels = pressed || countdown.isCounting
+        if oneWindowMode.chosen == chosen {
+            send(.unavailable(problem))
+            advance(.windowLost)
+        }
+        if let text = problem.notice(cancels: cancels, studioVisible: isVisible) { beep(text) }
     }
 
     /// As Fit to Window does: the window under the pointer is tinted, a click chooses it, Escape
     /// or a click on no window cancels. The palette's button, above the picker, cancels too.
     private func startOneWindowPicker() {
         advance(.pickerStarted)
-        listPanel.dismiss()
         let picker = WindowPicker(
             windows: converter.map { ScreenWindows.windows(converter: $0) } ?? [], tint: SettingsColor.studio.nsColor,
             hint: "Click to capture this window alone · Esc to cancel"
@@ -672,7 +669,10 @@ final class StudioController {
         oneWindowSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.send(.unavailable) }
+            MainActor.assumeIsolated {
+                guard let self, let chosen = self.oneWindowMode.chosen else { return }
+                self.loseWindow(chosen, .notListed)
+            }
         }
         readOneWindow()
     }
@@ -686,9 +686,38 @@ final class StudioController {
             oneWindowOutline.show(
                 around: window, appName: chosen.appName, lineWidth: CGFloat(settings.settings.frameLineWidth),
                 screen: screen)
+            placeOneWindowNotice()
         case .unsure: break
-        case .unavailable: send(.unavailable)
+        case .unavailable: loseWindow(chosen, .notListed)
         }
+    }
+
+    /// Where One Window's notice or countdown of `size` goes while the frame is hidden
+    /// (`StudioPlacement.oneWindowNotice`): beside the chosen window's name, or, while none shows,
+    /// beside the palette level with its One Window button, kept on the palette's display. `nil`
+    /// while neither shows.
+    private func oneWindowNoticeRect(size: CGSize) -> CGRect? {
+        if let place = oneWindowOutline.labelPlace {
+            return StudioPlacement.oneWindowNotice(size: size, beside: place.label, in: place.screen)
+        }
+        guard palette.isVisible, let visible = palette.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        else { return nil }
+        return StudioPlacement.oneWindowNotice(size: size, beside: palette.oneWindowRow, in: visible)
+    }
+
+    /// Moves One Window's notice, while it shows, after what it sits beside: the window's name,
+    /// the palette, or the displays changed.
+    private func placeOneWindowNotice() {
+        guard let text = noticePanel.text, let rect = oneWindowNoticeRect(size: StudioNoticePanel.size(for: text))
+        else { return }
+        noticePanel.move(to: rect)
+    }
+
+    /// The display a picture of `chosen` is in: the one holding most of the window as now listed;
+    /// `nil` when it isn't listed on screen.
+    private func display(of chosen: OneWindowChoice) -> DisplayInfo? {
+        guard let converter, let window = ScreenWindows.window(chosen.id, converter: converter) else { return nil }
+        return converter.owningDisplay(for: GlobalRect(rect: window.frame))
     }
 
     // MARK: Displays
@@ -701,6 +730,7 @@ final class StudioController {
         if palette.isVisible, converter?.owningDisplay(for: GlobalRect(rect: palette.frame)) == nil {
             placePalette(besideFrame: true)
         }
+        placeOneWindowNotice()
         updateBackdrop()
     }
 
@@ -738,14 +768,23 @@ final class StudioController {
     private var countdown = StudioCountdown.idle
     private var countdownTimer: Timer?
     private let countdownPanel = StudioCountdownPanel()
+    /// One Window's notices, while the frame beside whose tab they go is hidden.
+    private let noticePanel = StudioNoticePanel()
     /// Output as it was at the last press of Capture, Copy or Save: the picture it starts, now or
     /// when its countdown ends, is written so, whatever Output says meanwhile.
     private var pressedOutput = StudioOutput()
     /// Capture, Copy or Save pressed: `StudioCountdown.after` decides — cancel a running countdown,
-    /// refuse now, take now, or count down, stopping a running window picker first. Any press
-    /// closes an open list.
+    /// refuse now, take now, or count down, stopping a running window picker first. A press that can take a picture now asks One Window first
+    /// (`OneWindowMode.press`): during the first picking it is refused with "Pick a window first"
+    /// and the picking goes on; during a re-pick the re-pick ends and the chosen window is taken.
+    /// A press that is ignored, brings the save panel forward or stops a countdown leaves the mode
+    /// as it is.
     private func press(_ shot: StudioShot) {
-        listPanel.dismiss()
+        let check = self.check
+        if !countdown.isCounting, check == .take {
+            if oneWindowMode.press == .pickFirst { return beep(OneWindowPress.pickFirstNotice) }
+            send(.pressed)
+        }
         pressedOutput = settings.settings.studioOutput
         let pickerRunning = oneWindowPicker != nil || frame.isPickingWindow
         advance(
@@ -776,36 +815,50 @@ final class StudioController {
             countdownTimer?.invalidate()
             countdownTimer = nil
         }
-        if outcome == .frameOffDisplay { frame.showNotice(Notice.notOnOneDisplay) }
+        if outcome == .frameOffDisplay { notice(Notice.notOnOneDisplay) }
         updateCountdownPanel()
         // Gone from the screen first; the filter leaves it out of the picture anyway.
         if case .fire(let shot) = outcome { take(shot) }
     }
 
+    /// The frame's place matters only while it is in use: One Window's picture is the window's.
     private func tick() {
-        let onDisplay = converter?.owningDisplay(for: GlobalRect(rect: frame.captureRect)) != nil
+        let onDisplay =
+            !oneWindowMode.usesFrame || converter?.owningDisplay(for: GlobalRect(rect: frame.captureRect)) != nil
         advance(.tick(at: ProcessInfo.processInfo.systemUptime, frameOnDisplay: onDisplay))
     }
 
-    /// The countdown beside the frame's tab while it runs, following the frame; where the frame is
-    /// on no display, the next tick stops it.
+    /// The countdown while it runs: beside the frame's tab, following the frame, or, while One
+    /// Window hides the frame, beside the chosen window's name (`oneWindowNoticeRect`), following
+    /// the window. Where the frame is on no display, the next tick stops it.
     private func updateCountdownPanel() {
         let now = ProcessInfo.processInfo.systemUptime
-        guard countdown.isCounting, let tab = frame.tabArea,
-            let screen = converter?.owningDisplay(for: GlobalRect(rect: frame.captureRect))?.globalFrame
-        else { return countdownPanel.orderOut(nil) }
+        guard countdown.isCounting else { return countdownPanel.orderOut(nil) }
         let text = countdown.text(at: now)
-        let rect = StudioCountdown.pillRect(size: countdownPanel.size(for: text), tab: tab, screen: screen)
+        let size = countdownPanel.size(for: text)
+        let rect: CGRect?
+        if oneWindowMode.usesFrame {
+            rect = frame.tabArea.flatMap { tab in
+                converter?.owningDisplay(for: GlobalRect(rect: frame.captureRect)).map {
+                    StudioCountdown.pillRect(size: size, tab: tab, screen: $0.globalFrame)
+                }
+            }
+        } else {
+            rect = oneWindowNoticeRect(size: size)
+        }
+        guard let rect else { return countdownPanel.orderOut(nil) }
         countdownPanel.show(
             text, seconds: countdown.secondsLeft(at: now), fraction: CGFloat(countdown.fractionLeft(at: now)),
             in: rect)
     }
 
-    /// Whether a picture can be taken now (`StudioShotCheck`).
+    /// Whether a picture can be taken now (`StudioShotCheck`). The frame's place matters only while
+    /// it is in use.
     private var check: StudioShotCheck {
         StudioShotCheck(
             visible: isVisible, capturing: isCapturing, savePanelOpen: savePanel?.isVisible == true,
-            permitted: permissions.hasScreenRecordingAccess, onOneDisplay: frame.isWhollyOnOneDisplay)
+            permitted: permissions.hasScreenRecordingAccess,
+            onOneDisplay: !oneWindowMode.usesFrame || frame.isWhollyOnOneDisplay)
     }
 
     /// Takes the picture, then writes it as Output said at the press, once for both the clipboard
@@ -830,7 +883,7 @@ final class StudioController {
 
     private func copy(_ written: StudioOutput.Written) {
         ScreenshotExporter.copy(written.pasteboard)
-        frame.showNotice("Copied \(written.picture.width) × \(written.picture.height) px")
+        notice("Copied \(written.picture.width) × \(written.picture.height) px")
     }
 
     /// The sandbox lets the app write only where the user picks, so saving goes through the save
@@ -844,12 +897,13 @@ final class StudioController {
         savePanel = export.saveImage(
             written.data, type: UTType(format.typeIdentifier) ?? .png, name: name, sheetOn: nil
         ) { [weak self] url in
-            self?.frame.showNotice("Saved \(url.lastPathComponent)")
+            self?.notice("Saved \(url.lastPathComponent)")
         }
     }
 
-    /// Captures the frame's rect and hands the image on with its display's scale, unless the
-    /// studio was hidden meanwhile.
+    /// Captures the frame's rect, or One Window's window alone, and hands the image on with its
+    /// display's scale, unless the studio was hidden meanwhile: then the capture is dropped, its
+    /// failure too, with no beep and no notice.
     /// While a save panel is open, brings it forward instead: one panel at a time, and none in the
     /// picture.
     private func take(_ then: @escaping (CGImage, CGFloat) async -> Void) {
@@ -865,67 +919,74 @@ final class StudioController {
         case .notOnOneDisplay:
             // A picture holds one display's pixels: a frame reaching onto another display, or off
             // every display, would give a smaller picture than the frame says.
-            frame.showNotice(Notice.notOnOneDisplay)
+            notice(Notice.notOnOneDisplay)
             return
         case .take: break
         }
-        guard let geometry = frame.captureGeometry, let request = frame.screenshotRequest(for: geometry) else {
-            return NSSound.beep()
-        }
         isCapturing = true
         let included = (capturedAppWindows?() ?? []) + [backdrop.windowNumber]
-        let current = settings.settings
+        let shadow = settings.settings.studioWindowShadow
         let chosen = oneWindowMode.chosen
         Task {
             defer { isCapturing = false }
             do {
-                let image: CGImage
-                if let chosen, let window = try await windowPicture(chosen, geometry: geometry, settings: current) {
-                    image = window
-                } else {
-                    // The backdrop is on screen: the picture is what the frame shows.
-                    await backdropOnScreen()
-                    image = try await StudioCapture.image(request, on: geometry.display, including: included)
+                if let chosen {
+                    // Unavailable: One Window is off, and no picture is taken.
+                    guard let window = try await windowPicture(chosen, shadow: shadow) else { return }
+                    if isVisible { await then(window.image, window.scale) }
+                    return
                 }
+                guard let geometry = frame.captureGeometry, let request = frame.screenshotRequest(for: geometry)
+                else { return NSSound.beep() }
+                // The backdrop is on screen: the picture is what the frame shows.
+                await backdropOnScreen()
+                let image = try await StudioCapture.image(request, on: geometry.display, including: included)
                 if isVisible { await then(image, geometry.display.scale) }
-            } catch  where ScreenCaptureManager.isPermissionError(error) {
-                onNeedsPermission?(true)
-            } catch is BackgroundImageUnreadable {
-                beep(Notice.backgroundUnreadable)
             } catch {
+                // Hidden meanwhile: the capture is cancelled, and nothing is said.
+                guard isVisible else { return }
+                if ScreenCaptureManager.isPermissionError(error) {
+                    onNeedsPermission?(true)
+                    return
+                }
                 log.error("Studio capture failed: \(error.localizedDescription, privacy: .public)")
                 beep(Notice.captureFailed)
             }
         }
     }
 
-    /// The notices beside the frame's tab said from more than one place.
+    /// The notices said from more than one place.
     private enum Notice {
         static let notOnOneDisplay = "Frame is not wholly on one display"
         static let backgroundUnreadable = "Background image can't be read"
         static let captureFailed = "Capture failed"
     }
 
-    /// A failure: a beep, and `notice` beside the frame's tab.
-    private func beep(_ notice: String) {
+    /// A failure: a beep, and `text` as a notice.
+    private func beep(_ text: String) {
         NSSound.beep()
-        frame.showNotice(notice)
+        notice(text)
     }
 
-    /// One Window's picture of `chosen` (`StudioCapture.window`), or `nil` when the window turns out
-    /// unavailable (`OneWindowPicture.shot`): One Window turns off, and the press takes the frame's
-    /// picture instead.
+    /// Shows `text` for a moment: beside the frame's tab, or, while One Window hides the frame,
+    /// beside the chosen window's name or the palette (`oneWindowNoticeRect`).
+    private func notice(_ text: String) {
+        guard !oneWindowMode.usesFrame else { return frame.showNotice(text) }
+        guard let rect = oneWindowNoticeRect(size: StudioNoticePanel.size(for: text)) else { return }
+        noticePanel.show(text, in: rect)
+    }
+
+    /// One Window's picture of `chosen` (`StudioCapture.window`) with its display's scale, or `nil`
+    /// when the window turns out unavailable (`OneWindowPicture.shot`): One Window turns off, the
+    /// frame shows again, and no picture is taken (`loseWindow`).
     private func windowPicture(
-        _ chosen: OneWindowChoice, geometry: CaptureGeometry, settings current: Settings
-    ) async throws -> CGImage? {
+        _ chosen: OneWindowChoice, shadow: Bool
+    ) async throws -> (image: CGImage, scale: CGFloat)? {
         do {
-            // With the screen as the background, a lone window has none: it stays transparent.
-            let fill = try await fill(for: current.studioBackground)
-            return try await StudioCapture.window(
-                chosen.id, frame: geometry.areaSize, display: geometry.display, shadow: current.studioWindowShadow,
-                over: fill)
-        } catch is OneWindowProblem {
-            if oneWindowMode.chosen == chosen { send(.unavailable) }
+            guard let display = display(of: chosen) else { throw OneWindowProblem.notListed }
+            return (try await StudioCapture.window(chosen.id, display: display, shadow: shadow), display.scale)
+        } catch let problem as OneWindowProblem {
+            loseWindow(chosen, problem, pressed: true)
             return nil
         }
     }

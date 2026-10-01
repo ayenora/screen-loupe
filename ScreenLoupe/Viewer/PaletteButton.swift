@@ -14,7 +14,8 @@ protocol PaletteButtonHost: AnyObject {
 /// palette or of the Viewer's zoom presets: it takes the first click, even in a panel that isn't key,
 /// never makes a panel key or takes the focus, and tells its window, when that is a
 /// `PaletteButtonHost`, while the pointer rests on it. It shows a symbol, or a short text in its
-/// place (the zoom presets), tinted as the look says.
+/// place (the zoom presets), tinted as the look says, or the narrow ▾ beside a button that opens
+/// that button's menu, as the Viewer toolbar's ▾ buttons do.
 final class PaletteButton: NSButton {
     /// Shown in the hover label.
     var name: String?
@@ -40,18 +41,37 @@ final class PaletteButton: NSButton {
         setAccessibilityLabel(name)
     }
 
-    private func setUp(name: String) {
+    /// The ▾ right of a button, as the Viewer toolbar has one: a view as wide as its highlight
+    /// (`ToolbarLook.menuButtonWidth`) around its 16 pt slot (`PaletteMenuButton`), as tall as a
+    /// button, named `name`, `chevron.down` at 10 pt semibold — a toolbar
+    /// button draws its 8 pt ▾ at the size a 10 pt one is drawn directly, 9 × 5 pt. It never shows a
+    /// setting: in the label colour whatever its neighbour shows, filled only while pressed or while
+    /// its menu is open (`ToolbarLook.drawMenuFill`).
+    func show(menuNamed name: String) {
+        setUp(name: name, width: ToolbarLook.current.menuButtonWidth)
+        isMenu = true
+        image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: name)
+        imagePosition = .imageOnly
+        symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        imageScaling = .scaleNone
+    }
+
+    /// A `buttonSize` slot, or one `width` wide.
+    private func setUp(name: String, width: CGFloat? = nil) {
         isBordered = false
         contentTintColor = .labelColor
         refusesFirstResponder = true
         self.name = name
         let size = ToolbarLook.current.buttonSize
-        widthAnchor.constraint(equalToConstant: size.width).isActive = true
+        widthAnchor.constraint(equalToConstant: width ?? size.width).isActive = true
         heightAnchor.constraint(equalToConstant: size.height).isActive = true
     }
 
+    /// A ▾ (`show(menuNamed:)`), with its own pressed fill.
+    private(set) var isMenu = false
+
     /// Whether the button shows a setting, filled while it is on; the palette sets `state` from the
-    /// setting. Any other button just acts, or opens a list, and is filled only while pressed.
+    /// setting. Any other button just acts, or pops up a menu, and is filled only while pressed.
     private(set) var isToggle = false
 
     func makeToggle() {
@@ -59,7 +79,7 @@ final class PaletteButton: NSButton {
         isToggle = true
     }
 
-    /// While the list the button opened shows, it is filled as though pressed.
+    /// While the menu the button popped up is open, it is filled as though pressed.
     var isListOpen = false {
         didSet { needsDisplay = true }
     }
@@ -85,17 +105,31 @@ final class PaletteButton: NSButton {
     override var needsPanelToBecomeKey: Bool { false }
 
     /// Only inside its slot in the group and the group's rounded outline, `point` in the superview's
-    /// coordinates: the group's stack, which fills the group. The slot is the alignment rect the
-    /// stack lays out, `buttonSize`; the frame is taller by the symbol's alignment insets and
-    /// overlaps the neighbours. The square corners outside the outline fall through to the stack,
-    /// which lets a mouse-down drag the palette.
+    /// coordinates. The group is the stack `ToolbarLook.group` made, which fills it: the superview,
+    /// or, for a button in a row within the group (One Window and its ▾), the row's own stack's
+    /// ancestor. The slot is the alignment rect the stack lays out; the frame is taller by the
+    /// symbol's alignment insets and overlaps the neighbours. The square corners outside the outline
+    /// fall through to the stack, which lets a mouse-down drag the palette. A ▾ takes only its
+    /// middle 16 pt slot: its view is as wide as its highlight, which overlaps the button left of it.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let group = superview?.bounds,
+        let slot = alignmentRect(forFrame: frame)
+        guard let superview, let groupView = groupStack,
             PaletteHitShape.buttonTakes(
-                point, buttonFrame: alignmentRect(forFrame: frame), group: group,
-                radius: ToolbarLook.current.groupRadius)
+                point, buttonFrame: isMenu ? PaletteMenuButton.hitSlot(in: slot) : slot,
+                group: groupView.convert(groupView.bounds, to: superview), radius: ToolbarLook.current.groupRadius)
         else { return nil }
         return super.hitTest(point)
+    }
+
+    /// The group's stack (`ToolbarLook.groupIdentifier`), the nearest ancestor that is one; the
+    /// superview without one.
+    private var groupStack: NSView? {
+        var view = superview
+        while let current = view {
+            if current.identifier == ToolbarLook.groupIdentifier { return current }
+            view = current.superview
+        }
+        return superview
     }
 
     /// The toolbar's on and pressed look (`PaletteButtonLook`), in the button's slot: the bounds are
@@ -108,6 +142,7 @@ final class PaletteButton: NSButton {
             isOn: state == .on, isEnabled: isEnabled)
         switch look.fill {
         case .none: break
+        case .pressed where isMenu: ToolbarLook.current.drawMenuFill(.systemFill, in: slot)
         case .pressed: ToolbarLook.current.drawFill(.systemFill, in: slot)
         case .accent(let enabled):
             ToolbarLook.current.drawFill(

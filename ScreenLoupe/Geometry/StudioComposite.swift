@@ -39,10 +39,10 @@ extension BackgroundColor {
     var cgColor: CGColor { CGColor(srgbRed: red, green: green, blue: blue, alpha: 1) }
 }
 
-/// Puts a studio picture into the display's colour space, draws the studio's backdrop, and lays a
-/// lone window over its background.
+/// Puts a studio picture into the display's colour space and draws the studio's backdrop.
 enum StudioComposite {
-    /// Whether `image` carries alpha, so a fill can show through where nothing was captured.
+    /// Whether `image` carries alpha: where a lone window's capture has nothing, and how its shadow
+    /// fades.
     static func hasAlpha(_ image: CGImage) -> Bool {
         switch image.alphaInfo {
         case .none, .noneSkipFirst, .noneSkipLast: false
@@ -78,13 +78,16 @@ enum StudioComposite {
     }
 
     /// `image` in `space`: kept when already tagged with it, tagged when untagged, converted
-    /// otherwise, so the pixels and the saved profile agree. `nil` when no context can be made.
-    static func converted(_ image: CGImage, to space: CGColorSpace) -> CGImage? {
+    /// otherwise, so the pixels and the saved profile agree. Converted, it is opaque, or, with
+    /// `keepingAlpha`, premultiplied with its alpha unchanged — a lone window's picture, transparent
+    /// around the window and through its shadow. `nil` when no context can be made.
+    static func converted(_ image: CGImage, to space: CGColorSpace, keepingAlpha: Bool = false) -> CGImage? {
         let tagged = Self.tagged(image, with: space)
         if tagged.colorSpace == space { return tagged }
         guard
             let context = Self.context(
-                PixelSize(width: image.width, height: image.height), space: space, alpha: .noneSkipFirst)
+                PixelSize(width: image.width, height: image.height), space: space,
+                alpha: keepingAlpha ? .premultipliedFirst : .noneSkipFirst)
         else { return nil }
         context.interpolationQuality = .none
         context.draw(tagged, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
@@ -104,40 +107,12 @@ enum StudioComposite {
     }
 
     /// The backdrop's picture: `fill` over `size` pixels, opaque, in `space` — the display's, so
-    /// the window server shows these pixels unchanged and a capture gives them back. Drawn as One
-    /// Window's background is (`StudioFill.draw`), so a colour is the same pixels in both. `nil`
-    /// when the size is empty or no context can be made.
+    /// the window server shows these pixels unchanged and a capture gives them back. `nil` when the
+    /// size is empty or no context can be made.
     static func filled(_ fill: StudioFill, size: PixelSize, space: CGColorSpace) -> CGImage? {
         guard size.width > 0, size.height > 0, let context = Self.context(size, space: space, alpha: .noneSkipFirst)
         else { return nil }
         fill.draw(in: context, size: CGSize(width: size.width, height: size.height))
-        return context.makeImage()
-    }
-
-    /// A lone window's picture: `window` (already cut to its visible pixels) centred in a picture of
-    /// `frame` pixels (`OneWindowPicture.pictureSize`) in `space` (`OneWindowPicture.centredOrigin`),
-    /// drawn at its own size without interpolation, colour-matched into `space` as `converted` does.
-    /// Over `fill`, the result is opaque; without one, the rest is transparent and the window's
-    /// pixels, its shadow's alpha among them, are copied unchanged. `nil` when no context can be
-    /// made or the window is larger than the frame.
-    static func centred(
-        _ window: CGImage, in frame: PixelSize, space: CGColorSpace, over fill: StudioFill?
-    )
-        -> CGImage?
-    {
-        let size = PixelSize(width: window.width, height: window.height)
-        guard OneWindowPicture.fits(size, in: frame), frame.width > 0, frame.height > 0 else { return nil }
-        let tagged = Self.tagged(window, with: space)
-        guard
-            let context = Self.context(frame, space: space, alpha: fill == nil ? .premultipliedFirst : .noneSkipFirst)
-        else { return nil }
-        fill?.draw(in: context, size: CGSize(width: frame.width, height: frame.height))
-        let origin = OneWindowPicture.centredOrigin(of: size, in: frame)
-        // CoreGraphics counts y from the bottom.
-        let rect = CGRect(
-            x: origin.x, y: frame.height - origin.y - size.height, width: size.width, height: size.height)
-        context.interpolationQuality = .none
-        context.draw(tagged, in: rect)
         return context.makeImage()
     }
 

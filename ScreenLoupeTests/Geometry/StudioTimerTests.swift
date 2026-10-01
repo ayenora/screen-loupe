@@ -165,6 +165,14 @@ struct StudioCountdownTests {
         #expect(next.after(tick(at: 106)) == (.idle, .none))
     }
 
+    @Test func oneWindowsWindowLostCancelsAndNothingFires() {
+        let counting = StudioCountdown.counting(.capture, start: 100, total: 5)
+        #expect(counting.after(.windowLost) == (.idle, .cancelled))
+        #expect(StudioCountdown.idle.after(.windowLost) == (.idle, .none))
+        let (next, _) = counting.after(.windowLost)
+        #expect(next.after(tick(at: 106)) == (.idle, .none))
+    }
+
     @Test func aCancelledCountdownNeverFires() {
         let (next, _) = StudioCountdown.counting(.save, start: 100, total: 3).after(.hidden)
         #expect(next.after(tick(at: 104)) == (.idle, .none))

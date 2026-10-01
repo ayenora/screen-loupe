@@ -3,8 +3,10 @@ import AppKit
 /// The Viewer's zoom presets and zoom field, in the toolbar's look: Fit, 1×, 2×, 4×, 8× and 16× as
 /// text buttons in one group, the one that matches the current zoom shown as a toggle that is on
 /// (none between presets), and the current zoom in percent in a group of its own, where typing a
-/// number and Return sets it. Side by side in the strip under the toolbar (`ViewerZoomStrip`), one
-/// under another in the floating zoom panel (`ZoomPanel`).
+/// number and Return sets it. Side by side in the strip under the toolbar (`ViewerZoomStrip`), the
+/// field's group a capsule as the toolbar's items are; one under another in the floating zoom panel
+/// (`ZoomPanel`), as wide as the studio's palette with the groups centred, the field's group a
+/// rounded rectangle, as a text field is.
 @MainActor
 final class ZoomControls: NSView, NSTextFieldDelegate {
     /// The field's width: "6400%" in the field's font, with room for the capsule's round ends.
@@ -18,13 +20,21 @@ final class ZoomControls: NSView, NSTextFieldDelegate {
     private let presetButtons: [PaletteButton]
     /// The current zoom in percent; typing a number and Return sets it.
     /// Leaving the field any other way drops what was typed.
-    private let zoomField = NSTextField(string: "")
+    private let zoomField = ZoomField(string: "")
+    /// The field's place in its group, as tall as a button; the floating panel lays the field over it
+    /// from a window of its own (`ZoomPanel`).
+    private(set) lazy var fieldSlot = ZoomFieldBox(field: zoomField)
+    var field: ZoomField { zoomField }
     /// The zoom the field last showed, to tell a zoom change from a pan.
     private var shownZoom: CGFloat?
     private let zoomPan: ZoomPanController
 
-    /// `insets`: around the groups, inside the view.
-    init(zoomPan: ZoomPanController, orientation: NSUserInterfaceLayoutOrientation, insets: NSEdgeInsets) {
+    /// `insets`: around the groups, inside the view; `width`: the view's, the groups centred in it,
+    /// or their own; `fieldGroupRadius`: the field's group's corners, or the capsule.
+    init(
+        zoomPan: ZoomPanController, orientation: NSUserInterfaceLayoutOrientation, insets: NSEdgeInsets,
+        width: CGFloat? = nil, fieldGroupRadius: CGFloat? = nil
+    ) {
         self.zoomPan = zoomPan
         presetButtons = ZoomPanState.presetNames.map { _ in PaletteButton() }
         super.init(frame: .zero)
@@ -51,7 +61,6 @@ final class ZoomControls: NSView, NSTextFieldDelegate {
         zoomField.cell?.sendsActionOnEndEditing = false
         zoomField.delegate = self
         // A slot as tall as a button's, the field centred in it.
-        let fieldSlot = NSView()
         zoomField.translatesAutoresizingMaskIntoConstraints = false
         fieldSlot.addSubview(zoomField)
         NSLayoutConstraint.activate([
@@ -63,13 +72,18 @@ final class ZoomControls: NSView, NSTextFieldDelegate {
         ])
 
         let stack = NSStackView(views: [
-            look.group(presetButtons, orientation: orientation), look.group([fieldSlot], orientation: orientation),
+            look.group(presetButtons, orientation: orientation),
+            look.group([fieldSlot], orientation: orientation, cornerRadius: fieldGroupRadius),
         ])
         stack.orientation = orientation
         stack.spacing = look.groupSpacing
         stack.edgeInsets = insets
         // Else a vertical stack's fitting width leaves out its side insets.
         stack.setHuggingPriority(.defaultHigh, for: .horizontal)
+        if let width {
+            stack.alignment = .centerX
+            stack.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
         let content = look.container(stack)
         content.translatesAutoresizingMaskIntoConstraints = false
         addSubview(content)
@@ -148,4 +162,57 @@ final class ZoomControls: NSView, NSTextFieldDelegate {
             self?.refresh()
         }
     }
+}
+
+/// The zoom field: a click on it, while it isn't being edited, starts the edit with the whole value
+/// selected, so typing replaces it, rather than placing the caret; once editing, clicks go to the
+/// field editor as in any field. Becoming first responder any other way — Tab, the window making it
+/// so — also selects the whole value.
+final class ZoomField: NSTextField {
+    /// Starts editing, its window made key first so the keys reach it, with the whole value selected;
+    /// while already editing, selects it all again.
+    func beginEditing() {
+        guard let window else { return }
+        if currentEditor() == nil {
+            window.makeKey()
+            window.makeFirstResponder(self)
+        }
+        currentEditor()?.selectAll(nil)
+    }
+
+    /// Not passed on: the field editor's own tracking would put the caret where the click was.
+    override func mouseDown(with event: NSEvent) {
+        beginEditing()
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        guard super.becomeFirstResponder() else { return false }
+        currentEditor()?.selectAll(nil)
+        return true
+    }
+}
+
+/// The zoom field's group, as tall as a button: a click anywhere in it, not only on the digits,
+/// starts the field's edit (`ZoomField.beginEditing`), and doesn't drag the window it is in. In
+/// the strip it holds the field; in the floating panel, the field's own window holds one over it
+/// (`ZoomPanel`).
+final class ZoomFieldBox: NSView {
+    private weak var field: ZoomField?
+
+    init(field: ZoomField) {
+        self.field = field
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    /// As the field's own: a click on the box makes the field's window key, which a window that
+    /// becomes key only if needed (`ZoomPanel`'s field window) otherwise refuses.
+    override var needsPanelToBecomeKey: Bool { true }
+    override func mouseDown(with event: NSEvent) { field?.beginEditing() }
 }

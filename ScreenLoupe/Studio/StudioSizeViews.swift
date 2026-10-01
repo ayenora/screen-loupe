@@ -1,63 +1,7 @@
 import AppKit
 import SwiftUI
 
-// The Screenshot studio's sizes: the Size list beside the
-// palette and the Custom Sizes window. The sizes and the slot rules are `StudioSizes`.
-
-/// The Size list: the presets, the custom sizes, a W × H row to type one, and Custom Size….
-struct StudioSizeList: View {
-    /// The frame's size in pixels, checked in the list.
-    let current: PixelSize?
-    let custom: [CustomSize]
-    let apply: (PixelSize) -> Void
-    let editCustomSizes: () -> Void
-
-    @State private var width = ""
-    @State private var height = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            section("Mac App Store", StudioSizes.appStore.map { ($0, StudioSizes.title($0), true) })
-            section("Web", StudioSizes.web.map { ($0, StudioSizes.title($0), true) })
-            if !custom.isEmpty {
-                section("Custom", custom.map { ($0.pixels, StudioSizes.title($0), false) })
-            }
-            Divider().padding(.vertical, 4)
-            HStack(spacing: 4) {
-                TextField("W", text: $width).frame(width: 64)
-                Text("×").foregroundStyle(.secondary)
-                TextField("H", text: $height).frame(width: 64)
-                Text("px").foregroundStyle(.secondary)
-            }
-            .textFieldStyle(.roundedBorder)
-            .padding(.horizontal, StudioListLook.contentInset)
-            .onSubmit(applyTyped)
-            Divider().padding(.vertical, 4)
-            StudioListRow(title: "Custom Size…", isChecked: false, action: editCustomSizes)
-        }
-        .padding(StudioListLook.padding)
-        .frame(width: StudioListLook.width)
-    }
-
-    private func section(_ title: String, _ sizes: [(size: PixelSize, title: String, isPreset: Bool)]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            StudioListLook.header(title)
-            ForEach(sizes.indices, id: \.self) { index in
-                let entry = sizes[index]
-                StudioListRow(
-                    title: entry.title,
-                    isChecked: StudioSizes.isChecked(entry.size, isPresetEntry: entry.isPreset, current: current)
-                ) { apply(entry.size) }
-            }
-        }
-    }
-
-    /// Enter in W or H: the typed size, when both are valid.
-    private func applyTyped() {
-        guard let size = StudioSizes.parse(width: width, height: height) else { return NSSound.beep() }
-        apply(size)
-    }
-}
+// The Screenshot studio's Custom Sizes window. The sizes and the slot rules are `StudioSizes`.
 
 /// The Custom Sizes window: four slots, filled first; drag a filled slot to reorder it.
 ///
@@ -83,7 +27,7 @@ struct CustomSizesView: View {
         let slots = StudioSizes.slots(sizes)
         let firstEmpty = slots.firstIndex(of: nil)
         VStack(alignment: .leading, spacing: 12) {
-            Text("Up to four sizes of your own, in pixels. They show under Custom in the Size list, in this order.")
+            Text("Up to four sizes of your own, in pixels. They show under Custom in the Size menu, in this order.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

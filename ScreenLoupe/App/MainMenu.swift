@@ -229,14 +229,7 @@ enum MainMenu {
             withTitle: "Lock Aspect Ratio", action: #selector(AppController.toggleStudioAspectLock(_:)),
             keyEquivalent: "")
         aspectLock.target = target
-        let delays = NSMenu(title: "Delay")
-        for delay in StudioDelay.allCases {
-            let item = delays.addItem(
-                withTitle: delay.title, action: #selector(AppController.chooseStudioDelay(_:)), keyEquivalent: "")
-            item.tag = delay.rawValue
-            item.target = target
-        }
-        menu.addItem(submenuItem(delays))
+        menu.addItem(submenuItem(delayMenu(target: target)))
         let output = outputMenu(target: target)
         menu.addItem(submenuItem(output))
         menu.addItem(.separator())
@@ -247,13 +240,30 @@ enum MainMenu {
             withTitle: "Capture One Window…", action: #selector(AppController.toggleStudioOneWindow(_:)),
             keyEquivalent: "")
         oneWindow.target = target
+        let shadow = menu.addItem(
+            withTitle: "One Window Shadow", action: #selector(AppController.toggleStudioWindowShadow(_:)),
+            keyEquivalent: "")
+        shadow.target = target
         return menu
     }
 
-    /// Screenshot › Output: how studio pictures are written, the same choices as the palette's
-    /// Output list. Each item carries its choice;
+    /// Screenshot › Delay, and the menu the palette's Timer button pops up: each item carries its
+    /// delay in seconds as its tag; `validateMenuItem` checks the current one.
+    static func delayMenu(target: AppController) -> NSMenu {
+        let menu = NSMenu(title: "Delay")
+        for delay in StudioDelay.allCases {
+            let item = menu.addItem(
+                withTitle: delay.title, action: #selector(AppController.chooseStudioDelay(_:)), keyEquivalent: "")
+            item.tag = delay.rawValue
+            item.target = target
+        }
+        return menu
+    }
+
+    /// Screenshot › Output, and the menu the palette's Output button pops up: how studio pictures
+    /// are written. Each item carries its choice;
     /// `validateMenuItem` checks the current ones.
-    private static func outputMenu(target: AppController) -> NSMenu {
+    static func outputMenu(target: AppController) -> NSMenu {
         let menu = NSMenu(title: "Output")
         func add(_ header: String, _ choices: [(title: String, value: Any)], action: Selector) {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -276,38 +286,66 @@ enum MainMenu {
         return menu
     }
 
-    /// Screenshot › Background: the same choices as the palette's Background list. Each fixed
-    /// choice carries its `StudioBackground`; `validateMenuItem` checks the current one.
-    private static func backgroundMenu(target: AppController) -> NSMenu {
+    /// A row of swatches standing for a section's choices in the palette's Background menu: made
+    /// from the section's entries and its header item, whose title it may change to name the
+    /// hovered swatch.
+    typealias SwatchRow = (_ entries: [(name: String, background: StudioBackground)], _ header: NSMenuItem) -> NSView
+
+    /// Screenshot › Background, and the menu the palette's Background button pops up. Each fixed
+    /// choice carries its `StudioBackground`; `validateMenuItem` checks the current one and
+    /// disables them while One Window is on, when `menuNeedsUpdate` puts its note on top
+    /// (`setOneWindowNote`). With `swatchRow`, the palette's: each section's colours or gradients
+    /// are one item showing that row, which validates as a choice so it is disabled with them.
+    static func backgroundMenu(target: AppController, swatchRow: SwatchRow? = nil) -> NSMenu {
         let menu = NSMenu(title: "Background")
+        menu.identifier = studioBackgroundMenu
+        menu.delegate = target
         func add(_ title: String, _ background: StudioBackground) {
             let item = menu.addItem(
                 withTitle: title, action: #selector(AppController.chooseStudioBackground(_:)), keyEquivalent: "")
             item.representedObject = background
             item.target = target
         }
+        func section(_ title: String, _ entries: [(name: String, background: StudioBackground)]) {
+            let header = NSMenuItem.sectionHeader(title: title)
+            menu.addItem(header)
+            guard let swatchRow else { return entries.forEach { add($0.name, $0.background) } }
+            let row = menu.addItem(
+                withTitle: title, action: #selector(AppController.chooseStudioBackground(_:)), keyEquivalent: "")
+            row.target = target
+            row.view = swatchRow(entries, header)
+        }
         add("Screen", .screen)
-        menu.addItem(.sectionHeader(title: "Color"))
-        for entry in StudioBackground.colors { add(entry.name, .color(entry.color)) }
+        section("Color", StudioBackground.colors.map { ($0.name, .color($0.color)) })
         let custom = menu.addItem(
             withTitle: "Custom Color…", action: #selector(AppController.chooseStudioCustomColor(_:)), keyEquivalent: "")
         custom.target = target
-        menu.addItem(.sectionHeader(title: "Gradient"))
-        for entry in StudioBackground.gradients { add(entry.name, .gradient(entry.gradient)) }
+        section("Gradient", StudioBackground.gradients.map { ($0.name, .gradient($0.gradient)) })
         menu.addItem(.separator())
         let image = menu.addItem(
             withTitle: "Image…", action: #selector(AppController.chooseStudioBackgroundImage(_:)), keyEquivalent: "")
         image.target = target
-        menu.addItem(.separator())
-        let shadow = menu.addItem(
-            withTitle: "One Window Shadow", action: #selector(AppController.toggleStudioWindowShadow(_:)),
-            keyEquivalent: ""
-        )
-        shadow.target = target
         return menu
     }
 
     static let studioSizeMenu = NSUserInterfaceItemIdentifier("studioSize")
+    static let studioBackgroundMenu = NSUserInterfaceItemIdentifier("studioBackground")
+    private static let oneWindowNote = NSUserInterfaceItemIdentifier("oneWindowNote")
+
+    /// Puts One Window's note (`OneWindowMode.frameControlsNote`) on top of `menu`, Screenshot ›
+    /// Size or Background, with a separator under it, or takes it away. A plain item without an
+    /// action, so it is disabled: a line to read, not to choose; `validateMenuItem` disables the
+    /// items under it.
+    static func setOneWindowNote(_ shown: Bool, in menu: NSMenu) {
+        while menu.items.first?.identifier == oneWindowNote { menu.removeItem(at: 0) }
+        guard shown else { return }
+        let separator = NSMenuItem.separator()
+        separator.identifier = oneWindowNote
+        menu.insertItem(separator, at: 0)
+        let note = NSMenuItem(title: OneWindowMode.frameControlsNote, action: nil, keyEquivalent: "")
+        note.identifier = oneWindowNote
+        menu.insertItem(note, at: 0)
+    }
 
     /// Screenshot › Size: the presets, the custom sizes in slot order, and Custom Size…. Each size
     /// item carries `[width, height]` in pixels, and a custom one tag 1; `validateMenuItem` checks

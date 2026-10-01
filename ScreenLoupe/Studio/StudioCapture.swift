@@ -8,7 +8,7 @@ import OSLog
 /// and hover label, alerts, panels — except the ones the caller names: the Viewer, the Capture Area
 /// frame and the studio's backdrop, which are captured like any other window on screen. So the
 /// picture is what the frame shows, the backdrop's background among it. Or, for One Window, takes
-/// one window alone and lays the background under it.
+/// one window alone, on transparency.
 @MainActor
 enum StudioCapture {
     /// How long a ScreenCaptureKit call may take, as for the stream.
@@ -80,21 +80,18 @@ enum StudioCapture {
     }
 
     /// One Window's picture: the window numbered `id` alone with `SCContentFilter(desktopIndependentWindow:)`,
-    /// with or without its `shadow`, at its native pixels, centred in a picture of `frame` pixels,
-    /// grown where the window with its shadow needs more (`OneWindowPicture.pictureSize`), in
-    /// `display`'s colour space, over `fill` or transparent without one. Never scaled: a window not on screen, or on a
-    /// display of another scale, gives a
-    /// `OneWindowProblem` before anything is captured.
-    static func window(
-        _ id: CGWindowID, frame: PixelSize, display: DisplayInfo, shadow: Bool, over fill: StudioFill?
-    ) async throws -> CGImage {
+    /// with or without its `shadow`, cut to its visible pixels at its native resolution
+    /// (`OneWindowPicture.visibleBounds`), on transparency, in `display`'s colour space. `display`
+    /// holds most of the window. Never scaled: a window not on screen, or of another scale than
+    /// `display`'s, gives a `OneWindowProblem` before anything is captured.
+    static func window(_ id: CGWindowID, display: DisplayInfo, shadow: Bool) async throws -> CGImage {
         let content = try await withTimeout(seconds: callTimeout) {
             try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
         }
         let window = content.windows.first { $0.windowID == id }
         let filter = window.map { SCContentFilter(desktopIndependentWindow: $0) }
-        if case .frameInstead(let problem) = OneWindowPicture.shot(
-            windowScale: filter.map { CGFloat($0.pointPixelScale) }, frameScale: display.scale)
+        if case .unavailable(let problem) = OneWindowPicture.shot(
+            windowScale: filter.map { CGFloat($0.pointPixelScale) }, displayScale: display.scale)
         {
             throw problem
         }
@@ -123,16 +120,15 @@ enum StudioCapture {
             image \(image.width) × \(image.height) px in \(String(describing: image.colorSpace?.name), privacy: .public)
             """)
         return try await picture(
-            ofWindow: image, frame: frame, scale: display.scale, space: NSScreen.colorSpace(forDisplay: display.id),
-            over: fill)
+            ofWindow: image, scale: display.scale, space: NSScreen.colorSpace(forDisplay: display.id))
     }
 
-    /// A lone window's capture, taken at `scale`, cut to its visible pixels and centred in a picture
-    /// of `frame` pixels grown to hold them, off the main actor: reading every pixel's alpha and
-    /// drawing take a while for a large frame.
+    /// A lone window's capture, taken at `scale`, cut to its visible pixels and put into `space`
+    /// with its alpha, off the main actor: reading every pixel's alpha takes a while for a large
+    /// window.
     @concurrent
     private nonisolated static func picture(
-        ofWindow image: CGImage, frame: PixelSize, scale: CGFloat, space: CGColorSpace, over fill: StudioFill?
+        ofWindow image: CGImage, scale: CGFloat, space: CGColorSpace
     ) async throws -> CGImage {
         // Where the window and its shadow are is told by alpha alone.
         guard StudioComposite.hasAlpha(image) else {
@@ -149,11 +145,10 @@ enum StudioCapture {
             throw WindowCaptureError(
                 errorDescription: "The window's capture \(image.width) × \(image.height) px came scaled down.")
         }
-        let size = OneWindowPicture.pictureSize(frame: frame, visible: bounds.size)
         guard
             let cut = image.cropping(
                 to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height)),
-            let picture = StudioComposite.centred(cut, in: size, space: space, over: fill)
+            let picture = StudioComposite.converted(cut, to: space, keepingAlpha: true)
         else { throw WindowCaptureError(errorDescription: "The window's picture couldn't be made.") }
         return picture
     }

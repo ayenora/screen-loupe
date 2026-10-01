@@ -239,7 +239,9 @@ private struct IconButton: View {
     }
 }
 
-private struct PanelButton: View {
+/// A small bordered text button in a side panel's header: Paste and Add… in References and Recent
+/// Captures.
+struct PanelButton: View {
     let title: String
     let scale: CGFloat
     let action: () -> Void

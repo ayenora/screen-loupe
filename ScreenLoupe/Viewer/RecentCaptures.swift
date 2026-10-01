@@ -77,6 +77,10 @@ final class RecentCaptures {
     var canTakeSnapshot: Bool { liveSize != nil }
     /// Take Snapshot, from the panel's camera button.
     @ObservationIgnored var onTakeSnapshot: (() -> Void)?
+    /// The panel's Paste button: the clipboard's image as a new row.
+    @ObservationIgnored var onPaste: (() -> Void)?
+    /// The panel's Add… button: File › Open Image….
+    @ObservationIgnored var onOpenImage: (() -> Void)?
     /// Use as Reference, from a row's context menu.
     @ObservationIgnored var onUseAsReference: ((RecentCapture) -> Void)?
     /// Whether the references take another layer: Use as Reference is off when they don't. Read

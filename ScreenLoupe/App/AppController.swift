@@ -14,6 +14,23 @@ final class AppController: NSObject, NSApplicationDelegate {
         if let builtWindows { return builtWindows }
         let windows = WindowManager(settings: settings, permissions: permissions)
         builtWindows = windows
+        // The palette's menus are the Screenshot menu's own, so they are checked, disabled and act
+        // the same way; Background's shows its colours and gradients as swatches.
+        windows.studio.delayMenu = { [weak self] in self.map { MainMenu.delayMenu(target: $0) } }
+        windows.studio.outputMenu = { [weak self] in self.map { MainMenu.outputMenu(target: $0) } }
+        windows.studio.sizeMenu = { [weak self] in
+            guard let self else { return nil }
+            let menu = NSMenu(title: "Size")
+            MainMenu.fillStudioSizeMenu(menu, custom: settings.settings.studioCustomSizes, target: self)
+            MainMenu.setOneWindowNote(!oneWindowMode.usesFrame, in: menu)
+            return menu
+        }
+        windows.studio.backgroundMenu = { [weak self] swatchRow in
+            guard let self else { return nil }
+            let menu = MainMenu.backgroundMenu(target: self, swatchRow: swatchRow)
+            MainMenu.setOneWindowNote(!oneWindowMode.usesFrame, in: menu)
+            return menu
+        }
         return windows
     }
     private let shortcuts = GlobalShortcuts()
@@ -435,6 +452,9 @@ final class AppController: NSObject, NSApplicationDelegate {
 }
 
 extension AppController: NSMenuItemValidation {
+    /// The studio's One Window mode; off while the windows aren't built.
+    private var oneWindowMode: OneWindowMode { builtWindows?.studio.oneWindowMode ?? .off }
+
     /// Reads the windows only when they exist: opening a menu doesn't build them.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let canExport = builtWindows?.export.canExport == true
@@ -467,9 +487,10 @@ extension AppController: NSMenuItemValidation {
             let isVisible = builtWindows?.studio.isVisible == true
             menuItem.title = isVisible ? "Hide Screenshot Studio" : "Show Screenshot Studio"
             return true
-        case #selector(captureStudio(_:)), #selector(copyStudio(_:)), #selector(saveStudio(_:)),
-            #selector(fitStudioToWindow(_:)):
+        case #selector(captureStudio(_:)), #selector(copyStudio(_:)), #selector(saveStudio(_:)):
             return builtWindows?.studio.isVisible == true
+        case #selector(fitStudioToWindow(_:)):
+            return builtWindows?.studio.isVisible == true && oneWindowMode.usesFrame
         case #selector(applyStudioSize(_:)):
             let checked = (menuItem.representedObject as? [Int]).map {
                 StudioSizes.isChecked(
@@ -477,10 +498,12 @@ extension AppController: NSMenuItemValidation {
                     current: builtWindows?.studio.pixelSize)
             }
             menuItem.state = checked == true ? .on : .off
-            return builtWindows?.studio.isVisible == true
+            return builtWindows?.studio.isVisible == true && oneWindowMode.usesFrame
+        case #selector(showStudioCustomSizes(_:)):
+            return oneWindowMode.usesFrame
         case #selector(toggleStudioAspectLock(_:)):
             menuItem.state = settings.settings.studioAspectLocked ? .on : .off
-            return true
+            return oneWindowMode.usesFrame
         case #selector(chooseStudioDelay(_:)):
             menuItem.state = menuItem.tag == settings.settings.studioDelay.rawValue ? .on : .off
             return true
@@ -499,10 +522,10 @@ extension AppController: NSMenuItemValidation {
         case #selector(chooseStudioBackground(_:)):
             let background = menuItem.representedObject as? StudioBackground
             menuItem.state = background == settings.settings.studioBackground ? .on : .off
-            return true
+            return oneWindowMode.usesFrame
         case #selector(chooseStudioCustomColor(_:)):
             menuItem.state = settings.settings.studioBackground.isCustomColor ? .on : .off
-            return true
+            return oneWindowMode.usesFrame
         case #selector(chooseStudioBackgroundImage(_:)):
             if case .image(let image) = settings.settings.studioBackground {
                 menuItem.state = .on
@@ -511,18 +534,18 @@ extension AppController: NSMenuItemValidation {
                 menuItem.state = .off
                 menuItem.title = "Image…"
             }
-            return true
+            return oneWindowMode.usesFrame
         case #selector(toggleStudioOneWindow(_:)):
             // Checked while the window is picked; a chosen window can be let go also while the
             // studio is hidden.
-            let mode = builtWindows?.studio.oneWindowMode ?? .off
+            let mode = oneWindowMode
             menuItem.title = mode.chosen == nil ? "Capture One Window…" : "Stop One Window"
             menuItem.state = mode.isPicking ? .on : .off
             return mode.chosen != nil || builtWindows?.studio.isVisible == true
         case #selector(toggleStudioWindowShadow(_:)):
-            // Greyed out while One Window is off, still checked as set.
+            // A setting: enabled in every mode, so it can be set before a window is picked.
             menuItem.state = settings.settings.studioWindowShadow ? .on : .off
-            return (builtWindows?.studio.oneWindowMode ?? .off).allowsShadowChoice
+            return true
         case #selector(toggleCornerRuler(_:)), #selector(toggleSelectionRuler(_:)):
             // Checked while that ruler is on.
             let mode: RulerMode = menuItem.action == #selector(toggleCornerRuler(_:)) ? .corner : .selection
@@ -584,11 +607,18 @@ extension AppController: NSMenuItemValidation {
 }
 
 extension AppController: NSMenuDelegate {
-    /// Screenshot › Size is filled as it opens. Edit › Copy copies the text of a focused text field,
-    /// and the view otherwise; its title says which.
+    /// Screenshot › Size is filled as it opens; it and Screenshot › Background say on top why their
+    /// items are disabled while One Window doesn't use the frame. Edit › Copy copies the text of a
+    /// focused text field, and the view otherwise; its title says which.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        let notesOneWindow = !oneWindowMode.usesFrame
         if menu.identifier == MainMenu.studioSizeMenu {
             MainMenu.fillStudioSizeMenu(menu, custom: settings.settings.studioCustomSizes, target: self)
+            MainMenu.setOneWindowNote(notesOneWindow, in: menu)
+            return
+        }
+        if menu.identifier == MainMenu.studioBackgroundMenu {
+            MainMenu.setOneWindowNote(notesOneWindow, in: menu)
             return
         }
         let editsText = NSApp.keyWindow?.firstResponder is NSText

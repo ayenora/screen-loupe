@@ -59,7 +59,7 @@ struct OneWindowModeTests {
     }
 
     @Test func anUnavailableWindowWhilePickingChangesNothing() {
-        #expect(OneWindowMode.picking.after(.unavailable) == .picking)
+        #expect(OneWindowMode.picking.after(.unavailable(.notListed)) == .picking)
     }
 
     @Test func toggleTurnsAChosenWindowOff() {
@@ -72,8 +72,8 @@ struct OneWindowModeTests {
     }
 
     @Test func theChosenWindowBecomingUnavailableTurnsItOff() {
-        #expect(OneWindowMode.on(safari).after(.unavailable) == .off)
-        #expect(OneWindowMode.on(notes).after(.unavailable) == .off)
+        #expect(OneWindowMode.on(safari).after(.unavailable(.notListed)) == .off)
+        #expect(OneWindowMode.on(notes).after(.unavailable(.notListed)) == .off)
     }
 
     @Test func eventsThatDontApplyLeaveTheModeAsItIs() {
@@ -82,7 +82,7 @@ struct OneWindowModeTests {
         #expect(OneWindowMode.off.after(.picked(safari)) == .off)
         #expect(OneWindowMode.off.after(.cancelled) == .off)
         #expect(OneWindowMode.off.after(.hidden) == .off)
-        #expect(OneWindowMode.off.after(.unavailable) == .off)
+        #expect(OneWindowMode.off.after(.unavailable(.notListed)) == .off)
     }
 
     @Test func aSessionChooseHideShowAndGone() {
@@ -92,8 +92,8 @@ struct OneWindowModeTests {
             (.picked(safari), .on(safari)),
             (.hidden, .on(safari)),
             // Shown again, then the window is minimised.
-            (.unavailable, .off),
-            (.unavailable, .off),
+            (.unavailable(.notListed), .off),
+            (.unavailable(.notListed), .off),
             (.toggle(studioVisible: true), .picking),
             (.picked(notes), .on(notes)),
         ] {
@@ -110,46 +110,148 @@ struct OneWindowModeTests {
         #expect(!OneWindowMode.on(safari).isPicking)
     }
 
-    @Test func theShadowChoiceIsOpenOnlyWhileOneWindowIsOn() {
-        #expect(!OneWindowMode.off.allowsShadowChoice)
-        #expect(OneWindowMode.picking.allowsShadowChoice)
-        #expect(OneWindowMode.on(safari).allowsShadowChoice)
+    @Test func pickAnotherWindowPicksAgainFromAChosenWindowOnly() {
+        #expect(OneWindowMode.on(safari).after(.pickAnother) == .repicking(safari))
+        #expect(OneWindowMode.picking.after(.pickAnother) == .picking)
+        #expect(OneWindowMode.repicking(safari).after(.pickAnother) == .repicking(safari))
+        #expect(OneWindowMode.off.after(.pickAnother) == .off)
     }
 
-    @Test func theShadowChoiceFollowsEveryWayOneWindowEnds() {
-        // Let go, the window gone, the picker cancelled or hidden: greyed out again.
+    @Test func aRePickKeepsTheChosenWindow() {
+        let mode = OneWindowMode.repicking(safari)
+        #expect(mode.chosen == safari)
+        #expect(mode.isPicking)
+        #expect(!mode.usesFrame)
+    }
+
+    @Test func aPickInARePickReplacesTheChosenWindow() {
+        #expect(OneWindowMode.repicking(safari).after(.picked(notes)) == .on(notes))
+        // The same window picked again.
+        #expect(OneWindowMode.repicking(safari).after(.picked(safari)) == .on(safari))
+    }
+
+    @Test func escapeInARePickGoesBackToTheChosenWindow() {
+        #expect(OneWindowMode.on(safari).after(.pickAnother).after(.cancelled) == .on(safari))
+        // Hiding the studio during a re-pick keeps it too.
+        #expect(OneWindowMode.repicking(safari).after(.hidden) == .on(safari))
+    }
+
+    @Test func theToggleAndEndStopARePickAndOneWindow() {
+        #expect(OneWindowMode.repicking(safari).after(.toggle(studioVisible: true)) == .off)
+        #expect(OneWindowMode.repicking(safari).after(.end) == .off)
+    }
+
+    @Test func theChosenWindowLostDuringARePickEndsOneWindow() {
+        #expect(OneWindowMode.repicking(safari).after(.unavailable(.notListed)) == .off)
+        #expect(OneWindowMode.repicking(safari).after(.unavailable(.otherScale)) == .off)
+    }
+
+    // MARK: A press
+
+    @Test func aPressTakesTheFrameWhileOff() {
+        #expect(OneWindowMode.off.press == .frame)
+        #expect(OneWindowMode.off.after(.pressed) == .off)
+    }
+
+    @Test func aPressDuringTheFirstPickIsRefusedAndThePickingGoesOn() {
+        #expect(OneWindowMode.picking.press == .pickFirst)
+        #expect(OneWindowMode.picking.after(.pressed) == .picking)
+        #expect(OneWindowPress.pickFirstNotice == "Pick a window first")
+    }
+
+    @Test func aPressDuringARePickEndsItAndTakesTheChosenWindow() {
+        #expect(OneWindowMode.repicking(safari).press == .window(safari))
+        #expect(OneWindowMode.repicking(safari).after(.pressed) == .on(safari))
+    }
+
+    @Test func aPressWithAWindowChosenTakesIt() {
+        #expect(OneWindowMode.on(notes).press == .window(notes))
+        #expect(OneWindowMode.on(notes).after(.pressed) == .on(notes))
+    }
+
+    // MARK: The window lost
+
+    @Test func anUnavailableWindowTurnsOneWindowOff() {
+        for problem in [OneWindowProblem.notListed, .otherScale] {
+            #expect(OneWindowMode.on(safari).after(.unavailable(problem)) == .off)
+        }
+    }
+
+    @Test func losingTheWindowWhileNothingWaitsSaysNothing() {
+        // Closed or hidden while idle: off quietly.
+        for problem in [OneWindowProblem.notListed, .otherScale] {
+            #expect(problem.notice(cancels: false, studioVisible: true) == nil)
+        }
+    }
+
+    @Test func losingTheWindowDuringACountdownOrAPressSaysWhyNothingWasCaptured() {
+        #expect(
+            OneWindowProblem.notListed.notice(cancels: true, studioVisible: true) == "Window gone · nothing captured")
+        #expect(
+            OneWindowProblem.otherScale.notice(cancels: true, studioVisible: true)
+                == "Window can't be captured · nothing captured")
+    }
+
+    @Test func aCaptureCancelledByHidingTheStudioSaysNothing() {
+        for problem in [OneWindowProblem.notListed, .otherScale] {
+            for cancels in [false, true] {
+                #expect(problem.notice(cancels: cancels, studioVisible: false) == nil)
+            }
+        }
+        // Hiding keeps the chosen window; a later loss while hidden turns it off quietly.
+        #expect(OneWindowMode.on(safari).after(.hidden).after(.unavailable(.notListed)) == .off)
+    }
+
+    @Test func endTurnsOneWindowOffFromEveryMode() {
+        #expect(OneWindowMode.on(safari).after(.end) == .off)
+        #expect(OneWindowMode.picking.after(.end) == .off)
+        #expect(OneWindowMode.off.after(.end) == .off)
+    }
+
+    @Test func theListsRowsFollowTheMode() {
+        // Pick Another Window: a window chosen. End One Window: picking or chosen.
+        #expect(!OneWindowMode.off.canPickAnother)
+        #expect(!OneWindowMode.picking.canPickAnother)
+        #expect(!OneWindowMode.repicking(safari).canPickAnother)
+        #expect(OneWindowMode.on(safari).canPickAnother)
+        #expect(!OneWindowMode.off.canEnd)
+        #expect(OneWindowMode.picking.canEnd)
+        #expect(OneWindowMode.repicking(safari).canEnd)
+        #expect(OneWindowMode.on(safari).canEnd)
+    }
+
+    @Test func theFrameIsInUseOnlyWhileOneWindowIsOff() {
+        #expect(OneWindowMode.off.usesFrame)
+        #expect(!OneWindowMode.picking.usesFrame)
+        #expect(!OneWindowMode.on(safari).usesFrame)
+    }
+
+    @Test func theFrameComesBackWithEveryWayOneWindowEnds() {
         let ends: [(OneWindowMode, OneWindowMode.Event)] = [
-            (.on(safari), .toggle(studioVisible: true)), (.on(notes), .unavailable),
-            (.picking, .cancelled), (.picking, .hidden), (.picking, .toggle(studioVisible: false)),
+            (.on(safari), .toggle(studioVisible: true)), (.on(safari), .toggle(studioVisible: false)),
+            (.on(notes), .unavailable(.otherScale)), (.on(safari), .end), (.picking, .end), (.picking, .cancelled),
+            (.picking, .hidden), (.picking, .toggle(studioVisible: false)),
         ]
         for (mode, event) in ends {
-            #expect(!mode.after(event).allowsShadowChoice, "\(mode) \(event)")
+            #expect(mode.after(event).usesFrame, "\(mode) \(event)")
         }
-        // Hiding the studio keeps a chosen window, and its shadow choice with it.
-        #expect(OneWindowMode.on(safari).after(.hidden).allowsShadowChoice)
-        // Turning on with the studio hidden doesn't open it.
-        #expect(!OneWindowMode.off.after(.toggle(studioVisible: false)).allowsShadowChoice)
+        // Hiding the studio keeps a chosen window, and the frame stays out of use.
+        #expect(!OneWindowMode.on(safari).after(.hidden).usesFrame)
+        // Picking another window, and cancelling it, keep the frame out of use.
+        #expect(!OneWindowMode.repicking(safari).after(.cancelled).usesFrame)
+        #expect(!OneWindowMode.on(safari).after(.pickAnother).usesFrame)
+        // Turning on with the studio hidden doesn't start.
+        #expect(OneWindowMode.off.after(.toggle(studioVisible: false)).usesFrame)
+    }
+
+    @Test func theMenusNoteSaysWhy() {
+        #expect(
+            OneWindowMode.frameControlsNote
+                == "Not used in One Window: the picture is the window alone, on transparency.")
     }
 }
 
 struct OneWindowPictureTests {
-    // MARK: Fitting
-
-    @Test func aPictureAsLargeAsTheFrameFits() {
-        let frame = PixelSize(width: 2880, height: 1800)
-        #expect(OneWindowPicture.fits(PixelSize(width: 2880, height: 1800), in: frame))
-        #expect(OneWindowPicture.fits(PixelSize(width: 1, height: 1), in: frame))
-    }
-
-    @Test func onePixelOverInEitherAxisDoesntFit() {
-        let frame = PixelSize(width: 2880, height: 1800)
-        #expect(!OneWindowPicture.fits(PixelSize(width: 2881, height: 1800), in: frame))
-        #expect(!OneWindowPicture.fits(PixelSize(width: 2880, height: 1801), in: frame))
-        #expect(!OneWindowPicture.fits(PixelSize(width: 2881, height: 1801), in: frame))
-        // Narrower but taller.
-        #expect(!OneWindowPicture.fits(PixelSize(width: 100, height: 1801), in: frame))
-    }
-
     // MARK: Capture room
 
     @Test func theCaptureHasRoomAroundTheWindowOnEverySide() {
@@ -201,159 +303,6 @@ struct OneWindowPictureTests {
         #expect(!OneWindowPicture.isScaledDown(visible: PixelSize(width: 1, height: 1), capture: capture, scale: 2))
     }
 
-    // MARK: Picture size
-
-    @Test func aWindowWithItsShadowInsideTheFrameKeepsTheFramesSize() {
-        // A 1920 × 1080 preset with a background: the picture is exactly the preset.
-        let frame = PixelSize(width: 1920, height: 1080)
-        #expect(OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1200, height: 800)) == frame)
-        #expect(OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1, height: 1)) == frame)
-    }
-
-    @Test func aWindowWithItsShadowAsLargeAsTheFrameKeepsTheFramesSize() {
-        let frame = PixelSize(width: 1920, height: 1080)
-        #expect(OneWindowPicture.pictureSize(frame: frame, visible: frame) == frame)
-    }
-
-    @Test func theShadowGrowsOnlyTheAxisItOverflows() {
-        let frame = PixelSize(width: 800, height: 1200)
-        #expect(
-            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1000, height: 1100))
-                == PixelSize(width: 1000, height: 1200))
-        #expect(
-            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 700, height: 1500))
-                == PixelSize(width: 800, height: 1500))
-    }
-
-    @Test func theShadowGrowsBothAxes() {
-        // Fit to Window on a 400 × 600 pt window at 2×, then One Window with its shadow.
-        let frame = PixelSize(width: 800, height: 1200)
-        #expect(
-            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 1025, height: 1463))
-                == PixelSize(width: 1025, height: 1463))
-    }
-
-    @Test func pictureSizesAgreeAt1xAnd2x() {
-        // A 400 × 300 pt frame holding the window exactly, its shadow 56 pt at the sides, 36 above,
-        // 76 below.
-        for scale in [1, 2] {
-            let frame = PixelSize(width: 400 * scale, height: 300 * scale)
-            let visible = PixelSize(width: (400 + 112) * scale, height: (300 + 112) * scale)
-            #expect(OneWindowPicture.pictureSize(frame: frame, visible: visible) == visible)
-        }
-    }
-
-    @Test func aWindowLargerThanTheFrameComesAtItsOwnSize() {
-        // A 400 × 300 pt frame at 2×, a 1200 × 800 pt window without its shadow: the window's size.
-        let frame = PixelSize(width: 800, height: 600)
-        let window = PixelSize(width: 2400, height: 1600)
-        #expect(OneWindowPicture.pictureSize(frame: frame, visible: window) == window)
-        #expect(OneWindowPicture.centredOrigin(of: window, in: window) == (0, 0))
-        // One pixel over on each axis.
-        #expect(
-            OneWindowPicture.pictureSize(frame: frame, visible: PixelSize(width: 801, height: 601))
-                == PixelSize(width: 801, height: 601))
-    }
-
-    @Test func aWindowLargerOnOneAxisTakesThatAxisAndCentresOnTheOther() {
-        // Wider than the frame, shorter: as wide as the window, as tall as the frame, centred in it.
-        let frame = PixelSize(width: 1000, height: 1000)
-        let wide = PixelSize(width: 1500, height: 401)
-        let picture = OneWindowPicture.pictureSize(frame: frame, visible: wide)
-        #expect(picture == PixelSize(width: 1500, height: 1000))
-        // 1000 − 401 = 599: 299 above, 300 below.
-        #expect(OneWindowPicture.centredOrigin(of: wide, in: picture) == (0, 299))
-        // Taller, narrower.
-        let tall = PixelSize(width: 333, height: 1201)
-        let tallPicture = OneWindowPicture.pictureSize(frame: frame, visible: tall)
-        #expect(tallPicture == PixelSize(width: 1000, height: 1201))
-        #expect(OneWindowPicture.centredOrigin(of: tall, in: tallPicture) == (333, 0))
-    }
-
-    @Test func aWindowWithItsShadowLargerThanTheFrameTakesTheShadowToo() {
-        // A 600 × 400 pt window at 2× with an asymmetric shadow — 56 pt at the sides, 36 above,
-        // 76 below — on a 300 × 200 pt frame: the picture is the window with its whole shadow.
-        let frame = PixelSize(width: 600, height: 400)
-        let visible = PixelSize(width: (600 + 112) * 2, height: (400 + 36 + 76) * 2)
-        #expect(OneWindowPicture.pictureSize(frame: frame, visible: visible) == visible)
-        // The same at 1×.
-        let visible1x = PixelSize(width: 600 + 112, height: 400 + 36 + 76)
-        #expect(
-            OneWindowPicture.pictureSize(frame: PixelSize(width: 300, height: 200), visible: visible1x) == visible1x)
-    }
-
-    @Test func aWindowAsLargeAsTheFrameIsTheFrame() {
-        let frame = PixelSize(width: 1441, height: 901)
-        #expect(OneWindowPicture.pictureSize(frame: frame, visible: frame) == frame)
-        #expect(OneWindowPicture.centredOrigin(of: frame, in: frame) == (0, 0))
-    }
-
-    @Test func aDegenerateFrameTakesTheVisibleSize() {
-        #expect(
-            OneWindowPicture.pictureSize(frame: PixelSize(width: 0, height: 0), visible: PixelSize(width: 3, height: 2))
-                == PixelSize(width: 3, height: 2))
-        #expect(
-            OneWindowPicture.pictureSize(frame: PixelSize(width: 5, height: 0), visible: PixelSize(width: 3, height: 2))
-                == PixelSize(width: 5, height: 2))
-        #expect(
-            OneWindowPicture.pictureSize(frame: PixelSize(width: 0, height: 0), visible: PixelSize(width: 0, height: 0))
-                == PixelSize(width: 0, height: 0))
-    }
-
-    @Test func aGrownAxisIsFilledAndTheOtherStillCentresWithTheOddPixelRightAndBelow() {
-        // Grown in width: the cut fills it. The height has 1200 − 1101 = 99 left: 49 above, 50 below.
-        let frame = PixelSize(width: 800, height: 1200)
-        let visible = PixelSize(width: 1001, height: 1101)
-        let picture = OneWindowPicture.pictureSize(frame: frame, visible: visible)
-        #expect(OneWindowPicture.centredOrigin(of: visible, in: picture) == (0, 49))
-        // Grown in height, an odd width left over: 800 − 701 = 99, 49 left, 50 right.
-        let tall = PixelSize(width: 701, height: 1301)
-        #expect(
-            OneWindowPicture.centredOrigin(of: tall, in: OneWindowPicture.pictureSize(frame: frame, visible: tall))
-                == (49, 0))
-        // Grown in both: the cut is the picture.
-        let large = PixelSize(width: 1001, height: 1301)
-        #expect(
-            OneWindowPicture.centredOrigin(of: large, in: OneWindowPicture.pictureSize(frame: frame, visible: large))
-                == (0, 0))
-    }
-
-    // MARK: Centring
-
-    @Test func anEvenDifferenceCentresExactly() {
-        let origin = OneWindowPicture.centredOrigin(
-            of: PixelSize(width: 1600, height: 1000), in: PixelSize(width: 2880, height: 1800))
-        #expect(origin == (640, 400))
-    }
-
-    @Test func anOddDifferenceLeavesTheExtraPixelRightAndBelow() {
-        // 2880 − 1601 = 1279: 639 left, 640 right. 1800 − 1001 = 799: 399 above, 400 below.
-        let origin = OneWindowPicture.centredOrigin(
-            of: PixelSize(width: 1601, height: 1001), in: PixelSize(width: 2880, height: 1800))
-        #expect(origin == (639, 399))
-        // An odd frame at 1×, an even window.
-        #expect(
-            OneWindowPicture.centredOrigin(of: PixelSize(width: 2, height: 2), in: PixelSize(width: 5, height: 3))
-                == (1, 0))
-    }
-
-    @Test func aPictureAsLargeAsTheFrameStartsAtItsCorner() {
-        let size = PixelSize(width: 1441, height: 901)
-        #expect(OneWindowPicture.centredOrigin(of: size, in: size) == (0, 0))
-    }
-
-    @Test func centringIsTheSameAtEveryScale() {
-        // A 800 × 500 pt window with a 1 px wider shadow on each side, on a 1440 × 900 pt frame:
-        // at 1× 802 × 502 px in 1440 × 900 px, at 2× 1602 × 1002 px in 2880 × 1800 px.
-        #expect(
-            OneWindowPicture.centredOrigin(
-                of: PixelSize(width: 802, height: 502), in: PixelSize(width: 1440, height: 900))
-                == (319, 199))
-        #expect(
-            OneWindowPicture.centredOrigin(
-                of: PixelSize(width: 1602, height: 1002), in: PixelSize(width: 2880, height: 1800)) == (639, 399))
-    }
-
     // MARK: Visible bounds
 
     @Test func theBoundsHoldEveryPixelThatIsntWhollyTransparent() {
@@ -382,7 +331,7 @@ struct OneWindowPictureTests {
             OneWindowPicture.visibleBounds(of: context.makeImage()!) == PixelRect(x: 0, y: 0, width: 5, height: 4))
     }
 
-    // MARK: Compositing
+    // MARK: The picture
 
     /// A 2 × 2 window: two opaque pixels, a half-transparent shadow pixel and a clear corner.
     private let window: [[UInt8]] = [
@@ -390,52 +339,57 @@ struct OneWindowPictureTests {
         [7, 200, 99, 255], [0, 0, 0, 0],
     ]
 
-    @Test func onTheScreenBackgroundTheRestIsTransparentAndTheWindowExact() {
-        let image = capture(width: 2, height: 2, window)
-        let result = StudioComposite.centred(image, in: PixelSize(width: 5, height: 4), space: displayP3, over: nil)!
-        #expect(result.width == 5 && result.height == 4)
+    /// The capture cut to its visible bounds and put into `space` with its alpha, as One Window's
+    /// picture is made.
+    private func picture(of captured: CGImage, in space: CGColorSpace) -> CGImage? {
+        guard let bounds = OneWindowPicture.visibleBounds(of: captured),
+            let cut = captured.cropping(
+                to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height))
+        else { return nil }
+        return StudioComposite.converted(cut, to: space, keepingAlpha: true)
+    }
+
+    @Test func thePictureIsExactlyTheVisiblePixelsOnTransparency() {
+        // The window somewhere in a 9 × 7 capture, as ScreenCaptureKit may place it.
+        var set: [Pixel: [UInt8]] = [:]
+        for (index, value) in window.enumerated() { set[Pixel(x: 4 + index % 2, y: 2 + index / 2)] = value }
+        let result = picture(of: capture(width: 9, height: 7, set), in: displayP3)!
+        // The clear corner is inside the bounds the other three pixels span.
+        #expect(result.width == 2 && result.height == 2)
         #expect(StudioComposite.hasAlpha(result))
         #expect(result.colorSpace == displayP3)
-        let out = pixels(result)
-        // Origin (1, 1): the odd column goes right.
-        for y in 0..<4 {
-            for x in 0..<5 {
-                let inside = (1...2).contains(x) && (1...2).contains(y)
-                let expected = inside ? window[(y - 1) * 2 + (x - 1)] : [0, 0, 0, 0]
-                #expect(out[y * 5 + x] == expected, "pixel (\(x), \(y))")
-            }
-        }
-    }
-
-    @Test func overAColourTheResultIsOpaqueAndTheShadowBlends() {
-        let image = capture(width: 2, height: 2, space: sRGB, window)
-        let result = StudioComposite.centred(
-            image, in: PixelSize(width: 4, height: 3), space: sRGB, over: .color(.white))!
-        #expect(!StudioComposite.hasAlpha(result))
-        let out = pixels(result, in: sRGB)
-        #expect(out.allSatisfy { $0[3] == 255 })
-        // Origin (1, 0): the odd row goes below.
-        #expect(out[1] == window[0])
-        #expect(out[4 + 1] == window[2])
-        // Black at 128/255 over white.
-        #expect(out[2][0...2].allSatisfy { abs(Int($0) - 127) <= 1 })
-        // The clear corner and the frame around it show the fill.
-        #expect(out[4 + 2] == [255, 255, 255, 255])
-        #expect(out[0] == [255, 255, 255, 255])
-        #expect(out[8 + 3] == [255, 255, 255, 255])
-    }
-
-    @Test func aWindowAsLargeAsTheFrameFillsIt() {
-        let image = capture(width: 2, height: 2, window)
-        let result = StudioComposite.centred(image, in: PixelSize(width: 2, height: 2), space: displayP3, over: nil)!
         #expect(pixels(result) == window)
     }
 
-    @Test func aWindowLargerThanTheFrameGivesNoPicture() {
-        let image = capture(width: 3, height: 2, Array(repeating: [1, 1, 1, 255], count: 6))
-        #expect(StudioComposite.centred(image, in: PixelSize(width: 2, height: 2), space: displayP3, over: nil) == nil)
-        #expect(StudioComposite.centred(image, in: PixelSize(width: 3, height: 1), space: displayP3, over: nil) == nil)
-        #expect(StudioComposite.centred(image, in: PixelSize(width: 3, height: 2), space: displayP3, over: nil) != nil)
+    @Test func aShadowWiderBelowGivesThePictureItsWholeShadow() {
+        // A 2 × 2 window with a shadow one pixel at the sides, none above, two below, in a 10 × 10
+        // capture: the picture is 4 × 4, the window at its top middle, every shadow pixel kept.
+        var set: [Pixel: [UInt8]] = [:]
+        for y in 3...6 {
+            for x in 3...6 { set[Pixel(x: x, y: y)] = [0, 0, 0, 64] }
+        }
+        for y in 3...4 {
+            for x in 4...5 { set[Pixel(x: x, y: y)] = [9, 9, 9, 255] }
+        }
+        let result = picture(of: capture(width: 10, height: 10, set), in: displayP3)!
+        #expect(result.width == 4 && result.height == 4)
+        let out = pixels(result)
+        #expect(out[1] == [9, 9, 9, 255] && out[2] == [9, 9, 9, 255])
+        #expect(out[4 + 1] == [9, 9, 9, 255] && out[4 + 2] == [9, 9, 9, 255])
+        for index in [0, 3, 4, 7, 8, 11, 12, 13, 14, 15] {
+            #expect(out[index] == [0, 0, 0, 64], "pixel \(index)")
+        }
+    }
+
+    @Test func aPictureConvertedIntoTheDisplaysSpaceKeepsItsTransparency() {
+        // Captured in sRGB, the display in Display P3: converted, alpha unchanged.
+        let result = picture(of: capture(width: 2, height: 2, space: sRGB, window), in: displayP3)!
+        #expect(result.colorSpace == displayP3)
+        #expect(StudioComposite.hasAlpha(result))
+        let out = pixels(result)
+        #expect(out.map { $0[3] } == [255, 128, 255, 0])
+        // Black stays black, half covered.
+        #expect(out[1] == [0, 0, 0, 128])
     }
 
     @Test func aCheckerboardWindowIsCopiedWithoutInterpolation() {
@@ -444,61 +398,25 @@ struct OneWindowPictureTests {
         let board = (0..<(width * height)).map { index -> [UInt8] in
             (index % width + index / width) % 2 == 0 ? [0, 0, 0, 255] : [255, 255, 255, 255]
         }
-        let image = capture(width: width, height: height, board)
-        let frame = PixelSize(width: 100, height: 60)
-        let result = StudioComposite.centred(
-            image, in: frame, space: displayP3, over: .gradient(StudioBackground.gradients[0].gradient))!
-        let out = pixels(result)
-        // Origin (18, 9).
-        for y in 0..<height {
-            for x in 0..<width {
-                #expect(out[(y + 9) * frame.width + x + 18] == board[y * width + x])
+        let result = picture(of: capture(width: width, height: height, board), in: displayP3)!
+        #expect(result.width == width && result.height == height)
+        #expect(pixels(result) == board)
+    }
+
+    @Test func aPictureAtTwoXIsTwiceAsLargeInPixelsAsAtOneX() {
+        // The same 3 × 2 pt window, opaque, captured at 1× and at 2×: the picture is its pixels.
+        for scale in [1, 2] {
+            let width = 3 * scale
+            let height = 2 * scale
+            var set: [Pixel: [UInt8]] = [:]
+            for y in 0..<height {
+                for x in 0..<width { set[Pixel(x: x + 5, y: y + 5)] = [1, 2, 3, 255] }
             }
+            let result = picture(of: capture(width: width + 10, height: height + 10, set), in: displayP3)!
+            #expect(result.width == width && result.height == height)
         }
     }
 
-    @Test func aShadowLargerAtTheBottomGrowsThePictureAndTheFillCoversAllOfIt() {
-        // Fit to Window: a 2 × 2 frame exactly the window. Captured with a shadow one pixel at the
-        // sides, none above, two below, in a 10 × 10 capture: visible 4 × 4.
-        var pixelsByPlace: [Pixel: [UInt8]] = [:]
-        for y in 3...6 {
-            for x in 3...6 { pixelsByPlace[Pixel(x: x, y: y)] = [0, 0, 0, 64] }
-        }
-        for y in 3...4 {
-            for x in 4...5 { pixelsByPlace[Pixel(x: x, y: y)] = [9, 9, 9, 255] }
-        }
-        let captured = capture(width: 10, height: 10, pixelsByPlace)
-        let bounds = OneWindowPicture.visibleBounds(of: captured)!
-        #expect(bounds == PixelRect(x: 3, y: 3, width: 4, height: 4))
-        let frame = PixelSize(width: 2, height: 2)
-        let size = OneWindowPicture.pictureSize(frame: frame, visible: bounds.size)
-        #expect(size == PixelSize(width: 4, height: 4))
-        let cut = captured.cropping(to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height))!
-        let result = StudioComposite.centred(cut, in: size, space: displayP3, over: .color(.white))!
-        #expect(result.width == 4 && result.height == 4)
-        let out = pixels(result)
-        #expect(out.allSatisfy { $0[3] == 255 })
-        // The window's pixels unchanged at the top middle, the shadow over white everywhere else.
-        #expect(out[1] == [9, 9, 9, 255] && out[2] == [9, 9, 9, 255])
-        #expect(out[4 + 1] == [9, 9, 9, 255] && out[4 + 2] == [9, 9, 9, 255])
-        for index in [0, 3, 4, 7, 8, 11, 12, 15] {
-            #expect(out[index][0...2].allSatisfy { abs(Int($0) - 191) <= 1 }, "pixel \(index)")
-        }
-    }
-
-    @Test func cuttingToTheVisibleBoundsThenCentringLandsTheWindowInTheMiddle() {
-        // A 2 × 1 window somewhere in a 10 × 8 capture, as ScreenCaptureKit may place it.
-        let captured = capture(
-            width: 10, height: 8, [Pixel(x: 6, y: 5): [1, 2, 3, 255], Pixel(x: 7, y: 5): [4, 5, 6, 255]])
-        let bounds = OneWindowPicture.visibleBounds(of: captured)!
-        let cut = captured.cropping(to: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height))!
-        let result = StudioComposite.centred(cut, in: PixelSize(width: 6, height: 3), space: displayP3, over: nil)!
-        let out = pixels(result)
-        // Origin (2, 1).
-        #expect(out[6 + 2] == [1, 2, 3, 255])
-        #expect(out[6 + 3] == [4, 5, 6, 255])
-        #expect(out.enumerated().filter { $0.element[3] != 0 }.map(\.offset) == [8, 9])
-    }
 }
 
 private func listed(
@@ -669,24 +587,26 @@ struct OneWindowOutlineTests {
 }
 
 struct OneWindowShotTests {
-    @Test func aWindowListedAtTheFramesScaleIsTaken() {
-        #expect(OneWindowPicture.shot(windowScale: 2, frameScale: 2) == .window)
-        #expect(OneWindowPicture.shot(windowScale: 1, frameScale: 1) == .window)
+    @Test func aWindowListedAtItsDisplaysScaleIsTaken() {
+        #expect(OneWindowPicture.shot(windowScale: 2, displayScale: 2) == .window)
+        #expect(OneWindowPicture.shot(windowScale: 1, displayScale: 1) == .window)
     }
 
-    @Test func aWindowNotListedFallsBackToTheFrame() {
-        #expect(OneWindowPicture.shot(windowScale: nil, frameScale: 2) == .frameInstead(.notListed))
-        #expect(OneWindowPicture.shot(windowScale: nil, frameScale: 1) == .frameInstead(.notListed))
+    @Test func aWindowNotListedIsUnavailable() {
+        #expect(OneWindowPicture.shot(windowScale: nil, displayScale: 2) == .unavailable(.notListed))
+        #expect(OneWindowPicture.shot(windowScale: nil, displayScale: 1) == .unavailable(.notListed))
     }
 
-    @Test func aWindowOnADisplayOfAnotherScaleFallsBackToTheFrame() {
-        #expect(OneWindowPicture.shot(windowScale: 1, frameScale: 2) == .frameInstead(.otherScale))
-        #expect(OneWindowPicture.shot(windowScale: 2, frameScale: 1) == .frameInstead(.otherScale))
-        #expect(OneWindowPicture.shot(windowScale: 1.5, frameScale: 2) == .frameInstead(.otherScale))
+    @Test func aWindowOnADisplayOfAnotherScaleIsUnavailable() {
+        #expect(OneWindowPicture.shot(windowScale: 1, displayScale: 2) == .unavailable(.otherScale))
+        #expect(OneWindowPicture.shot(windowScale: 2, displayScale: 1) == .unavailable(.otherScale))
+        #expect(OneWindowPicture.shot(windowScale: 1.5, displayScale: 2) == .unavailable(.otherScale))
     }
 
-    @Test func fallingBackReleasesTheWindow() {
-        // The press's fallback turns One Window off, whatever the problem.
-        #expect(OneWindowMode.on(safari).after(.unavailable) == .off)
+    @Test func anUnavailableWindowReleasesItAndBringsTheFrameBack() {
+        for problem in [OneWindowProblem.notListed, .otherScale] {
+            #expect(OneWindowMode.on(safari).after(.unavailable(problem)) == .off)
+            #expect(OneWindowMode.on(safari).after(.unavailable(problem)).usesFrame)
+        }
     }
 }

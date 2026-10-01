@@ -49,6 +49,8 @@ enum StudioCountdown: Equatable, Sendable {
         /// A window picker started: the studio's One Window or Fit to Window, or one of the Capture
         /// Area's. It takes the mouse and the keyboard, which a countdown must not have to share.
         case pickerStarted
+        /// One Window's chosen window became unavailable: no picture is taken.
+        case windowLost
     }
 
     enum Outcome: Equatable, Sendable {
@@ -69,8 +71,9 @@ enum StudioCountdown: Equatable, Sendable {
     }
 
     /// The countdown after `event`, and what to do. Any press during a countdown cancels it and
-    /// starts nothing, whichever button it is and without a check, and so do hiding the studio and
-    /// starting a window picker; the countdown keeps the delay it started with.
+    /// starts nothing, whichever button it is and without a check, and so do hiding the studio,
+    /// starting a window picker and One Window's window becoming unavailable; the countdown keeps
+    /// the delay it started with.
     func after(_ event: Event) -> (StudioCountdown, Outcome) {
         switch (self, event) {
         case (.idle, .press(let shot, let delay, let check, let pickerRunning, let now)):
@@ -84,7 +87,7 @@ enum StudioCountdown: Equatable, Sendable {
                     .started(stopsPicker: pickerRunning)
                 )
             }
-        case (.counting, .press), (.counting, .hidden), (.counting, .pickerStarted):
+        case (.counting, .press), (.counting, .hidden), (.counting, .pickerStarted), (.counting, .windowLost):
             (.idle, .cancelled)
         case (.counting, .tick(_, frameOnDisplay: false)):
             (.idle, .frameOffDisplay)

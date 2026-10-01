@@ -187,6 +187,12 @@ struct StudioPlacementTests {
         #expect(StudioPlacement.paletteWidth(buttonWidth: 0) == 2 * StudioPlacement.paletteMargin)
     }
 
+    @Test func thePaletteIsAsWideAsOneWindowWithItsMenuButton() {
+        // The widest row (`PaletteMenuButton.rowWidth`): 58 pt from macOS 26, 52 before.
+        #expect(StudioPlacement.paletteWidth(buttonWidth: 58) == CGFloat(74))
+        #expect(StudioPlacement.paletteWidth(buttonWidth: 52) == CGFloat(68))
+    }
+
     @Test func defaultFrameLeavesRoomForThePaletteWindowOnA1440PointDisplay() {
         let visible = CGRect(x: 0, y: 70, width: 1440, height: 800)
         let frame = StudioPlacement.defaultFrame(
@@ -231,45 +237,103 @@ struct StudioPlacementTests {
         #expect(!points(of: paletteRect).contains { layout.isInHoverZone($0) })
     }
 
-    @Test func listsAndLabelsGoBesideThePaletteWindow() {
+    @Test func menusAndLabelsGoBesideThePaletteWindow() {
         let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
         let paletteRect = CGRect(origin: CGPoint(x: 600, y: 300), size: window)
-        let list = StudioPlacement.popoverOrigin(
-            size: CGSize(width: 240, height: 320), beside: paletteRect, anchorTop: 700, in: visible)
-        #expect(list.x == paletteRect.maxX + StudioPlacement.popoverGap)
         let frame = CGRect(x: 700, y: 200, width: 600, height: 600)
+        let menu = StudioPlacement.menuTopLeft(
+            size: CGSize(width: 240, height: 320), beside: paletteRect, anchorTop: 700, frame: frame, in: visible)
+        #expect(menu.x + 240 + StudioPlacement.menuGap == paletteRect.minX)
         let label = StudioPlacement.hoverLabelX(width: 90, beside: paletteRect, frame: frame, in: visible)
         #expect(label + 90 + StudioPlacement.hoverLabelGap == paletteRect.minX)
     }
 
-    // MARK: The Size list
+    // MARK: The palette's menus
 
-    @Test func sizeListSitsRightOfThePaletteLevelWithTheButton() {
-        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
-        let palette = CGRect(x: 800, y: 400, width: 40, height: 300)
-        let origin = StudioPlacement.popoverOrigin(
-            size: CGSize(width: 240, height: 320), beside: palette, anchorTop: 600, in: visible)
-        #expect(origin == CGPoint(x: 846, y: 280))
+    private let menuSize = CGSize(width: 240, height: 320)
+    private let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+
+    @Test func aMenuGoesAwayFromTheFrameRightOfThePalette() {
+        // The palette left of the frame: the menu opens on its left, its top level with the button.
+        let palette = CGRect(x: 400, y: 400, width: 74, height: 300)
+        let frame = CGRect(x: 520, y: 100, width: 800, height: 700)
+        #expect(
+            StudioPlacement.menuTopLeft(size: menuSize, beside: palette, anchorTop: 600, frame: frame, in: screen)
+                == CGPoint(x: 400 - 6 - 240, y: 600))
     }
 
-    @Test func sizeListGoesLeftAtTheDisplaysRightEdge() {
-        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
-        let palette = CGRect(x: 1390, y: 400, width: 40, height: 300)
-        let origin = StudioPlacement.popoverOrigin(
-            size: CGSize(width: 240, height: 320), beside: palette, anchorTop: 600, in: visible)
-        #expect(origin.x == CGFloat(1390 - 6 - 240))
+    @Test func aMenuGoesAwayFromTheFrameLeftOfThePalette() {
+        let palette = CGRect(x: 1000, y: 400, width: 74, height: 300)
+        let frame = CGRect(x: 100, y: 100, width: 850, height: 700)
+        #expect(
+            StudioPlacement.menuTopLeft(size: menuSize, beside: palette, anchorTop: 600, frame: frame, in: screen)
+                == CGPoint(x: 1080, y: 600))
     }
 
-    @Test func sizeListStaysOnTheDisplayVertically() {
-        let visible = CGRect(x: -1920, y: -200, width: 1920, height: 1080)
-        let palette = CGRect(x: -1000, y: -190, width: 40, height: 300)
-        let size = CGSize(width: 240, height: 320)
-        // Near the bottom: lifted to the margin.
-        let low = StudioPlacement.popoverOrigin(size: size, beside: palette, anchorTop: -100, in: visible)
-        #expect(low == CGPoint(x: -954, y: -192))
-        // Above the top: lowered to the margin.
-        let high = StudioPlacement.popoverOrigin(size: size, beside: palette, anchorTop: 2000, in: visible)
-        #expect(high.y == CGFloat(880 - 8 - 320))
+    @Test func aMenuWithoutAFrameGoesRight() {
+        let palette = CGRect(x: 400, y: 400, width: 74, height: 300)
+        #expect(
+            StudioPlacement.menuTopLeft(size: menuSize, beside: palette, anchorTop: 600, frame: nil, in: screen).x
+                == CGFloat(480))
+    }
+
+    @Test func aMenuGoesTowardsTheFrameWithoutRoomAwayFromIt() {
+        // The palette at the display's left edge, the frame right of it: no room on the left.
+        let palette = CGRect(x: 8, y: 400, width: 74, height: 300)
+        let frame = CGRect(x: 120, y: 100, width: 800, height: 700)
+        #expect(
+            StudioPlacement.menuTopLeft(size: menuSize, beside: palette, anchorTop: 600, frame: frame, in: screen).x
+                == CGFloat(88))
+        // At the right edge, the frame left of it: no room on the right.
+        let atRight = CGRect(x: 1358, y: 400, width: 74, height: 300)
+        let frameLeft = CGRect(x: 100, y: 100, width: 1200, height: 700)
+        #expect(
+            StudioPlacement.menuTopLeft(
+                size: menuSize, beside: atRight, anchorTop: 600, frame: frameLeft, in: screen
+            ).x == CGFloat(1358 - 6 - 240))
+    }
+
+    @Test func aMenuFittingExactlyStaysOnItsSide() {
+        // 246 pt left of the palette: exactly the gap and the menu.
+        let palette = CGRect(x: 246, y: 400, width: 74, height: 300)
+        let frame = CGRect(x: 400, y: 100, width: 800, height: 700)
+        #expect(
+            StudioPlacement.menuTopLeft(size: menuSize, beside: palette, anchorTop: 600, frame: frame, in: screen).x
+                == CGFloat(0))
+        // One point less: to the right, towards the frame.
+        let tight = CGRect(x: 245, y: 400, width: 74, height: 300)
+        #expect(
+            StudioPlacement.menuTopLeft(size: menuSize, beside: tight, anchorTop: 600, frame: frame, in: screen).x
+                == CGFloat(325))
+    }
+
+    @Test func withRoomOnNeitherSideTheMenuStaysAwayFromTheFrame() {
+        // A display barely wider than the palette: the system moves the menu on screen.
+        let narrow = CGRect(x: 0, y: 0, width: 300, height: 900)
+        let palette = CGRect(x: 100, y: 400, width: 74, height: 300)
+        let frame = CGRect(x: 200, y: 100, width: 90, height: 700)
+        #expect(
+            StudioPlacement.menuTopLeft(size: menuSize, beside: palette, anchorTop: 600, frame: frame, in: narrow).x
+                == CGFloat(100 - 6 - 240))
+    }
+
+    @Test func theMenusTopIsTheButtonsTopEvenNearTheDisplaysEdge() {
+        // Left to the system, which moves a menu that would leave the screen.
+        let palette = CGRect(x: 400, y: 10, width: 74, height: 300)
+        for top: CGFloat in [40, 899, 2000, -50] {
+            #expect(
+                StudioPlacement.menuTopLeft(size: menuSize, beside: palette, anchorTop: top, frame: nil, in: screen).y
+                    == top)
+        }
+    }
+
+    @Test func aMenuOnADisplayWithNegativeCoordinatesAndHalfPoints() {
+        let visible = CGRect(x: -1920, y: -300, width: 1920, height: 1080)
+        let palette = CGRect(x: -1000.5, y: -100, width: 74, height: 300)
+        let frame = CGRect(x: -900, y: -200, width: 800, height: 700)
+        let origin = StudioPlacement.menuTopLeft(
+            size: menuSize, beside: palette, anchorTop: 100.5, frame: frame, in: visible)
+        #expect(origin == CGPoint(x: (-1000.5 - 6 - 240).rounded(), y: CGFloat(101)))
     }
 
     // MARK: Hover labels
@@ -316,5 +380,65 @@ struct StudioPlacementTests {
         let atEdge = CGRect(x: -1912, y: 0, width: 36, height: 400)
         #expect(
             StudioPlacement.hoverLabelX(width: 90, beside: atEdge, frame: frame, in: visible) == CGFloat(-1870))
+    }
+
+    // MARK: One Window's notice
+
+    private let notice = CGSize(width: 120, height: 16)
+
+    @Test func oneWindowNoticeGoesRightOfTheNameCentredOnItsRow() {
+        let name = CGRect(x: 198, y: 408, width: 60, height: 16)
+        #expect(
+            StudioPlacement.oneWindowNotice(size: notice, beside: name, in: display)
+                == CGRect(x: 258 + 6, y: 408, width: 120, height: 16))
+    }
+
+    @Test func oneWindowNoticeCentresOnATallerRow() {
+        // The palette level with a 36 pt One Window button: centred on it, on whole points.
+        let row = CGRect(x: 40, y: 500, width: 52, height: 36)
+        #expect(
+            StudioPlacement.oneWindowNotice(size: notice, beside: row, in: display)
+                == CGRect(x: 92 + 6, y: 510, width: 120, height: 16))
+        let odd = CGRect(x: 40, y: 500, width: 52, height: 35)
+        #expect(StudioPlacement.oneWindowNotice(size: notice, beside: odd, in: display).minY == CGFloat(510))
+    }
+
+    @Test func oneWindowNoticeGoesLeftWithoutRoomOnTheRight() {
+        // 1440 − 8 is as far right as it may reach: 1312 + 120 fits, 1313 + 120 doesn't.
+        let fits = CGRect(x: 1256, y: 400, width: 50, height: 16)
+        #expect(StudioPlacement.oneWindowNotice(size: notice, beside: fits, in: display).minX == CGFloat(1312))
+        let over = CGRect(x: 1257, y: 400, width: 50, height: 16)
+        #expect(
+            StudioPlacement.oneWindowNotice(size: notice, beside: over, in: display).minX == CGFloat(1257 - 6 - 120))
+    }
+
+    @Test func oneWindowNoticeStaysOnTheDisplay() {
+        // No room on either side: kept inside, over what it sits beside.
+        let wide = CGRect(x: 4, y: 400, width: 1430, height: 16)
+        #expect(StudioPlacement.oneWindowNotice(size: notice, beside: wide, in: display).minX == CGFloat(8))
+        // At the display's top and bottom.
+        let top = CGRect(x: 100, y: 890, width: 60, height: 16)
+        #expect(StudioPlacement.oneWindowNotice(size: notice, beside: top, in: display).maxY == CGFloat(900 - 8))
+        let bottom = CGRect(x: 100, y: -10, width: 60, height: 16)
+        #expect(StudioPlacement.oneWindowNotice(size: notice, beside: bottom, in: display).minY == CGFloat(8))
+    }
+
+    @Test func oneWindowNoticeOnADisplayWithNegativeCoordinates() {
+        let visible = CGRect(x: -1920, y: -1080, width: 1920, height: 1055)
+        let name = CGRect(x: -1502, y: -492, width: 60, height: 16)
+        #expect(
+            StudioPlacement.oneWindowNotice(size: notice, beside: name, in: visible)
+                == CGRect(x: -1442 + 6, y: -492, width: 120, height: 16))
+        // At its right edge, x 0: left of the name.
+        let atEdge = CGRect(x: -100, y: -492, width: 60, height: 16)
+        #expect(
+            StudioPlacement.oneWindowNotice(size: notice, beside: atEdge, in: visible).minX
+                == CGFloat(-100 - 6 - 120))
+    }
+
+    @Test func oneWindowNoticeOnHalfPointsLandsOnWholePoints() {
+        let name = CGRect(x: 99.5, y: 199.5, width: 60, height: 16)
+        let rect = StudioPlacement.oneWindowNotice(size: notice, beside: name, in: display)
+        #expect(rect.minX == rect.minX.rounded() && rect.minY == rect.minY.rounded())
     }
 }

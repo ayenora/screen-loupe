@@ -153,6 +153,10 @@ final class ViewerContentView: NSStackView {
         captures.onAdoptView = { [weak self] capture in self?.restoreView(of: capture) }
         captures.onChange = { [weak self] in self?.showCaptureIndicator() }
         captures.onTakeSnapshot = { [weak self] in self?.takeSnapshot() }
+        captures.onPaste = { [weak self] in self?.paste(as: .captures) }
+        captures.onOpenImage = { [weak self] in
+            NSApp.sendAction(#selector(AppController.openImage(_:)), to: nil, from: self)
+        }
         captures.onUseAsReference = { [weak self] capture in self?.useAsReference(capture) }
         captures.canUseAsReference = { [references] in references.stack.canAdd }
         inspector.onChange = { [weak self] in

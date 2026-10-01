@@ -53,7 +53,8 @@ struct BackgroundImage: Codable, Hashable, Sendable {
 
 /// What the Screenshot studio shows under the windows. Anything
 /// but `screen` is shown by the backdrop over the whole display the frame is on (`StudioBackdrop`),
-/// above the wallpaper and the desktop icons, and laid under One Window's lone window.
+/// above the wallpaper and the desktop icons. One Window's picture has none: the window alone, on
+/// transparency.
 enum StudioBackground: Codable, Hashable, Sendable {
     /// The real desktop: no backdrop.
     case screen

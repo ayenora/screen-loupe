@@ -1,81 +1,70 @@
+import AppKit
 import SwiftUI
 
-/// The Background list beside the palette: the screen, a few
-/// colours and a colour of one's own, calm gradients, an image, and whether a One Window picture
-/// keeps the window's shadow. Shown in `StudioListPanel`, as the Size list is.
-struct StudioBackgroundList: View {
+/// A row of swatches in the palette's Background menu, one menu item for a section's colours or
+/// gradients, like Finder's row of tag colours: each a square of its colour or gradient, the
+/// background ringed in the accent, the one under the pointer ringed in grey and named in the
+/// section's header, as `Color · White` (tooltips don't show while another app is active). A click
+/// chooses it and closes the menu. Greyed and taking no clicks while One Window is on. Each swatch
+/// is a button named for assistive apps; the menu's arrow keys pass over the row, whose choices are
+/// also in Screenshot › Background.
+struct StudioSwatchRow: View {
+    let entries: [(name: String, background: StudioBackground)]
     let current: StudioBackground
+    let isEnabled: Bool
+    /// The hovered swatch's name, or `nil`: the header shows it.
+    let hover: (String?) -> Void
     let choose: (StudioBackground) -> Void
-    let chooseCustomColor: () -> Void
-    let chooseImage: () -> Void
-    let windowShadow: Bool
-    let toggleWindowShadow: () -> Void
-    /// One Window's mode, live: One Window Shadow can be changed only while it is on.
-    let state: StudioListState
-    /// The swatch under the pointer, named in its section's header: tooltips don't show while
-    /// another app is active.
     @State private var hovered: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            StudioListRow(title: "Screen", isChecked: current == .screen) { choose(.screen) }
-            header("Color", naming: StudioBackground.colors.map(\.name) + ["Custom Color…"])
-            HStack(spacing: 8) {
-                ForEach(StudioBackground.colors.indices, id: \.self) { index in
-                    let entry = StudioBackground.colors[index]
-                    Swatch(name: entry.name, isChecked: current == .color(entry.color), hovered: $hovered) {
-                        choose(.color(entry.color))
-                    } fill: {
-                        Color(entry.color)
-                    }
-                }
-                Swatch(
-                    name: "Custom Color…", isChecked: current.isCustomColor, hovered: $hovered,
-                    action: chooseCustomColor
-                ) {
-                    AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center)
-                }
-            }
-            .padding(.horizontal, StudioListLook.contentInset)
-            header("Gradient", naming: StudioBackground.gradients.map(\.name))
-            HStack(spacing: 8) {
-                ForEach(StudioBackground.gradients.indices, id: \.self) { index in
-                    let entry = StudioBackground.gradients[index]
-                    Swatch(name: entry.name, isChecked: current == .gradient(entry.gradient), hovered: $hovered) {
-                        choose(.gradient(entry.gradient))
-                    } fill: {
-                        LinearGradient(
-                            colors: [Color(entry.gradient.top), Color(entry.gradient.bottom)], startPoint: .top,
-                            endPoint: .bottom)
+        HStack(spacing: 8) {
+            ForEach(entries.indices, id: \.self) { index in
+                let entry = entries[index]
+                Swatch(name: entry.name, isChecked: current == entry.background, hovered: $hovered) {
+                    choose(entry.background)
+                } fill: {
+                    switch entry.background {
+                    case .color(let color): AnyView(Color(color))
+                    case .gradient(let gradient):
+                        AnyView(
+                            LinearGradient(
+                                colors: [Color(gradient.top), Color(gradient.bottom)], startPoint: .top,
+                                endPoint: .bottom))
+                    case .screen, .image: AnyView(Color.clear)
                     }
                 }
             }
-            .padding(.horizontal, StudioListLook.contentInset)
-            Divider().padding(.vertical, 4)
-            StudioListRow(title: imageTitle, isChecked: isImage, action: chooseImage)
-            Divider().padding(.vertical, 4)
-            StudioListRow(
-                title: "One Window Shadow", isChecked: windowShadow,
-                isEnabled: state.oneWindowMode.allowsShadowChoice, action: toggleWindowShadow)
         }
-        .padding(StudioListLook.padding)
-        .frame(width: StudioListLook.width)
+        .padding(.horizontal, Self.inset)
+        .padding(.vertical, 3)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
+        .onChange(of: hovered) { _, name in hover(name) }
     }
 
-    private var isImage: Bool {
-        if case .image = current { return true }
-        return false
-    }
+    /// Left of the first swatch: where a menu item's title starts, past the checkmark column.
+    private static let inset: CGFloat = 14
 
-    /// `Image…`, or `Image… · Beach.heic` while one is chosen.
-    private var imageTitle: String {
-        if case .image(let image) = current { return "Image… · \(image.name)" }
-        return "Image…"
-    }
-
-    /// `Color`, or `Color · White` while the pointer is on one of `names`.
-    private func header(_ title: String, naming names: [String]) -> some View {
-        StudioListLook.header(hovered.flatMap { names.contains($0) ? "\(title) · \($0)" : nil } ?? title)
+    /// The row as a menu item's view, `header` the section's header item, named `Title · Name`
+    /// while a swatch is hovered. A click closes the menu first, then chooses.
+    @MainActor static func view(
+        entries: [(name: String, background: StudioBackground)], current: StudioBackground, isEnabled: Bool,
+        header: NSMenuItem, choose: @escaping (StudioBackground) -> Void
+    ) -> NSView {
+        let title = header.title
+        weak var hosting: NSHostingView<StudioSwatchRow>?
+        let row = StudioSwatchRow(
+            entries: entries, current: current, isEnabled: isEnabled,
+            hover: { name in header.title = name.map { "\(title) · \($0)" } ?? title },
+            choose: { background in
+                hosting?.enclosingMenuItem?.menu?.cancelTracking()
+                choose(background)
+            })
+        let view = NSHostingView(rootView: row)
+        hosting = view
+        view.frame = CGRect(origin: .zero, size: view.fittingSize)
+        return view
     }
 }
 

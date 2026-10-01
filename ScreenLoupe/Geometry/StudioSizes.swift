@@ -59,12 +59,12 @@ enum StudioSizes {
         return PixelSize(width: width, height: height)
     }
 
-    /// One of the presets. A custom size equal to one is checked in the lists only as the preset.
+    /// One of the presets. A custom size equal to one is checked in the menus only as the preset.
     static func isPreset(_ size: PixelSize) -> Bool {
         appStore.contains(size) || web.contains(size)
     }
 
-    /// Whether a list entry for `size` is checked with the frame at `current`. A custom size equal to
+    /// Whether a menu entry for `size` is checked with the frame at `current`. A custom size equal to
     /// a preset is checked only as the preset, so one entry is checked at most once per size.
     static func isChecked(_ size: PixelSize, isPresetEntry: Bool, current: PixelSize?) -> Bool {
         size == current && (isPresetEntry || !isPreset(size))
