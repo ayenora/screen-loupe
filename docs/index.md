@@ -31,4 +31,4 @@ Free and open source (MIT). macOS 15.2 Sequoia or later. No account, no telemetr
 
 ## Privacy
 
-Screen Loupe needs Screen Recording access to see the screen. What it captures stays on your Mac: nothing is sent anywhere. See the [privacy policy](privacy).
+Screen Loupe needs Screen Recording access to see the screen. What it captures stays on your Mac: nothing is sent anywhere. See the [privacy policy](privacy) and the [terms of use](terms).

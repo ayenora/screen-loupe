@@ -31,7 +31,7 @@ brew install --cask ayenora/tap/screen-loupe
 
 On first launch, grant Screen Recording access when the Viewer asks. The [Guide](https://ayenora.github.io/screen-loupe/guide) covers every feature and shortcut.
 
-The app collects no data and sends nothing anywhere: [privacy policy](https://ayenora.github.io/screen-loupe/privacy).
+The app collects no data and sends nothing anywhere: [privacy policy](https://ayenora.github.io/screen-loupe/privacy), [terms of use](https://ayenora.github.io/screen-loupe/terms).
 
 ## Documentation
 
