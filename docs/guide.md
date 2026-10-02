@@ -34,9 +34,11 @@ Closing the Viewer hides the frame too; the app stays in the menu bar (the magni
 - **Viewport handle** (the dashed-rectangle button, View › Show Viewport Handle, or ⌃⌥⌘M): the outline stays, with a small handle beside it; drag the handle to pan the Viewer from the frame. Everything else inside the frame still goes to the app underneath.
 - The tab shows the size in points and pixels, one size in points on a 1× display, where they are the same; on hover a box beside the frame shows its edges from the display's top-left corner.
 
+![A Safari window with the Capture Area fitted to it and a top margin over its toolbar, the Viewer showing only the page](images/06-margins.png)
+
 ## The Viewer
 
-![The Viewer at 2000% with the ruler and the pixel grid, beside the Simulator with the Capture Area over it](images/01-zoom-ruler-grid.png)
+![The Viewer zoomed in on an icon with the Corner Ruler and the crosshair, beside the Simulator with the Capture Area over it](images/01-zoom-ruler-grid.png)
 
 - **Zoom:** the presets Fit, 1×, 2×, 4×, 8×, 16×, 32× and 64× (100% to 6400%) in the zoom panel, the loupe's ▾ or View › Zoom, pinch, ⌘ + scroll wheel, `+` / `-`, or type a percentage in the zoom panel's field and press Return (Escape leaves it). Pinch, the wheel, and `+` / `-` with the pointer over the Viewer keep the point under the pointer in place; a preset or a typed zoom brings the middle of what you see to the middle of the Viewer. Presets, `+` / `-` and Reset Zoom glide there in a fifth of a second, or change at once with Reduce Motion on.
 - **Zoom panel:** the presets, the one matching the zoom highlighted, and the zoom in percent. The loupe, the first button in the toolbar, shows and hides it; its ▾ also chooses where it goes: **In the Toolbar**, a strip under the toolbar, or **Floating Panel**, a small window beside the Viewer that moves with it. Drag the floating panel anywhere — left, right or below the Viewer — and it keeps that place next to the Viewer, also after a relaunch; its close button hides it. In full screen it shows as the strip.
@@ -71,7 +73,7 @@ To copy just a part of the view:
 
 ## Tools
 
-![The Color Meter with the crosshair on a pixel](images/02-color-meter.png)
+![The Color Meter with a colour's values, a contrast pair and its WCAG verdicts, Favorites and Recent](images/02-color-meter-contrast.png)
 
 - **Color Meter** (the eyedropper segment in the toolbar): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a colour below — recent, favourite, Text or Background — to see it in every format instead; the line above the swatch names it, and a recent row is highlighted. Move the pointer over the image — in the Viewer or inside the Capture Area — and the pixel under it is back.
   - **Recent:** every click on a pixel keeps its colour — the last eight, kept between launches — except a click that fills a favourite. Right-click a row to copy it as HEX, CSS, SwiftUI or AppKit, add it to Favorites, or remove it.
@@ -92,7 +94,11 @@ To copy just a part of the view:
 - **Dropping images:** drag image files from Finder onto the Viewer. With References open they become reference layers; with Recent Captures open they open for inspection; otherwise a menu asks which.
 - **Pasting an image:** ⌘V in the Viewer takes an image from the clipboard — a design tool's Copy as PNG, a screenshot, image files copied in Finder — the same way as a drop. Edit › Paste as Reference and Paste for Inspection skip the question.
 
-![A design export laid over a web page in Difference: matching pixels turn black](images/03-reference-layers.png)
+![A design export laid over a web page in Difference: matching pixels turn black, the shifted button glows](images/04-reference-difference.png)
+
+![The Viewer simulating deuteranopia, its colour vision menu open, beside the Simulator in normal colours](images/03-color-vision.png)
+
+![Recent Captures with two linked snapshots, one shown in the Viewer with the Selection Ruler on a label](images/05-recent-captures-ruler.png)
 
 ## Screenshot studio
 
