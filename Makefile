@@ -47,7 +47,8 @@ TESTS_XCODEBUILD := xcodebuild -project ScreenLoupe.xcodeproj -scheme ScreenLoup
 	-derivedDataPath build/DerivedData -quiet \
 	CURRENT_PROJECT_VERSION=$(TESTS_BUILD_NUMBER)
 
-help:
+# Double-colon, so a Makefile that includes this one can list its own targets after these.
+help::
 	@echo "Available targets:"
 	@echo "  make build      - Debug build into $(DERIVED_DATA)"
 	@echo "  make run        - Build and open the app"

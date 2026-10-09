@@ -31,6 +31,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             MainMenu.setOneWindowNote(!oneWindowMode.usesFrame, in: menu)
             return menu
         }
+        Edition.install(in: windows)
         return windows
     }
     private let shortcuts = GlobalShortcuts()
