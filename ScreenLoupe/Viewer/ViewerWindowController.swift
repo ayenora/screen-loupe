@@ -50,7 +50,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         zoomPanel = ZoomPanel(zoomPan: zoomPan)
         toolbar = ViewerToolbar(
             settings: settings, ruler: content.ruler, selection: content.selection,
-            colorVision: content.colorVision)
+            copyText: content.copyTextTool, colorVision: content.colorVision)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
@@ -212,9 +212,43 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.selection.toggleTool()
     }
 
+    /// Edit › Select All (⌘A): all the text while Copy Text is on, else the whole Capture Area.
     func selectWholeArea() {
-        content.selection.selectAll()
+        if content.copyTextTool.isOn {
+            content.copyTextTool.selectAllText()
+        } else {
+            content.selection.selectAll()
+        }
     }
+
+    // MARK: Copy Text
+
+    var isCopyTextOn: Bool { content.copyTextTool.isOn }
+
+    /// The toolbar button and View › Copy Text (`ViewerContentView.toggleCopyText`).
+    func toggleCopyText() {
+        content.toggleCopyText()
+    }
+
+    /// Freezes (`true`) or resumes the live view for Copy Text, and whether there is a frame to
+    /// freeze: the window manager's.
+    var freezeLive: ((Bool) -> Void)? {
+        get { content.freezeLive }
+        set { content.freezeLive = newValue }
+    }
+
+    var canFreezeLive: (() -> Bool)? {
+        get { content.canFreezeLive }
+        set { content.canFreezeLive = newValue }
+    }
+
+    /// ⌘C with text selected copies it (`ViewerContentView.copySelectedText`); `false` with none.
+    func copySelectedText() -> Bool {
+        content.copySelectedText()
+    }
+
+    /// Whether ⌘C copies text rather than the view.
+    var hasTextToCopy: Bool { content.hasTextToCopy }
 
     // MARK: Recent Captures
 

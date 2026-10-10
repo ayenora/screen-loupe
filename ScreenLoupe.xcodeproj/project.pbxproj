@@ -26,6 +26,8 @@
 				Geometry/ColorVision.swift,
 				Geometry/ColorMeterState.swift,
 				Geometry/CoordinateTypes.swift,
+				Geometry/CopyText.swift,
+				Geometry/CopyTextMode.swift,
 				Geometry/CornerRuler.swift,
 				Geometry/DisplayCoordinateConverter.swift,
 				Geometry/DisplayLayout.swift,

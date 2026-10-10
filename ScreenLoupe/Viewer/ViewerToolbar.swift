@@ -1,7 +1,7 @@
 import AppKit
 
 /// The Viewer's toolbar: the loupe, which shows the zoom panel, with its menu of the zoom presets and
-/// the panel's styles, Freeze with its menu of delays, the Select tool, the Ruler with its menu
+/// the panel's styles, Freeze with its menu of delays, the Select tool, Copy Text, the Ruler with its menu
 /// of rulers, the Grid toggle, the pointer toggle with its menu of styles, the colour vision
 /// simulation with its menu of modes, the side panels (Color Meter, References, Recent Captures) as
 /// one segmented control, Copy and Save each with its menu of the view and the source, and the
@@ -13,7 +13,7 @@ import AppKit
 /// styles, the Ruler a submenu of its two rulers, the simulation a submenu of its toggle and modes,
 /// the panels a submenu of their toggles, the pin a checkmark.
 ///
-/// The loupe, Freeze, Select, Ruler, the simulation, Copy, Save and Keep on Top are app commands: they go up the
+/// The loupe, Freeze, Select, Copy Text, Ruler, the simulation, Copy, Save and Keep on Top are app commands: they go up the
 /// responder chain to `AppController`, as the menus' do. The toggles are settings and change them directly. Every
 /// button and segment shows the state of its model, never just its own click.
 @MainActor
@@ -21,6 +21,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     private static let zoomID = NSToolbarItem.Identifier("zoomPanel")
     private static let freezeID = NSToolbarItem.Identifier("freeze")
     private static let selectID = NSToolbarItem.Identifier("select")
+    private static let copyTextID = NSToolbarItem.Identifier("copyText")
     private static let rulerID = NSToolbarItem.Identifier("ruler")
     private static let gridID = NSToolbarItem.Identifier("grid")
     private static let crosshairID = NSToolbarItem.Identifier("crosshair")
@@ -79,6 +80,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     private let pointerMenuButton = NSButton()
     private let selectButton = NSButton()
     private let selectMenuItem = NSMenuItem(title: "Select", action: nil, keyEquivalent: "")
+    private let copyTextButton = NSButton()
+    private let copyTextMenuItem = NSMenuItem(title: "Copy Text", action: nil, keyEquivalent: "")
     private let rulerButton = NSButton()
     /// The ▾ beside the ruler button: Corner Ruler or Selection Ruler.
     private let rulerMenuButton = NSButton()
@@ -102,6 +105,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     private let settings: SettingsStore
     private let ruler: RulerController
     private let selection: SelectionController
+    private let copyText: CopyTextController
     private let colorVision: ColorVisionController
     /// Frozen or counting down to a freeze, as `setFrozen` last reported it.
     private var isFrozen = false
@@ -109,11 +113,12 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
 
     init(
         settings: SettingsStore, ruler: RulerController, selection: SelectionController,
-        colorVision: ColorVisionController
+        copyText: CopyTextController, colorVision: ColorVisionController
     ) {
         self.settings = settings
         self.ruler = ruler
         self.selection = selection
+        self.copyText = copyText
         self.colorVision = colorVision
         super.init()
         configure(copyButton, symbol: "doc.on.doc", title: "Copy View (⌘C)", action: #selector(copyClicked(_:)))
@@ -163,6 +168,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
             action: #selector(selectClicked(_:)))
         selectButton.setButtonType(.pushOnPushOff)
         selectMenuItem.action = #selector(AppController.toggleSelectTool(_:))
+        configure(
+            copyTextButton, symbol: "text.viewfinder", title: "Copy Text (⇧⌘E)", action: #selector(copyTextClicked(_:)))
+        copyTextButton.setButtonType(.pushOnPushOff)
+        copyTextMenuItem.action = #selector(AppController.toggleCopyText(_:))
         configure(rulerButton, symbol: "ruler", title: "Corner Ruler (⌘R)", action: #selector(rulerClicked(_:)))
         rulerButton.setButtonType(.pushOnPushOff)
         configure(
@@ -220,6 +229,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         showRuler()
         selection.observe { [weak self] in self?.showSelectTool() }
         showSelectTool()
+        copyText.observe { [weak self] in self?.showCopyText() }
+        showCopyText()
         colorVision.observe { [weak self] in self?.showColorVision() }
         showColorVision()
         settings.observe(\.viewerAlwaysOnTop) { [weak self] in self?.show($0, on: self?.onTopButton) }
@@ -262,6 +273,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
 
     private func showSelectTool() {
         show(selection.isToolOn, on: selectButton)
+    }
+
+    private func showCopyText() {
+        show(copyText.isOn, on: copyTextButton)
     }
 
     /// The eye button's name follows the chosen mode.
@@ -439,6 +454,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         send(#selector(AppController.toggleSelectTool(_:)), from: sender, isOn: selection.isToolOn)
     }
 
+    @objc private func copyTextClicked(_ sender: NSButton) {
+        send(#selector(AppController.toggleCopyText(_:)), from: sender, isOn: copyText.isOn)
+    }
+
     @objc private func rulerClicked(_ sender: NSButton) {
         send(#selector(AppController.toggleMeasuringRuler(_:)), from: sender, isOn: ruler.isOn)
     }
@@ -522,8 +541,8 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            .flexibleSpace, Self.zoomID, Self.freezeID, Self.selectID, Self.rulerID, Self.gridID, Self.crosshairID,
-            Self.visionID, Self.panelsID, .space, Self.copyID, Self.saveID, Self.onTopID,
+            .flexibleSpace, Self.zoomID, Self.freezeID, Self.selectID, Self.copyTextID, Self.rulerID, Self.gridID,
+            Self.crosshairID, Self.visionID, Self.panelsID, .space, Self.copyID, Self.saveID, Self.onTopID,
         ]
     }
 
@@ -553,6 +572,10 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
             item.view = selectButton
             item.label = "Select"
             item.menuFormRepresentation = selectMenuItem
+        case Self.copyTextID:
+            item.view = copyTextButton
+            item.label = "Copy Text"
+            item.menuFormRepresentation = copyTextMenuItem
         case Self.rulerID:
             let group = NSStackView(views: [rulerButton, rulerMenuButton])
             group.spacing = 0

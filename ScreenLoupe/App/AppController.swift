@@ -311,8 +311,14 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.viewer.toggleSelectTool()
     }
 
+    /// View › Copy Text (⇧⌘E) and its toolbar button.
+    @objc func toggleCopyText(_ sender: Any?) {
+        windows.viewer.toggleCopyText()
+    }
+
     /// Edit › Select All (⌘A) when no text field has the focus: the Select tool takes the whole
-    /// Capture Area.
+    /// Capture Area, or, while Copy Text is on, all the text in the picture. The text layer never
+    /// keeps the keyboard (`CopyTextHost`), so this is the one way it is reached.
     @objc func selectAll(_ sender: Any?) {
         windows.viewer.selectWholeArea()
     }
@@ -331,8 +337,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     /// Edit › Copy View (⌘C) when no text field has the focus: a text field with the focus copies its
-    /// text first.
+    /// text first. Text selected with Copy Text is copied as text.
     @objc func copy(_ sender: Any?) {
+        if windows.viewer.copySelectedText() { return }
         windows.export.copyView()
     }
 
@@ -582,6 +589,9 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleSelectTool(_:)):
             menuItem.state = builtWindows?.viewer.isSelectToolOn == true ? .on : .off
             return builtWindows?.viewer.showsCapture == true
+        case #selector(toggleCopyText(_:)):
+            menuItem.state = builtWindows?.viewer.isCopyTextOn == true ? .on : .off
+            return builtWindows?.viewer.showsCapture == true
         case #selector(openImage(_:)):
             return builtWindows?.isChoosingImage != true
         case #selector(NSText.paste(_:)):
@@ -598,8 +608,9 @@ extension AppController: NSMenuItemValidation {
             return builtWindows?.viewer.canTakeSnapshot == true
         case #selector(sizeViewerToArea(_:)):
             return builtWindows?.viewer.canSizeToArea == true
-        case #selector(copyView(_:)), #selector(NSText.copy(_:)), #selector(copySource(_:)), #selector(saveView(_:)),
-            #selector(saveSource(_:)):
+        case #selector(NSText.copy(_:)):
+            return canExport || builtWindows?.viewer.hasTextToCopy == true
+        case #selector(copyView(_:)), #selector(copySource(_:)), #selector(saveView(_:)), #selector(saveSource(_:)):
             return canExport
         default:
             return true
@@ -610,7 +621,8 @@ extension AppController: NSMenuItemValidation {
 extension AppController: NSMenuDelegate {
     /// Screenshot › Size is filled as it opens; it and Screenshot › Background say on top why their
     /// items are disabled while One Window doesn't use the frame. Edit › Copy copies the text of a
-    /// focused text field, and the view otherwise; its title says which.
+    /// focused text field, the text selected with Copy Text, and the view otherwise; its title says
+    /// which. Select All reads Select All Text while Copy Text is on.
     func menuNeedsUpdate(_ menu: NSMenu) {
         let notesOneWindow = !oneWindowMode.usesFrame
         if menu.identifier == MainMenu.studioSizeMenu {
@@ -623,6 +635,11 @@ extension AppController: NSMenuDelegate {
             return
         }
         let editsText = NSApp.keyWindow?.firstResponder is NSText
-        menu.items.first { $0.action == #selector(NSText.copy(_:)) }?.title = editsText ? "Copy" : "Copy View"
+        let copiesText = builtWindows?.viewer.hasTextToCopy == true
+        menu.items.first { $0.action == #selector(NSText.copy(_:)) }?.title =
+            editsText ? "Copy" : copiesText ? "Copy Text" : "Copy View"
+        let selectsText = !editsText && builtWindows?.viewer.isCopyTextOn == true
+        menu.items.first { $0.action == #selector(NSText.selectAll(_:)) }?.title =
+            selectsText ? "Select All Text" : "Select All"
     }
 }

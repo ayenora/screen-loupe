@@ -125,6 +125,9 @@ enum MainMenu {
         let select = menu.addItem(
             withTitle: "Select", action: #selector(AppController.toggleSelectTool(_:)), keyEquivalent: "e")
         select.target = target
+        let copyText = menu.addItem(
+            withTitle: "Copy Text", action: #selector(AppController.toggleCopyText(_:)), keyEquivalent: "E")
+        copyText.target = target
         let cornerRuler = menu.addItem(
             withTitle: "Corner Ruler", action: #selector(AppController.toggleCornerRuler(_:)), keyEquivalent: "r")
         cornerRuler.target = target

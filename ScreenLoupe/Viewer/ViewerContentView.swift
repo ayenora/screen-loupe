@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// The Viewer's content while it shows the capture: the magnified image with the overlay, the
-/// frozen indicator, the status panel and the toast over it, and the side column (Color Meter,
+/// The Viewer's content while it shows the capture: the magnified image with Copy Text's layer, the
+/// overlay, the frozen indicator, the status panel and the toast over it, and the side column (Color Meter,
 /// References or Recent Captures) at its right. Image files dropped on it, and images pasted into
 /// it, become reference layers or recent captures (`ImagePlacement`). What happens inside it is
 /// wired here; the window controller only places it.
@@ -14,8 +14,13 @@ final class ViewerContentView: NSStackView {
     let selection: SelectionController
     let colorVision: ColorVisionController
     let captures = RecentCaptures()
+    let copyTextTool: CopyTextController
     /// Called when a recent capture starts or stops showing in place of the live view.
     var onShowCapture: (() -> Void)?
+    /// Freezes (`true`) or resumes the live view, for Copy Text, as Freeze Frame does.
+    var freezeLive: ((Bool) -> Void)?
+    /// Whether the live view has a frame to freeze.
+    var canFreezeLive: (() -> Bool)?
 
     private let settings: SettingsStore
     private let frameStore: FrameStore
@@ -56,6 +61,7 @@ final class ViewerContentView: NSStackView {
         references = ReferencesController(project: project, zoomPan: zoomPan)
         selection = SelectionController(zoomPan: zoomPan)
         colorVision = ColorVisionController(settings: settings)
+        copyTextTool = CopyTextController(viewerView: viewerView)
         // A selection is drawn with the Select tool: the Selection Ruler turns it on.
         ruler.onMeasureSelection = { [selection] in if !selection.isToolOn { selection.toggleTool() } }
         viewerView.ruler = ruler
@@ -85,7 +91,9 @@ final class ViewerContentView: NSStackView {
         frozenIndicator.isHidden = true
         captureIndicator.isHidden = true
         visionIndicator.isHidden = true
-        for view in [viewerView, overlay, frozenIndicator, captureIndicator, visionIndicator] as [NSView] {
+        for view in [viewerView, copyTextTool.host, overlay, frozenIndicator, captureIndicator, visionIndicator]
+            as [NSView]
+        {
             view.frame = imageArea.bounds
             view.autoresizingMask = [.width, .height]
             imageArea.addSubview(view)
@@ -119,6 +127,7 @@ final class ViewerContentView: NSStackView {
             viewerView.requestDraw()
             overlay.needsDisplay = true
             ruler.viewportChanged()
+            placeText()
         }
         zoomPan.observe { [weak self] in self?.captures.shownViewChanged() }
         ruler.observe { [weak self] in self?.overlay.needsDisplay = true }
@@ -128,13 +137,29 @@ final class ViewerContentView: NSStackView {
             showVisionIndicator()
         }
         selection.observe { [weak self] in
-            self?.overlay.needsDisplay = true
-            self?.applyMouseModes()
-            self?.captures.shownViewChanged()
+            guard let self else { return }
+            // Select and Copy Text are never on together.
+            if selection.isToolOn, copyTextTool.isOn { run(copyTextTool.mode.selectTurnedOn()) }
+            overlay.needsDisplay = true
+            applyMouseModes()
+            captures.shownViewChanged()
         }
         overlay.freezeHint = { [frozenIndicator] in frozenIndicator.shownHint }
         viewerView.onCopyRegion = { [weak self] region in self?.copyRegion(region) }
         viewerView.onShowLive = { [weak self] in self?.captures.show(nil) }
+        viewerView.escapesText = { [weak self] in
+            guard let self, let steps = copyTextTool.mode.escape(hasTextSelection: copyTextTool.hasTextSelection) else {
+                return false
+            }
+            run(steps)
+            return true
+        }
+        viewerView.onSpaceInText = { [weak self] in
+            guard let self,
+                let steps = copyTextTool.mode.space(showsFrozenLive: frameStore.isFrozen && !isShowingCapture)
+            else { return }
+            run(steps)
+        }
         viewerView.onAreaOriginMoved = { [weak self] shift in self?.captures.areaOriginMoved(by: shift) }
         viewerView.dropsColorTarget = { [weak self] in
             // Only while the target shows; a countdown running is what Escape is for then.
@@ -197,10 +222,12 @@ final class ViewerContentView: NSStackView {
         }
     }
 
-    /// Who the mouse in the image belongs to. The Select tool comes first; else the eyedropper,
-    /// which works only while the Color Meter is expanded; reference layers take it when neither does.
+    /// Who the mouse in the image belongs to. The Select tool or Copy Text comes first; else the
+    /// eyedropper, which works only while the Color Meter is expanded; reference layers take it when
+    /// none does.
     private func applyMouseModes() {
-        let isSelecting = selection.isToolOn
+        let isSelecting = selection.isToolOn || copyTextTool.isOn
+        viewerView.isReadingText = copyTextTool.isOn
         viewerView.isPicking = !isSelecting && sidePanelLayout?.isMeterExpanded == true
         meterPanel.isPicking = viewerView.isPicking
         references.takesMouse = !isSelecting && !viewerView.isPicking
@@ -223,11 +250,15 @@ final class ViewerContentView: NSStackView {
     /// Frozen, counting down to a freeze, or live.
     func showFreeze(_ state: FrozenIndicatorView.State) {
         // The first live frame after a freeze keeps the framing (`AreaResizeTracker.forget`).
-        if frozenIndicator.state.isFrozen, !state.isFrozen { viewerView.forgetAreaOrigin() }
+        let wasFrozen = frozenIndicator.state.isFrozen
+        if wasFrozen, !state.isFrozen { viewerView.forgetAreaOrigin() }
         frozenIndicator.state = state
         // The Selection Ruler's hint stacks over the freeze's.
         overlay.needsDisplay = true
         showVisionIndicator()
+        // Only a freeze or a resume changes the picture: a countdown starting or stopping doesn't,
+        // and freezing in the middle of one (Copy Text turning on) passes through hidden first.
+        if wasFrozen != state.isFrozen { run(copyTextTool.mode.pictureChanged(to: textPicture)) }
     }
 
     /// The orange border and "Deuteranopia · simulated" while a colour vision is simulated, under
@@ -566,6 +597,7 @@ final class ViewerContentView: NSStackView {
         }
         inspector.frameArrived()
         showCaptureIndicator()
+        run(copyTextTool.mode.pictureChanged(to: textPicture))
         onShowCapture?()
     }
 
@@ -594,8 +626,84 @@ final class ViewerContentView: NSStackView {
         let shown = captures.shown
         captureIndicator.state = shown.map { .capture(label: captures.label(for: $0)) } ?? .hidden
         frozenIndicator.alphaValue = shown == nil ? 1 : 0
+        showTextPill()
         overlay.needsDisplay = true
         showVisionIndicator()
+    }
+
+    // MARK: Copy Text
+
+    /// What shows, for Copy Text: a recent capture or the frozen live view is still.
+    private var textPicture: CopyTextMode.Picture {
+        isShowingCapture || frameStore.isFrozen ? .still : .live
+    }
+
+    /// The toolbar button and View › Copy Text (`CopyTextMode.toggle`).
+    func toggleCopyText() {
+        run(
+            copyTextTool.mode.toggle(
+                over: textPicture, canFreeze: canFreezeLive?() == true, selectIsOn: selection.isToolOn))
+    }
+
+    /// Carries out the mode's steps, in order, then shows its state. A step can change the mode under
+    /// the rest (freezing or resuming reports the picture changing, which runs its own steps): the
+    /// rest were for the mode as it was, and are dropped.
+    private func run(_ steps: [CopyTextMode.Step]) {
+        let mode = copyTextTool.mode
+        for step in steps {
+            guard copyTextTool.mode == mode else { break }
+            switch step {
+            case .turnOffSelect: if selection.isToolOn { selection.toggleTool() }
+            case .freeze: freezeLive?(true)
+            case .unfreeze: freezeLive?(false)
+            case .showText:
+                copyTextTool.show(frameStore.shownFrame)
+                placeText()
+            case .hideText: copyTextTool.hide()
+            case .clearTextSelection: copyTextTool.clearTextSelection()
+            case .beep: NSSound.beep()
+            }
+        }
+        guard !steps.isEmpty else { return }
+        applyMouseModes()
+        showTextPill()
+        showVisionIndicator()
+    }
+
+    /// The text layer over the frame's pixels as they show, on every frame of a zoom glide too.
+    private func placeText() {
+        guard copyTextTool.isOn, let frame = frameStore.shownFrame else { return }
+        copyTextTool.place(
+            CopyText.overlayFrame(
+                state: zoomPan.presented, imageOrigin: frame.layout.imageOrigin, imageSize: frame.layout.imageSize,
+                drawableScale: viewerView.drawableScale))
+    }
+
+    /// While the mode is on, its pill in place of the frozen or the capture one: "Text · Frozen ·
+    /// Esc clears, then leaves", or "Text · Capture 2 of 8 · Esc clears, then leaves".
+    private func showTextPill() {
+        let shown = captures.shown
+        frozenIndicator.chipText = copyTextTool.isOn && shown == nil ? CopyText.pillText(picture: nil) : nil
+        captureIndicator.chipText =
+            copyTextTool.isOn ? shown.map { CopyText.pillText(picture: captures.title(for: $0)) } : nil
+    }
+
+    /// ⌘C with text selected: the text, as plain text, and "“Continue” copied". `false` with none
+    /// selected, for Copy View to copy the view.
+    func copySelectedText() -> Bool {
+        guard copyTextTool.isOn, let text = copyTextTool.selectedText, let toast = CopyText.toast(for: text) else {
+            return false
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        showToast(toast)
+        return true
+    }
+
+    /// Whether ⌘C copies text (`copySelectedText`): Edit › Copy View reads "Copy Text" then.
+    var hasTextToCopy: Bool {
+        copyTextTool.isOn && copyTextTool.selectedText.map { CopyText.toast(for: $0) != nil } == true
     }
 
     private func pickColor() {

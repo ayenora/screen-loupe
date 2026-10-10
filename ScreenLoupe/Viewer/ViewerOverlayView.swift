@@ -351,7 +351,8 @@ final class ViewerOverlayView: NSView {
 /// After a freeze from another app a second chip at the bottom says how it happened. A recent
 /// capture shown in place of the live view gets a purple border and its own chip. The colour vision
 /// simulation gets an orange border and a chip of its own, stacked under another indicator that
-/// shows (`ViewerIndicators`). Never in Copy View, which draws the frame itself.
+/// shows (`ViewerIndicators`). While Copy Text is on, its pill stands in for the frozen or the
+/// capture chip, in the same colour (`chipText`). Never in Copy View, which draws the frame itself.
 final class FrozenIndicatorView: NSView {
     enum State: Equatable {
         case hidden
@@ -387,6 +388,12 @@ final class FrozenIndicatorView: NSView {
 
     private var ticker: Timer?
 
+    /// Shown in the frozen or the capture chip in place of its own text: Copy Text's pill
+    /// (`CopyText.pillText`). `nil` for the chip's own.
+    var chipText: String? {
+        didSet { if chipText != oldValue { needsDisplay = true } }
+    }
+
     /// Where the simulation's chip and border go (`ViewerIndicators`): the chip's top, and the
     /// border's inset from the edge.
     var stacking = (top: ViewerIndicators.top, inset: CGFloat(0)) {
@@ -417,14 +424,14 @@ final class FrozenIndicatorView: NSView {
             return
         case .frozen(let hint):
             drawBorder(dashed: false)
-            drawChip(Self.frozenText, color: .systemBlue)
+            drawChip(chipText.map { $0 as NSString } ?? Self.frozenText, color: .systemBlue)
             if let hint { drawHint(hint) }
         case .countdown(let deadline, let total):
             drawBorder(dashed: true)
             drawCountdown(remaining: max(0, deadline.timeIntervalSinceNow), total: total)
         case .capture(let label):
             drawBorder(dashed: false, color: .systemPurple)
-            drawChip(label as NSString, color: Self.captureChip)
+            drawChip((chipText ?? label) as NSString, color: Self.captureChip)
         case .simulation(let label):
             drawBorder(dashed: false, color: .systemOrange, inset: stacking.inset)
             drawChip(label as NSString, color: Self.simulationChip, top: stacking.top)
@@ -437,9 +444,10 @@ final class FrozenIndicatorView: NSView {
         guard !isHidden, alphaValue > 0 else { return nil }
         switch state {
         case .hidden: return nil
-        case .frozen: return ViewerIndicators.top + Self.chipHeight(Self.frozenText)
+        case .frozen: return ViewerIndicators.top + Self.chipHeight(chipText.map { $0 as NSString } ?? Self.frozenText)
         case .countdown: return 10 + CountdownPill.freeze.ring + 2 * CountdownPill.freeze.inset
-        case .capture(let label), .simulation(let label):
+        case .capture(let label): return ViewerIndicators.top + Self.chipHeight((chipText ?? label) as NSString)
+        case .simulation(let label):
             return ViewerIndicators.top + Self.chipHeight(label as NSString)
         }
     }

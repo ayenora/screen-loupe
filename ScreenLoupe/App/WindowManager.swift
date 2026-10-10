@@ -68,6 +68,12 @@ final class WindowManager {
         }
         captureArea.onMagnetStopped = { [weak self] in self?.magnetHoldEvent(.magnetStopped) }
         viewer.onRetry = { [weak self] in self?.capture.retry() }
+        // Copy Text works on a still picture: over the live view it freezes it as Freeze Frame does.
+        viewer.freezeLive = { [weak self] frozen in self?.setFrozen(frozen) }
+        viewer.canFreezeLive = { [weak self] in
+            guard let self else { return false }
+            return isFrozen || export.canExport
+        }
         viewer.onPermissionChange = { [weak self] in
             self?.magnetHoldEvent(.captureInterrupted)
             self?.updateCapture()

@@ -64,6 +64,10 @@ To copy just a part of the view:
 - **⌥-drag** a rectangle in the Viewer: that region is copied on letting go.
 - **Select** (⌘E, or the dashed-rectangle button): drag a selection snapped to whole screen pixels, adjust it by its handles, then ⌘C copies just the selection. The label under it gives its size in pixels and points and its place, `32 × 22 px · 16 × 11 pt · x 11, y 11` (pixels only on a 1× display and on an image file). ⌘A selects the whole Capture Area, at the current zoom, even where it reaches beyond the window. Space-drag pans while Select is on; Escape clears.
 
+To copy the text in what the Viewer shows — a button's label, a heading, text in an app that doesn't let you select it, such as the Simulator:
+
+- **Copy Text** (⇧⌘E, or the button with a text frame after Select): over the live view it freezes the frame; on a frozen frame, a recent capture or an opened image it works on what shows. Drag across the text as in Preview, then ⌘C copies it as plain text, and the toast shows what was copied, “Continue” copied. With no text selected ⌘C copies the view as usual. The selection stays on its text as you zoom and pan: scroll and pinch as usual, while dragging the picture, the ruler's handles and ⌥-drag wait until you leave Copy Text. Escape clears the selection, then leaves Copy Text, resuming the live view if Copy Text froze it; Space leaves it and goes back to live (over a recent capture or an image it only leaves). ⌘A selects all the text while Copy Text is on. Copy Text and Select are never on together; turning Select on keeps the frozen frame until you resume it.
+
 ## Freezing a moment
 
 - **Space** in the Viewer freezes the current frame — a hover, a pressed button, an animation frame. Space again resumes.
@@ -126,6 +130,7 @@ In the Viewer:
 | Space | Freeze / resume |
 | ⌘T | Take Snapshot |
 | ⌘E | Select tool |
+| ⇧⌘E | Copy Text |
 | ⌘A | Select the whole Capture Area |
 | ⌘R | Corner Ruler |
 | ⌥⌘R | Selection Ruler |

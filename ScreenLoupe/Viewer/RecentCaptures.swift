@@ -99,9 +99,15 @@ final class RecentCaptures {
     /// "Capture 2 of 8 · 14:20:05 · Esc for live", or "photo.png · Esc for live" for an image file,
     /// over the Viewer while `capture` shows.
     func label(for capture: RecentCapture) -> String {
-        if capture.isFile { return "\(capture.name) · Esc for live" }
+        if capture.isFile { return "\(title(for: capture)) · Esc for live" }
+        return "\(title(for: capture)) · \(capture.time) · Esc for live"
+    }
+
+    /// "Capture 2 of 8", or "photo.png" for an image file: which picture shows, in Copy Text's pill.
+    func title(for capture: RecentCapture) -> String {
+        if capture.isFile { return capture.name }
         let number = (captures.firstIndex { $0.id == capture.id } ?? 0) + 1
-        return "Capture \(number) of \(captures.count) · \(capture.time) · Esc for live"
+        return "Capture \(number) of \(captures.count)"
     }
 
     /// Called after a capture is added or removed.

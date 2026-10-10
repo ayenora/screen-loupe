@@ -35,7 +35,7 @@ enum ScreenshotExporter {
 
     /// The frame's BGRA bytes as a `CGImage`, copied so the capture buffer can be reused. With
     /// `hasAlpha` (an opened image) its straight alpha is kept; a frame of the screen is opaque.
-    private static func frameImage(_ buffer: CVPixelBuffer, colorSpace: CGColorSpace, hasAlpha: Bool) -> CGImage? {
+    static func frameImage(_ buffer: CVPixelBuffer, colorSpace: CGColorSpace, hasAlpha: Bool) -> CGImage? {
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }

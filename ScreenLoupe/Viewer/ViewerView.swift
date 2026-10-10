@@ -19,7 +19,8 @@ extension MTKView {
 /// Pan: drag, two-finger scroll, horizontal scroll. Zoom around the cursor: pinch, ⌘ + wheel (or a
 /// bare mouse wheel, per Settings), `+`/`-`; `0` fits. With the Color Meter open the cursor is an eyedropper and a
 /// click (without dragging) picks the colour under it. Option-drag copies a region; with the Select
-/// tool on a drag selects and Space-drag pans.
+/// tool on a drag selects and Space-drag pans. With Copy Text on, the text layer over the image
+/// (`CopyTextController`) has the mouse there, and Space and Escape are the mode's.
 final class ViewerView: MTKView {
     private let frameStore: FrameStore
     private let zoomPan: ZoomPanController
@@ -56,6 +57,11 @@ final class ViewerView: MTKView {
 
     /// Off: a mouse wheel zooms without ⌘. Trackpad scrolling always pans.
     var wheelZoomNeedsCommand = true
+
+    /// Copy Text is on: the text layer over the image has the mouse and sets the cursor there.
+    var isReadingText = false {
+        didSet { if isReadingText != oldValue { window?.invalidateCursorRects(for: self) } }
+    }
 
     init(frameStore: FrameStore, zoomPan: ZoomPanController, inspector: PixelInspector) {
         self.frameStore = frameStore
@@ -230,6 +236,7 @@ final class ViewerView: MTKView {
     }
 
     override func resetCursorRects() {
+        guard !isReadingText else { return }
         addCursorRect(bounds, cursor: restingCursor)
     }
 
@@ -279,6 +286,11 @@ final class ViewerView: MTKView {
     var onAreaOriginMoved: ((CGPoint) -> Void)?
     /// Escape after the selection: drops the Color Meter's target; `false` when it drops nothing.
     var dropsColorTarget: (() -> Bool)?
+    /// Escape while Copy Text is on is the mode's first (`CopyTextMode.escape`); `false` when it
+    /// takes nothing.
+    var escapesText: (() -> Bool)?
+    /// Space while Copy Text is on leaves it and goes back to live (`CopyTextMode.space`).
+    var onSpaceInText: (() -> Void)?
 
     private enum Press { case ruler, reference, selection }
     /// Who the current press belongs to; `nil` for panning or picking.
@@ -287,6 +299,7 @@ final class ViewerView: MTKView {
     private func updateCursor(at point: CGPoint, modifiers: NSEvent.ModifierFlags) {
         let scale = drawableScale
         if let ruler, ruler.isOn { ruler.hover(at: point, scale: scale) }
+        if isReadingText { return }
         if modifiers.contains(.option) || selection?.region != nil { return NSCursor.crosshair.set() }
         if isSpaceHeld { return restingCursor.set() }
         if let ruler, ruler.isOn,
@@ -434,6 +447,8 @@ final class ViewerView: MTKView {
         case "+", "=": zoomPan.stepZoom(1, around: cursorPoint)
         case "-", "_": zoomPan.stepZoom(-1, around: cursorPoint)
         case "0": zoomPan.fit()
+        case " " where isReadingText:
+            if !event.isARepeat { onSpaceInText?() }
         case " " where selection?.isToolOn == true:
             guard !event.isARepeat else { return }
             isSpaceHeld = true
@@ -441,8 +456,10 @@ final class ViewerView: MTKView {
             restingCursor.set()
         case " ": sendToggleFreeze()
         case "\u{1b}":
-            // Escape: drops the selection first; else the Color Meter's target, unless a freeze
-            // countdown runs; else stops the countdown and goes back from a recent capture to live.
+            // Escape: Copy Text's first, while it is on; drops the selection; else the Color Meter's
+            // target, unless a freeze countdown runs; else stops the countdown and goes back from a
+            // recent capture to live.
+            if escapesText?() == true { return }
             if selection?.clearSelection() == true { return }
             if dropsColorTarget?() == true { return }
             NSApp.sendAction(#selector(AppController.cancelFreezeCountdown(_:)), to: nil, from: self)
