@@ -63,9 +63,9 @@ enum ColorVisionMode: String, Codable, CaseIterable, Sendable {
                 [-0.011820, 0.042940, 0.968881])
         case .deuteranomaly:
             Matrix3(
-                [0.547494, 0.607765, -0.155259],
-                [0.181692, 0.781742, 0.036566],
-                [-0.010410, 0.027275, 0.983136])
+                [0.498864, 0.674741, -0.173604],
+                [0.205199, 0.754872, 0.039929],
+                [-0.011131, 0.030969, 0.980162])
         case .tritanopia:
             Matrix3(
                 [1.255528, -0.076749, -0.178779],
@@ -98,6 +98,23 @@ struct ColorVisionChoice: Equatable, Sendable {
 
     /// The mode the Viewer simulates, or `nil` while it is off.
     var active: ColorVisionMode? { isOn ? mode : nil }
+}
+
+/// A simulation as the Viewer shows it: the matrix in linear sRGB and the indicator's label. A
+/// mode's own by default (`init(mode:)`); an edition may supply another for a mode
+/// (`ColorVisionController.supplied`).
+struct ColorVisionSimulation: Equatable, Sendable {
+    var matrix: Matrix3
+    var label: String
+
+    init(matrix: Matrix3, label: String) {
+        self.matrix = matrix
+        self.label = label
+    }
+
+    init(mode: ColorVisionMode) {
+        self.init(matrix: mode.linearSRGBMatrix, label: mode.indicatorLabel)
+    }
 }
 
 /// A 3×3 matrix, rows first, applied to column vectors.
@@ -172,11 +189,17 @@ struct ColorVisionTransform: Sendable {
 
     /// `nil` for a space that is not RGB and matrix-based.
     init?(mode: ColorVisionMode, space: CGColorSpace) {
+        self.init(matrix: mode.linearSRGBMatrix, space: space)
+    }
+
+    /// The simulation `simulation`, a matrix in linear sRGB, for pixels in `space`; `nil` for a space
+    /// that is not RGB and matrix-based.
+    init?(matrix simulation: Matrix3, space: CGColorSpace) {
         guard let linear = CGColorSpaceCreateLinearized(space),
             let toSRGB = Self.toLinearSRGB(space),
             let fromSRGB = toSRGB.inverse
         else { return nil }
-        matrix = fromSRGB * mode.linearSRGBMatrix * toSRGB
+        matrix = fromSRGB * simulation * toSRGB
         func table(
             _ count: Int, from source: CGColorSpace, to target: CGColorSpace, _ value: (Int) -> Double
         )

@@ -505,15 +505,15 @@ struct ColorMeterStateTests {
 
     @Test func theHintSaysWhereColoursGo() {
         var state = ColorMeterState()
-        #expect(state.hint == "Click Text or Background, then click colours for it.")
+        #expect(state.hint == "Click Text or Background, then click colors for it.")
         state.pick(color(1))
-        #expect(state.hint == "Click Text or Background, then click colours for it.")
+        #expect(state.hint == "Click Text or Background, then click colors for it.")
         state.clickContrast(.text)
-        #expect(state.hint == "Clicks, recent and favourite colours fill Text. Click it again to stop.")
+        #expect(state.hint == "Clicks, recent and favorite colors fill Text. Click it again to stop.")
         state.clickContrast(.background)
-        #expect(state.hint == "Clicks, recent and favourite colours fill Background. Click it again to stop.")
+        #expect(state.hint == "Clicks, recent and favorite colors fill Background. Click it again to stop.")
         state.clickFavorite(2)
-        #expect(state.hint == "The next click or recent colour goes into favourite 3.")
+        #expect(state.hint == "The next click or recent color goes into favorite 3.")
     }
 
     // MARK: Kept between launches

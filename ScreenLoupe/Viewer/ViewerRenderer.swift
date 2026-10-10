@@ -11,7 +11,7 @@ import OSLog
 final class ViewerRenderer: NSObject, MTKViewDelegate {
     var style = ViewerStyle()
     /// The colour vision simulated over the whole scene, or `nil`.
-    var colorVision: ColorVisionMode?
+    var colorVision: ColorVisionSimulation?
     /// The visible reference layers, bottom first.
     var references: () -> [(layer: ReferenceLayer, image: CGImage)] = { [] }
     /// Called when a reference texture made off the main thread is ready to draw.
@@ -31,7 +31,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         /// The colour space the target is shown in; reference images are drawn into it.
         var colorSpace: CGColorSpace
         /// The colour vision simulated over everything else, or `nil`.
-        var colorVision: ColorVisionMode?
+        var colorVision: ColorVisionSimulation?
     }
 
     private let queue: MTLCommandQueue
@@ -43,8 +43,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     /// The scene before the simulation on the screen, the drawable's size; kept while the size
     /// stays and the simulation is on.
     private var sceneTexture: MTLTexture?
-    /// The simulation of a mode in a colour space (`vision(_:space:)`).
-    private var vision: (mode: ColorVisionMode, space: CGColorSpace, simulation: Simulation?)?
+    /// A simulation's matrix in a colour space (`vision(_:space:)`).
+    private var vision: (matrix: Matrix3, space: CGColorSpace, simulation: Simulation?)?
 
     /// A simulation's tables and matrix, as the shader takes them.
     private struct Simulation {
@@ -220,8 +220,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     )
         -> CVMetalTexture?
     {
-        guard let target = pass.colorAttachments[0].texture, let mode = scene.colorVision,
-            let vision = vision(mode, space: scene.colorSpace),
+        guard let target = pass.colorAttachments[0].texture, let simulated = scene.colorVision,
+            let vision = vision(simulated.matrix, space: scene.colorSpace),
             let sceneTexture = keepsSceneTexture
                 ? keptSceneTexture(width: target.width, height: target.height)
                 : makeSceneTexture(width: target.width, height: target.height)
@@ -271,16 +271,16 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         return device.makeTexture(descriptor: descriptor)
     }
 
-    /// `mode` for pixels in `space` (`ColorVisionTransform`), made when either changes. A space the
-    /// transform can't read (a LUT-based profile) is taken as sRGB: close for most displays, and the
-    /// picture under the "simulated" indicator is always simulated.
-    private func vision(_ mode: ColorVisionMode, space: CGColorSpace) -> Simulation? {
-        if let vision, vision.mode == mode, vision.space == space { return vision.simulation }
+    /// The simulation `matrix`, in linear sRGB, for pixels in `space` (`ColorVisionTransform`), made
+    /// when either changes. A space the transform can't read (a LUT-based profile) is taken as sRGB:
+    /// close for most displays, and the picture under the "simulated" indicator is always simulated.
+    private func vision(_ matrix: Matrix3, space: CGColorSpace) -> Simulation? {
+        if let vision, vision.matrix == matrix, vision.space == space { return vision.simulation }
         var simulation: Simulation?
-        var transform = ColorVisionTransform(mode: mode, space: space)
+        var transform = ColorVisionTransform(matrix: matrix, space: space)
         if transform == nil {
             log.error("Colour vision simulated as in sRGB: the Viewer's colour space isn't matrix-based")
-            transform = ColorVisionTransform(mode: mode, space: CGColorSpace(name: CGColorSpace.sRGB)!)
+            transform = ColorVisionTransform(matrix: matrix, space: CGColorSpace(name: CGColorSpace.sRGB)!)
         }
         if let transform {
             func entries(_ table: [[Float]]) -> [SIMD4<Float>] {
@@ -296,7 +296,7 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
                     matrix: (0..<3).map { c in SIMD4(Float(m[0, c]), Float(m[1, c]), Float(m[2, c]), 0) })
             }
         }
-        vision = (mode, space, simulation)
+        vision = (matrix, space, simulation)
         return simulation
     }
 

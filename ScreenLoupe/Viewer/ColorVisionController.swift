@@ -17,9 +17,26 @@ final class ColorVisionController {
     /// The mode simulated now, or `nil`.
     var active: ColorVisionMode? { choice.active }
 
+    /// The simulation shown now — the active mode's matrix and label, or what `supplied` gives for
+    /// it — or `nil` while off.
+    var simulation: ColorVisionSimulation? {
+        active.map { supplied?($0) ?? ColorVisionSimulation(mode: $0) }
+    }
+
+    /// A simulation an edition supplies for a mode in place of the mode's own; `nil` for a mode it
+    /// leaves as it is. `nil`, the default, supplies none.
+    var supplied: ((ColorVisionMode) -> ColorVisionSimulation?)? {
+        didSet { suppliedChanged() }
+    }
+
+    /// Shows again what `supplied` gives, after it changed.
+    func suppliedChanged() {
+        for observer in observers { observer() }
+    }
+
     private var choice: ColorVisionChoice { ColorVisionChoice(mode: mode, isOn: isOn) }
 
-    /// Calls `observer` after every change of the mode or of whether it is on.
+    /// Calls `observer` after every change of the mode, of whether it is on, or of what is supplied.
     func observe(_ observer: @escaping () -> Void) {
         observers.append(observer)
     }

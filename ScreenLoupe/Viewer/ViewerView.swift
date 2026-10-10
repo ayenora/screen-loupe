@@ -46,7 +46,7 @@ final class ViewerView: MTKView {
     }
 
     /// The colour vision simulated over what the Viewer shows, and in Copy View; `nil` while off.
-    var colorVision: ColorVisionMode? {
+    var colorVision: ColorVisionSimulation? {
         get { renderer?.colorVision }
         set {
             guard newValue != colorVision else { return }
@@ -89,16 +89,21 @@ final class ViewerView: MTKView {
     private var isDrawScheduled = false
 
     /// Draws once on the next turn of the main run loop, however many times it is asked before then.
+    /// In the common modes, so it also draws while a menu or a control tracks the mouse: a block on
+    /// the main queue waits until the tracking ends.
     func requestDraw() {
         guard !isDrawScheduled else { return }
         isDrawScheduled = true
-        DispatchQueue.main.async { [weak self] in
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
             guard let self else { return }
-            isDrawScheduled = false
-            if window?.isVisible == true {
-                draw()
+            MainActor.assumeIsolated {
+                self.isDrawScheduled = false
+                if self.window?.isVisible == true {
+                    self.draw()
+                }
             }
         }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 
     private var zoomLink: CADisplayLink?

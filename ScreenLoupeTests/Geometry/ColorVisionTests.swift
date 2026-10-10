@@ -43,7 +43,7 @@ struct ColorVisionTests {
         #expect(ColorVisionMode.deuteranopia.linearSRGBMatrix.rows[1] == [0.280085, 0.672501, 0.047413])
         #expect(ColorVisionMode.tritanopia.linearSRGBMatrix.rows[2] == [0.004733, 0.691367, 0.303900])
         #expect(ColorVisionMode.protanomaly.linearSRGBMatrix.rows[0] == [0.385450, 0.769005, -0.154455])
-        #expect(ColorVisionMode.deuteranomaly.linearSRGBMatrix.rows[0] == [0.547494, 0.607765, -0.155259])
+        #expect(ColorVisionMode.deuteranomaly.linearSRGBMatrix.rows[0] == [0.498864, 0.674741, -0.173604])
     }
 
     @Test func everyRowSumsToOneSoGreysStayGrey() {
@@ -105,6 +105,20 @@ struct ColorVisionTests {
         for mode in ColorVisionMode.allCases {
             expectClose(try transform(mode, Self.sRGB).matrix, mode.linearSRGBMatrix, within: 1e-4)
         }
+    }
+
+    @Test func aMatrixGivenIsSimulatedAsAModesIs() throws {
+        let given = Matrix3([0.5, 0.5, 0], [0.25, 0.75, 0], [0, 0, 1])
+        for space in Self.spaces {
+            let byMatrix = try #require(ColorVisionTransform(matrix: given, space: space))
+            let toSRGB = try #require(ColorVisionTransform.toLinearSRGB(space))
+            expectClose(byMatrix.matrix, try #require(toSRGB.inverse) * given * toSRGB, within: 1e-9)
+        }
+        let byMode = try transform(.protanomaly, Self.displayP3)
+        let byItsMatrix = try #require(
+            ColorVisionTransform(matrix: ColorVisionMode.protanomaly.linearSRGBMatrix, space: Self.displayP3))
+        #expect(byItsMatrix.matrix == byMode.matrix)
+        #expect(byItsMatrix.apply([200, 60, 50]) == byMode.apply([200, 60, 50]))
     }
 
     // MARK: Curves
@@ -228,6 +242,13 @@ struct ColorVisionTests {
 
     @Test func theIndicatorNamesTheMode() {
         #expect(ColorVisionMode.deuteranopia.indicatorLabel == "Deuteranopia · simulated")
+    }
+
+    @Test func aModesOwnSimulationIsItsMatrixAndLabel() {
+        let simulation = ColorVisionSimulation(mode: .protanomaly)
+        #expect(simulation.matrix == ColorVisionMode.protanomaly.linearSRGBMatrix)
+        #expect(simulation.label == "Protanomaly · simulated")
+        #expect(simulation != ColorVisionSimulation(mode: .protanopia))
     }
 
     @Test func aModeIsSavedByItsName() throws {

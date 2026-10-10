@@ -180,12 +180,12 @@ struct ColorMeterState: Equatable {
         }
     }
 
-    /// The line under the verdicts that says where colours go.
+    /// The line under Text and Background that says where colours go.
     var hint: String {
         switch target {
-        case nil: "Click Text or Background, then click colours for it."
-        case .contrast(let slot)?: "Clicks, recent and favourite colours fill \(slot.title). Click it again to stop."
-        case .favorite(let index)?: "The next click or recent colour goes into favourite \(index + 1)."
+        case nil: "Click Text or Background, then click colors for it."
+        case .contrast(let slot)?: "Clicks, recent and favorite colors fill \(slot.title). Click it again to stop."
+        case .favorite(let index)?: "The next click or recent color goes into favorite \(index + 1)."
         }
     }
 

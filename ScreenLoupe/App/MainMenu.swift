@@ -180,8 +180,9 @@ enum MainMenu {
 
     /// View › Color Vision and the eye button's overflow form, which start with Simulate Color
     /// Vision (⌘Y), and the eye button's ▾, which doesn't: the modes, each with who sees that way
-    /// under it, grouped by separators, as `AppController` commands, which check the chosen one.
-    /// The ▾'s go up the responder chain (`target` `nil`).
+    /// under it, grouped by separators, as `AppController` commands, which check the chosen one,
+    /// and what the edition adds under a mode (`Edition.colorVisionItems`). The ▾'s go up the
+    /// responder chain (`target` `nil`).
     static func colorVisionMenu(withToggle: Bool, target: AppController?) -> NSMenu {
         let menu = NSMenu(title: "Color Vision")
         if withToggle {
@@ -199,6 +200,7 @@ enum MainMenu {
             item.tag = index
             item.target = target
             item.subtitle = mode.detail
+            for added in Edition.colorVisionItems(after: mode) { menu.addItem(added) }
         }
         return menu
     }

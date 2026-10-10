@@ -137,7 +137,7 @@ final class ViewerContentView: NSStackView {
         ruler.observe { [weak self] in self?.overlay.needsDisplay = true }
         colorVision.observe { [weak self] in
             guard let self else { return }
-            viewerView.colorVision = colorVision.active
+            viewerView.colorVision = colorVision.simulation
             showVisionIndicator()
         }
         selection.observe { [weak self] in
@@ -274,7 +274,7 @@ final class ViewerContentView: NSStackView {
             ViewerIndicators.simulationTop(below: otherBottom),
             ViewerIndicators.simulationBorderInset(otherShows: otherBottom != nil)
         )
-        visionIndicator.state = colorVision.active.map { .simulation(label: $0.indicatorLabel) } ?? .hidden
+        visionIndicator.state = colorVision.simulation.map { .simulation(label: $0.label) } ?? .hidden
     }
 
     /// An Option-drag's region, straight to the clipboard.

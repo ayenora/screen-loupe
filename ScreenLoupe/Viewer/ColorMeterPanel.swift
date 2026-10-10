@@ -38,6 +38,12 @@ final class ColorMeterPanel: NSView {
         }
     }
 
+    /// Called with the pair Contrast shows — Text and Background, or the pixel a click would put in
+    /// one of them — whenever the panel refreshes; `nil` while either is empty.
+    var onContrastPair: (((text: ColorSample, background: ColorSample)?) -> Void)? {
+        didSet { onContrastPair?(preview.colors) }
+    }
+
     let inspector: PixelInspector
     private let title = ColorMeterPanel.sectionTitle("Color Meter")
     private let titleHeader = NSStackView()
@@ -53,6 +59,8 @@ final class ColorMeterPanel: NSView {
     private var values: [String?] = []
     /// The rows added under the swatch, and every view added, which take the scale.
     private var belowSwatch: [NSView] = []
+    /// The rows added under the verdicts' note, top down.
+    private var belowVerdicts: [NSView] = []
     private var added: [any ColorMeterAddition] = []
 
     private let contrastHeader = NSStackView()
@@ -167,7 +175,7 @@ final class ColorMeterPanel: NSView {
         recentStack.alignment = .leading
         recentHint.textColor = .tertiaryLabelColor
 
-        let contrast: [NSView] = [contrastHeader, slotsRow, previewRow, verdictGrid, largeNote, hintLabel]
+        let contrast: [NSView] = [contrastHeader, slotsRow, hintLabel, previewRow, verdictGrid, largeNote]
         let top: [NSView] = [titleHeader, focusHeader, swatch]
         for view in top + [separator()] + contrast + [separator(), favoritesTitle, favoritesRow, separator()]
             + [recentHeader, recentStack, recentHint]
@@ -185,7 +193,7 @@ final class ColorMeterPanel: NSView {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
         ])
         let fullWidth: [NSView] =
-            [titleHeader, focusHeader, swatch] + [contrastHeader, slotsRow, previewRow, largeNote, hintLabel]
+            [titleHeader, focusHeader, swatch] + [contrastHeader, slotsRow, hintLabel, previewRow, largeNote]
             + [favoritesRow, recentHeader, recentStack, recentHint]
         for view in fullWidth { spanWidth(view) }
         rebuildRows()
@@ -242,6 +250,16 @@ final class ColorMeterPanel: NSView {
         applyScale()
     }
 
+    /// Adds a row under the verdicts and their note on large text, as wide as the panel's rows.
+    func addBelowVerdicts(_ view: some ColorMeterAddition) {
+        let above = belowVerdicts.last ?? largeNote
+        stack.insertArrangedSubview(view, at: (stack.arrangedSubviews.firstIndex(of: above) ?? 0) + 1)
+        spanWidth(view)
+        belowVerdicts.append(view)
+        added.append(view)
+        applyScale()
+    }
+
     /// Sets every font, size and spacing for `scale`.
     private func applyScale() {
         let s = scale
@@ -281,10 +299,12 @@ final class ColorMeterPanel: NSView {
         stack.spacing = 6 * s
         stack.setCustomSpacing(10 * s, after: swatch)
         if let last = rows.last { stack.setCustomSpacing(12 * s, after: last) }
-        stack.setCustomSpacing(10 * s, after: slotsRow)
+        stack.setCustomSpacing(10 * s, after: hintLabel)
         stack.setCustomSpacing(10 * s, after: previewRow)
         stack.setCustomSpacing(10 * s, after: verdictGrid)
-        stack.setCustomSpacing(12 * s, after: hintLabel)
+        // The section ends with the note on large text, or the last row added under it.
+        if !belowVerdicts.isEmpty { stack.setCustomSpacing(NSStackView.useDefaultSpacing, after: largeNote) }
+        stack.setCustomSpacing(12 * s, after: belowVerdicts.last ?? largeNote)
         stack.setCustomSpacing(12 * s, after: favoritesRow)
         stack.edgeInsets = NSEdgeInsets(top: 12 * s, left: 14 * s, bottom: 12 * s, right: 12 * s)
         for constraint in insetWidths { constraint.constant = -26 * s }
@@ -382,6 +402,7 @@ final class ColorMeterPanel: NSView {
         swapButton.isEnabled = colors.text != nil || colors.background != nil
         hintLabel.stringValue = colors.hint
         refreshVerdicts()
+        onContrastPair?(preview.colors)
     }
 
     /// "✓ Text AA Pass" or "✕ Text AA Fail": the glyph and the word, not the colour alone, say it.
@@ -515,7 +536,7 @@ final class ColorMeterPanel: NSView {
     }
 }
 
-/// A view added to the panel (`ColorMeterPanel.addToTitle`, `addBelowSwatch`): it takes the
+/// A view added to the panel (`ColorMeterPanel.addToTitle`, `addBelowSwatch`, `addBelowVerdicts`): it takes the
 /// panel's scale, as the panel's own views do.
 @MainActor
 protocol ColorMeterAddition: NSView {
