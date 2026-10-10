@@ -25,17 +25,35 @@ final class ColorMeterPanel: NSView {
         didSet { if isPicking != oldValue { refresh() } }
     }
 
-    private let inspector: PixelInspector
+    /// The formats the rows show, top down; the context menus of kept colours copy the same.
+    var formats = ColorFormat.standard {
+        didSet { rebuildRows() }
+    }
+    /// A short note on a kept colour, shown after the position in its Recent row and in the line
+    /// above the swatch while it is in focus; `nil`, the default, shows none.
+    var colorNote: (PickedColor) -> String? = { _ in nil } {
+        didSet {
+            shownRecent = []
+            refresh()
+        }
+    }
+
+    let inspector: PixelInspector
     private let title = ColorMeterPanel.sectionTitle("Color Meter")
+    private let titleHeader = NSStackView()
     private let focusHeader = NSStackView()
     private let focusLabel = NSTextField(labelWithString: "")
     /// The position, or which slot: kept whole while `focusLabel` truncates.
     private let focusDetail = NSTextField(labelWithString: "")
     private let swatch = SwatchView()
     private lazy var swatchHeight = swatch.heightAnchor.constraint(equalToConstant: 0)
-    private var rows: [Format: FormatRow] = [:]
-    /// The text each format shows now, for its copy button; `nil` when there is none.
-    private var values: [Format: String] = [:]
+    /// One per format, in its order.
+    private var rows: [FormatRow] = []
+    /// The text each row shows now, for its copy button; `nil` when there is none.
+    private var values: [String?] = []
+    /// The rows added under the swatch, and every view added, which take the scale.
+    private var belowSwatch: [NSView] = []
+    private var added: [any ColorMeterAddition] = []
 
     private let contrastHeader = NSStackView()
     private let contrastTitle = ColorMeterPanel.sectionTitle("Contrast")
@@ -72,20 +90,6 @@ final class ColorMeterPanel: NSView {
     private var shownRecent: [PickedColor] = []
     /// The favourites the menus were made for.
     private var shownFavorites: [PickedColor?] = []
-
-    private enum Format: CaseIterable {
-        case hex, css, swiftUI, appKit, native
-
-        var title: String {
-            switch self {
-            case .hex: "HEX"
-            case .css: "CSS"
-            case .swiftUI: "SwiftUI"
-            case .appKit: "AppKit"
-            case .native: "Native"
-            }
-        }
-    }
 
     init(inspector: PixelInspector) {
         self.inspector = inspector
@@ -126,16 +130,9 @@ final class ColorMeterPanel: NSView {
         for button in [swapButton, clearButton] { button.bezelStyle = .inline }
         // One line of labels, never hidden, so the row keeps its height whatever is in focus.
         for view in [focusLabel, focusDetail, NSView()] { focusHeader.addArrangedSubview(view) }
+        for view in [title, NSView()] { titleHeader.addArrangedSubview(view) }
         swatch.translatesAutoresizingMaskIntoConstraints = false
         swatchHeight.isActive = true
-
-        var formatRows: [NSView] = []
-        for format in Format.allCases {
-            let row = FormatRow(title: format.title, target: self, action: #selector(copyFormat(_:)))
-            row.copy.tag = Format.allCases.firstIndex(of: format) ?? 0
-            rows[format] = row
-            formatRows.append(row)
-        }
 
         swapButton.target = self
         swapButton.action = #selector(swapContrast)
@@ -171,7 +168,7 @@ final class ColorMeterPanel: NSView {
         recentHint.textColor = .tertiaryLabelColor
 
         let contrast: [NSView] = [contrastHeader, slotsRow, previewRow, verdictGrid, largeNote, hintLabel]
-        let top: [NSView] = [title, focusHeader, swatch] + formatRows
+        let top: [NSView] = [titleHeader, focusHeader, swatch]
         for view in top + [separator()] + contrast + [separator(), favoritesTitle, favoritesRow, separator()]
             + [recentHeader, recentStack, recentHint]
         {
@@ -188,10 +185,61 @@ final class ColorMeterPanel: NSView {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
         ])
         let fullWidth: [NSView] =
-            [focusHeader, swatch] + formatRows + [contrastHeader, slotsRow, previewRow, largeNote, hintLabel]
+            [titleHeader, focusHeader, swatch] + [contrastHeader, slotsRow, previewRow, largeNote, hintLabel]
             + [favoritesRow, recentHeader, recentStack, recentHint]
-        insetWidths = fullWidth.map { $0.widthAnchor.constraint(equalTo: stack.widthAnchor) }
-        NSLayoutConstraint.activate(insetWidths)
+        for view in fullWidth { spanWidth(view) }
+        rebuildRows()
+    }
+
+    /// Keeps `view` as wide as the stack minus its insets.
+    private func spanWidth(_ view: NSView) {
+        let width = view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -26 * scale)
+        width.isActive = true
+        insetWidths.append(width)
+    }
+
+    /// Replaces the format rows with one per format, under the swatch and the rows added there.
+    private func rebuildRows() {
+        for row in rows { row.removeFromSuperview() }
+        // Their widths went with them.
+        insetWidths.removeAll { !$0.isActive }
+        rows = formats.enumerated().map { index, format in
+            let row = FormatRow(title: format.title, target: self, action: #selector(copyFormat(_:)))
+            row.copy.tag = index
+            return row
+        }
+        values = Array(repeating: nil, count: rows.count)
+        let first = formatRowsStart
+        for (offset, row) in rows.enumerated() {
+            stack.insertArrangedSubview(row, at: first + offset)
+            spanWidth(row)
+        }
+        // The context menus copy the formats shown.
+        shownRecent = []
+        shownFavorites = []
+        applyScale()
+        refresh()
+    }
+
+    /// Where the format rows start in the stack: under the swatch and the rows added there.
+    private var formatRowsStart: Int {
+        (stack.arrangedSubviews.firstIndex(of: belowSwatch.last ?? swatch) ?? 0) + 1
+    }
+
+    /// Adds a view at the right end of the title line, such as a button.
+    func addToTitle(_ view: some ColorMeterAddition) {
+        titleHeader.addArrangedSubview(view)
+        added.append(view)
+        applyScale()
+    }
+
+    /// Adds a row under the swatch, above the format rows, as wide as they are.
+    func addBelowSwatch(_ view: some ColorMeterAddition) {
+        stack.insertArrangedSubview(view, at: formatRowsStart)
+        spanWidth(view)
+        belowSwatch.append(view)
+        added.append(view)
+        applyScale()
     }
 
     /// Sets every font, size and spacing for `scale`.
@@ -206,7 +254,8 @@ final class ColorMeterPanel: NSView {
         focusHeader.spacing = 4 * s
         for button in [swapButton, clearButton] { button.font = .systemFont(ofSize: small) }
         swatchHeight.constant = 56 * s
-        for row in rows.values { row.apply(scale: s) }
+        for row in rows { row.apply(scale: s) }
+        for view in added { view.apply(scale: s) }
 
         slotsRow.spacing = 8 * s
         for button in slotButtons { button.apply(scale: s) }
@@ -231,7 +280,7 @@ final class ColorMeterPanel: NSView {
 
         stack.spacing = 6 * s
         stack.setCustomSpacing(10 * s, after: swatch)
-        if let last = rows[Format.allCases.last!] { stack.setCustomSpacing(12 * s, after: last) }
+        if let last = rows.last { stack.setCustomSpacing(12 * s, after: last) }
         stack.setCustomSpacing(10 * s, after: slotsRow)
         stack.setCustomSpacing(10 * s, after: previewRow)
         stack.setCustomSpacing(10 * s, after: verdictGrid)
@@ -264,7 +313,7 @@ final class ColorMeterPanel: NSView {
         let colors = inspector.colors
         let probe = inspector.probe
         // The pixel a click would pick, while the pointer is over the image: as it will be kept.
-        let picked = isPicking && probe?.source == .viewer ? probe.flatMap(Self.picked) : nil
+        let picked = isPicking && probe?.source == .viewer ? probe?.picked : nil
         refreshFocus(colors, probe: probe)
         refreshContrast(colors, picked: picked)
         let favoritesChanged = colors.favorites != shownFavorites
@@ -283,10 +332,6 @@ final class ColorMeterPanel: NSView {
         }
     }
 
-    private static func picked(_ probe: PixelInspector.Probe) -> PickedColor? {
-        probe.sample.map { PickedColor($0, x: probe.x, y: probe.y) }
-    }
-
     private func refreshFocus(_ colors: ColorMeterState, probe: PixelInspector.Probe?) {
         let label: String
         var detail: String?
@@ -300,6 +345,7 @@ final class ColorMeterPanel: NSView {
             // The live pixel has no kept colour.
             case .live: label = ""
             }
+            if let note = colorNote(color) { detail = [detail, note].compactMap { $0 }.joined(separator: " · ") }
         } else {
             switch probe?.source {
             case .viewer?: label = "Under the mouse in the Viewer"
@@ -313,20 +359,10 @@ final class ColorMeterPanel: NSView {
         focusDetail.stringValue = detail.map { "· \($0)" } ?? ""
         focusHeader.toolTip = ([label] + (detail.map { [$0] } ?? [])).joined(separator: " · ")
         swatch.color = shown.map { NSColor(srgb: $0.sample) }
-        for format in Format.allCases {
-            let text = shown.map { value(format, sample: $0.sample, native: $0.native) }
-            values[format] = text
-            rows[format]?.show(text)
-        }
-    }
-
-    private func value(_ format: Format, sample: ColorSample, native: String) -> String {
-        switch format {
-        case .hex: sample.hex
-        case .css: sample.cssRGB
-        case .swiftUI: sample.swiftUI
-        case .appKit: sample.appKit
-        case .native: native
+        for (index, format) in formats.enumerated() {
+            let text = shown.map { format.text($0.sample, $0.native) }
+            values[index] = text
+            rows[index].show(text)
         }
     }
 
@@ -387,7 +423,7 @@ final class ColorMeterPanel: NSView {
         shownRecent = recent
         recentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (index, color) in recent.enumerated() {
-            let row = RecentRow(color, index: index)
+            let row = RecentRow(color, index: index, note: colorNote(color))
             row.target = self
             row.action = #selector(clickRecent(_:))
             row.menu = colorMenu(
@@ -404,14 +440,14 @@ final class ColorMeterPanel: NSView {
 
     // MARK: Menus
 
-    /// Copy HEX, CSS, SwiftUI and AppKit, each with its value, then `items`.
+    /// Copy in each format the rows show, each with its value, then `items`.
     private func colorMenu(_ color: PickedColor, then items: [NSMenuItem]) -> NSMenu {
         let menu = NSMenu()
         let sample = color.sample
+        let native = "\(color.nativeValues)  \(color.nativeSpaceName)"
         let font = NSFont.menuFont(ofSize: 0)
-        for (name, value) in [
-            ("HEX", sample.hex), ("CSS", sample.cssRGB), ("SwiftUI", sample.swiftUI), ("AppKit", sample.appKit),
-        ] {
+        for format in formats {
+            let (name, value) = (format.title, format.text(sample, native))
             let item = menuItem("Copy \(name)", #selector(copyValue(_:)), 0)
             item.representedObject = value
             let title = NSMutableAttributedString(string: "Copy \(name)  ", attributes: [.font: font])
@@ -436,7 +472,7 @@ final class ColorMeterPanel: NSView {
     // MARK: Actions
 
     @objc fileprivate func copyFormat(_ sender: NSButton) {
-        guard let text = values[Format.allCases[sender.tag]] else { return }
+        guard values.indices.contains(sender.tag), let text = values[sender.tag] else { return }
         onCopy?(text, text)
     }
 
@@ -477,6 +513,13 @@ final class ColorMeterPanel: NSView {
     @objc private func clearRecent() {
         inspector.changeColors { $0.clearRecent() }
     }
+}
+
+/// A view added to the panel (`ColorMeterPanel.addToTitle`, `addBelowSwatch`): it takes the
+/// panel's scale, as the panel's own views do.
+@MainActor
+protocol ColorMeterAddition: NSView {
+    func apply(scale: CGFloat)
 }
 
 /// A borderless icon button whose symbol is redrawn at each scale.
@@ -718,6 +761,7 @@ private final class RecentRow: ColorCellButton {
     private let swatch = SwatchView()
     private let hex: NSTextField
     private let position: NSTextField
+    private let note: NSTextField?
     private let content = NSStackView()
     private lazy var swatchSize = [
         swatch.widthAnchor.constraint(equalToConstant: 0), swatch.heightAnchor.constraint(equalToConstant: 0),
@@ -737,17 +781,22 @@ private final class RecentRow: ColorCellButton {
         }
     }
 
-    init(_ color: PickedColor, index: Int) {
+    /// `note`: a short mark after the position (`ColorMeterPanel.colorNote`).
+    init(_ color: PickedColor, index: Int, note: String?) {
         self.index = index
-        label = "Recent \(color.hex) at \(color.x), \(color.y)"
+        label = "Recent \(color.hex) at \(color.x), \(color.y)" + (note.map { ", \($0)" } ?? "")
         hex = NSTextField(labelWithString: color.hex)
         position = NSTextField(labelWithString: "\(color.x), \(color.y)")
+        self.note = note.map { NSTextField(labelWithString: $0) }
         super.init(frame: .zero)
         swatch.color = NSColor(picked: color)
         swatch.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate(swatchSize)
         position.textColor = .secondaryLabelColor
-        for view in [swatch, hex, position, NSView()] { content.addArrangedSubview(view) }
+        self.note?.textColor = .tertiaryLabelColor
+        for view in [swatch, hex, position] + [self.note].compactMap({ $0 }) + [NSView()] {
+            content.addArrangedSubview(view)
+        }
         content.translatesAutoresizingMaskIntoConstraints = false
         addSubview(content)
         NSLayoutConstraint.activate(insets)
@@ -760,6 +809,7 @@ private final class RecentRow: ColorCellButton {
         for (i, constraint) in insets.enumerated() { constraint.constant = (i < 2 ? 4 : 2) * s }
         hex.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize * s, weight: .medium)
         position.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize * s, weight: .regular)
+        note?.font = .systemFont(ofSize: NSFont.smallSystemFontSize * s)
         content.spacing = 6 * s
         needsDisplay = true
     }

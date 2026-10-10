@@ -6,4 +6,9 @@ enum Edition {
 
     /// Called once, when the windows are built: what the edition adds to them.
     @MainActor static func install(in windows: WindowManager) {}
+
+    /// Called once, when the Color Meter panel is built: what the edition adds to it and to how its
+    /// colours are read (`ColorMeterPanel.formats`, `addToTitle`, `addBelowSwatch`, `colorNote`,
+    /// `PixelInspector.reader`).
+    @MainActor static func install(in meter: ColorMeterPanel) {}
 }

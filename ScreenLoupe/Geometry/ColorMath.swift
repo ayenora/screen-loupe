@@ -10,19 +10,34 @@ struct ColorSample: Equatable, Sendable {
     var nativeSpaceName: String
     /// Components 0...1 in sRGB, clamped: colours outside sRGB are clipped for HEX.
     var srgb: (red: Double, green: Double, blue: Double)
+    /// The same colour in extended sRGB, not clamped: below 0 or above 1 for a colour outside sRGB,
+    /// such as a Display P3 red; equal to `srgb` for one inside.
+    var extendedSRGB: (red: Double, green: Double, blue: Double)
     /// Opacity 0...1, straight: 1 for the screen, an opened image's own.
     var alpha: Double
 
     static func == (a: ColorSample, b: ColorSample) -> Bool {
-        a.native == b.native && a.nativeSpaceName == b.nativeSpaceName && a.srgb == b.srgb && a.alpha == b.alpha
+        a.native == b.native && a.nativeSpaceName == b.nativeSpaceName && a.srgb == b.srgb
+            && a.extendedSRGB == b.extendedSRGB && a.alpha == b.alpha
     }
 
     /// Builds a sample from 8-bit components captured in `colorSpace`, not premultiplied. `spaceName`
     /// overrides the name shown for it: a display's ICC-based space often has no system name.
     init(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8 = 255, colorSpace: CGColorSpace, spaceName: String? = nil)
     {
-        native = (Double(red) / 255, Double(green) / 255, Double(blue) / 255)
-        self.alpha = Double(alpha) / 255
+        self.init(
+            native: (Double(red) / 255, Double(green) / 255, Double(blue) / 255), alpha: Double(alpha) / 255,
+            colorSpace: colorSpace, spaceName: spaceName)
+    }
+
+    /// Builds a sample from components 0...1 in `colorSpace`, not premultiplied, as `init(red:…)`
+    /// does from 8-bit ones.
+    init(
+        native: (red: Double, green: Double, blue: Double), alpha: Double, colorSpace: CGColorSpace,
+        spaceName: String? = nil
+    ) {
+        self.native = native
+        self.alpha = alpha
         nativeSpaceName = spaceName ?? Self.displayName(of: colorSpace)
         let components: [CGFloat] = [CGFloat(native.red), CGFloat(native.green), CGFloat(native.blue), 1]
         let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -33,6 +48,15 @@ struct ColorSample: Equatable, Sendable {
             srgb = (Self.clamp(values[0]), Self.clamp(values[1]), Self.clamp(values[2]))
         } else {
             srgb = native
+        }
+        let extended = CGColorSpace(name: CGColorSpace.extendedSRGB)!
+        if let color = CGColor(colorSpace: colorSpace, components: components),
+            let converted = color.converted(to: extended, intent: .relativeColorimetric, options: nil),
+            let values = converted.components, values.count >= 3
+        {
+            extendedSRGB = (Double(values[0]), Double(values[1]), Double(values[2]))
+        } else {
+            extendedSRGB = srgb
         }
     }
 
@@ -51,6 +75,7 @@ struct ColorSample: Equatable, Sendable {
         native = components
         nativeSpaceName = "sRGB"
         srgb = components
+        extendedSRGB = components
     }
 
     // MARK: Formats
@@ -70,11 +95,11 @@ struct ColorSample: Equatable, Sendable {
         return isTranslucent ? rgb + String(format: "%02X", Self.byte(alpha)) : rgb
     }
 
-    /// `rgb(24, 25, 28)`, or `rgba(24, 25, 28, 0.502)` when translucent.
+    /// `rgb(24 25 28)`, or `rgb(24 25 28 / 0.502)` when translucent: the CSS syntax without commas.
     var cssRGB: String {
         let c = srgb8
-        guard isTranslucent else { return "rgb(\(c.red), \(c.green), \(c.blue))" }
-        return "rgba(\(c.red), \(c.green), \(c.blue), \(Self.decimal(alpha)))"
+        let rgb = "\(c.red) \(c.green) \(c.blue)"
+        return isTranslucent ? "rgb(\(rgb) / \(Self.decimal(alpha)))" : "rgb(\(rgb))"
     }
 
     /// `Color(red: 0.094, green: 0.098, blue: 0.110)` — SwiftUI, sRGB; with `opacity:` when translucent.
@@ -123,6 +148,22 @@ struct ColorSample: Equatable, Sendable {
         if name == CGColorSpace.sRGB as String { return "sRGB" }
         return name.replacingOccurrences(of: "kCGColorSpace", with: "")
     }
+}
+
+/// One way the Color Meter writes a colour: the name of its row and its text, made from the sample
+/// and its native value as shown (`nativeValues` and the space's name; a kept colour has its own).
+struct ColorFormat: Sendable {
+    var title: String
+    var text: @Sendable (_ sample: ColorSample, _ native: String) -> String
+
+    static let hex = ColorFormat(title: "HEX") { sample, _ in sample.hex }
+    static let css = ColorFormat(title: "CSS") { sample, _ in sample.cssRGB }
+    static let swiftUI = ColorFormat(title: "SwiftUI") { sample, _ in sample.swiftUI }
+    static let appKit = ColorFormat(title: "AppKit") { sample, _ in sample.appKit }
+    static let native = ColorFormat(title: "Native") { _, native in native }
+
+    /// The Color Meter's rows, top down.
+    static let standard: [ColorFormat] = [.hex, .css, .swiftUI, .appKit, .native]
 }
 
 extension CGColorSpace {

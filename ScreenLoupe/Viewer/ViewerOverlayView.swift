@@ -7,14 +7,19 @@ import AppKit
 /// spot. As a crosshair, lines run across the whole view through that pixel and a box outlines it;
 /// as a cursor, an arrow at its usual size points at the outlined pixel. White under the colour
 /// (orange by default) reads on any content. With the original cursor in the capture nothing is
-/// drawn: the capture has it. Never takes the mouse. Everything here is placed over the presented
-/// view (`ZoomPanController.presented`), as the image is drawn during a zoom glide.
+/// drawn: the capture has it. A probe's square (`PixelInspector.Probe.square`) is outlined in place
+/// of the pixel's box, under the mouse in the Viewer too, with the pixel in a thin line inside it
+/// while a pixel is large enough to show one (`SquareOutline`). Never takes the mouse. Everything
+/// here is placed over the presented view (`ZoomPanController.presented`), as the image is drawn
+/// during a zoom glide.
 final class ViewerOverlayView: NSView {
     private let zoomPan: ZoomPanController
     private let inspector: PixelInspector
     var showsCrosshair = true { didSet { if showsCrosshair != oldValue { needsDisplay = true } } }
     var pointerStyle = PointerStyle.crosshair { didSet { if pointerStyle != oldValue { needsDisplay = true } } }
     var color = SettingsColor.orange.nsColor { didSet { if color != oldValue { needsDisplay = true } } }
+    /// Whether a probe's square is outlined: while the Color Meter is expanded.
+    var showsSampleSquare = false { didSet { if showsSampleSquare != oldValue { needsDisplay = true } } }
     /// The corner ruler, drawn over everything but the selection; the Selection Ruler, over it.
     var ruler: RulerController?
     /// The selected reference layer gets a frame and corner handles for scaling.
@@ -53,43 +58,53 @@ final class ViewerOverlayView: NSView {
     }
 
     private func drawCrosshair(drawableScale: CGFloat) {
-        guard showsCrosshair, pointerStyle != .capturedCursor, let probe = inspector.probe,
-            probe.source == .captureArea
-        else { return }
-        let pixel = Self.points(
-            zoomPan.presented.imageRect(origin: CGPoint(x: probe.x, y: probe.y), size: CGSize(width: 1, height: 1)),
-            scale: drawableScale)
+        guard let probe = inspector.probe else { return }
+        let showsPointer = showsCrosshair && pointerStyle != .capturedCursor && probe.source == .captureArea
+        let square = showsSampleSquare ? probe.square : nil
+        guard showsPointer || square != nil else { return }
+        func points(_ rect: PixelRect) -> CGRect {
+            Self.points(
+                zoomPan.presented.imageRect(
+                    origin: CGPoint(x: rect.x, y: rect.y), size: CGSize(width: rect.width, height: rect.height)),
+                scale: drawableScale)
+        }
+        let pixel = points(PixelRect(x: probe.x, y: probe.y, width: 1, height: 1))
         let center = CGPoint(x: pixel.midX, y: pixel.midY)
-        if pointerStyle == .cursor { return drawCursor(at: center, pixel: pixel) }
 
-        let lines = NSBezierPath()
-        lines.move(to: CGPoint(x: bounds.minX, y: center.y))
-        lines.line(to: CGPoint(x: bounds.maxX, y: center.y))
-        lines.move(to: CGPoint(x: center.x, y: bounds.minY))
-        lines.line(to: CGPoint(x: center.x, y: bounds.maxY))
-        let box = NSBezierPath(rect: pixel.insetBy(dx: -1, dy: -1))
-
+        // Each path with its width and its white halo's.
+        var paths: [(path: NSBezierPath, width: CGFloat, halo: CGFloat)] = []
+        if showsPointer, pointerStyle == .crosshair {
+            let lines = NSBezierPath()
+            lines.move(to: CGPoint(x: bounds.minX, y: center.y))
+            lines.line(to: CGPoint(x: bounds.maxX, y: center.y))
+            lines.move(to: CGPoint(x: center.x, y: bounds.minY))
+            lines.line(to: CGPoint(x: center.x, y: bounds.maxY))
+            paths.append((lines, 1, 3))
+        }
+        if let square {
+            paths.append((NSBezierPath(rect: points(square.rect).insetBy(dx: -1, dy: -1)), 1.5, 3))
+            if SquareOutline.outlinesPixel(side: pixel.width) {
+                paths.append((NSBezierPath(rect: pixel.insetBy(dx: 0.5, dy: 0.5)), 1, 2))
+            }
+        } else {
+            paths.append((NSBezierPath(rect: pixel.insetBy(dx: -1, dy: -1)), 1.5, 3))
+        }
+        // White under the colour reads on any content: every halo first, so none covers a line.
         NSColor.white.withAlphaComponent(0.85).setStroke()
-        lines.lineWidth = 3
-        lines.stroke()
-        box.lineWidth = 3
-        box.stroke()
+        for (path, _, halo) in paths {
+            path.lineWidth = halo
+            path.stroke()
+        }
         color.setStroke()
-        lines.lineWidth = 1
-        lines.stroke()
-        box.lineWidth = 1.5
-        box.stroke()
+        for (path, width, _) in paths {
+            path.lineWidth = width
+            path.stroke()
+        }
+        if showsPointer, pointerStyle == .cursor { drawCursor(at: center) }
     }
 
     /// The system arrow at its usual size, its tip on the centre of the outlined pixel.
-    private func drawCursor(at tip: CGPoint, pixel: CGRect) {
-        let box = NSBezierPath(rect: pixel.insetBy(dx: -1, dy: -1))
-        NSColor.white.withAlphaComponent(0.85).setStroke()
-        box.lineWidth = 3
-        box.stroke()
-        color.setStroke()
-        box.lineWidth = 1.5
-        box.stroke()
+    private func drawCursor(at tip: CGPoint) {
         let arrow = NSCursor.arrow
         let size = arrow.image.size
         // The hot spot is measured from the image's top-left corner, as this view's y runs.

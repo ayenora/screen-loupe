@@ -79,8 +79,8 @@ To copy the text in what the Viewer shows — a button's label, a heading, text 
 
 ![The Color Meter with a colour's values, a contrast pair and its WCAG verdicts, Favorites and Recent](images/02-color-meter-contrast.png)
 
-- **Color Meter** (the eyedropper segment in the toolbar): the pixel under the pointer as HEX, CSS `rgb()`, SwiftUI, AppKit and the display's native value, with its position. Click a colour below — recent, favourite, Text or Background — to see it in every format instead; the line above the swatch names it, and a recent row is highlighted. Move the pointer over the image — in the Viewer or inside the Capture Area — and the pixel under it is back.
-  - **Recent:** every click on a pixel keeps its colour — the last eight, kept between launches — except a click that fills a favourite. Right-click a row to copy it as HEX, CSS, SwiftUI or AppKit, add it to Favorites, or remove it.
+- **Color Meter** (the eyedropper segment in the toolbar): the pixel under the pointer as HEX, CSS (`rgb(58 123 213)`, or `rgb(58 123 213 / 0.502)` with opacity), SwiftUI, AppKit and the display's native value, with its position. Click a colour below — recent, favourite, Text or Background — to see it in every format instead; the line above the swatch names it, and a recent row is highlighted. Move the pointer over the image — in the Viewer or inside the Capture Area — and the pixel under it is back.
+  - **Recent:** every click on a pixel keeps its colour — the last eight, kept between launches — except a click that fills a favourite. Right-click a row to copy it in any of the formats above, add it to Favorites, or remove it.
   - **Favorites:** eight slots for the colours you want to keep. Right-click one to copy or remove it.
   - **Contrast:** Text and Background with an "Aa" preview, the WCAG 2 contrast ratio and Pass or Fail for Text AA, Large AA, Text AAA and Large AAA (large = 18 pt, or 14 pt bold). Swap exchanges them.
   - The Color Meter always reads the real pixels, also while a colour vision is simulated.

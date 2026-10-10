@@ -15,15 +15,22 @@ struct PickedColor: Codable, Equatable, Sendable {
     var native: [Double]?
     var srgb: [Double]?
     var alpha: Double?
+    /// The sample's extended sRGB components; `nil` for a colour saved before they were kept, whose
+    /// `srgb` stands in for them.
+    var extendedSRGB: [Double]?
+    /// The side of the square of pixels it was read from, centred on the position
+    /// (`PixelInspector.Probe.square`); `nil` for the one pixel there.
+    var sampleSide: Int?
 
     /// The sample it was picked from; from the HEX for a colour saved without its components.
     var sample: ColorSample {
         guard let native, let srgb, let alpha, native.count == 3, srgb.count == 3 else {
             return ColorSample(srgbHex: hex)
         }
+        let extended = extendedSRGB.flatMap { $0.count == 3 ? ($0[0], $0[1], $0[2]) : nil }
         return ColorSample(
             native: (native[0], native[1], native[2]), nativeSpaceName: nativeSpaceName,
-            srgb: (srgb[0], srgb[1], srgb[2]), alpha: alpha)
+            srgb: (srgb[0], srgb[1], srgb[2]), extendedSRGB: extended, alpha: alpha)
     }
 
     /// Unreadable components cost only the exactness: the colour then comes back from its HEX.
@@ -37,6 +44,8 @@ struct PickedColor: Codable, Equatable, Sendable {
         native = c.value(.native, or: nil)
         srgb = c.value(.srgb, or: nil)
         alpha = c.value(.alpha, or: nil)
+        extendedSRGB = c.value(.extendedSRGB, or: nil)
+        sampleSide = c.value(.sampleSide, or: nil)
     }
 }
 
@@ -60,18 +69,22 @@ extension PickedColor {
             hex: sample.hex, nativeValues: sample.nativeValues, nativeSpaceName: sample.nativeSpaceName, x: x, y: y,
             native: [sample.native.red, sample.native.green, sample.native.blue],
             srgb: [sample.srgb.red, sample.srgb.green, sample.srgb.blue], alpha: sample.alpha)
+        extendedSRGB = [sample.extendedSRGB.red, sample.extendedSRGB.green, sample.extendedSRGB.blue]
     }
 }
 
 extension ColorSample {
-    /// A sample from its components as kept.
+    /// A sample from its components as kept; without its extended sRGB components, `srgb` stands
+    /// in for them.
     init(
         native: (red: Double, green: Double, blue: Double), nativeSpaceName: String,
-        srgb: (red: Double, green: Double, blue: Double), alpha: Double
+        srgb: (red: Double, green: Double, blue: Double),
+        extendedSRGB: (red: Double, green: Double, blue: Double)? = nil, alpha: Double
     ) {
         self.native = native
         self.nativeSpaceName = nativeSpaceName
         self.srgb = srgb
+        self.extendedSRGB = extendedSRGB ?? srgb
         self.alpha = alpha
     }
 }

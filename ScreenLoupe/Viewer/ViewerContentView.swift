@@ -79,6 +79,7 @@ final class ViewerContentView: NSStackView {
         super.init(frame: .zero)
         build()
         wire(zoomPan: zoomPan)
+        Edition.install(in: meterPanel)
     }
 
     @available(*, unavailable)
@@ -230,6 +231,7 @@ final class ViewerContentView: NSStackView {
         viewerView.isReadingText = copyTextTool.isOn
         viewerView.isPicking = !isSelecting && sidePanelLayout?.isMeterExpanded == true
         meterPanel.isPicking = viewerView.isPicking
+        overlay.showsSampleSquare = sidePanelLayout?.isMeterExpanded == true
         references.takesMouse = !isSelecting && !viewerView.isPicking
         window?.invalidateCursorRects(for: viewerView)
     }

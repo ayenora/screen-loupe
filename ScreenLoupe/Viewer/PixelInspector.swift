@@ -21,7 +21,29 @@ final class PixelInspector {
         /// `nil` when the pixel isn't in the captured image (the part of a straddling area that lies
         /// on the other display).
         var sample: ColorSample?
+        /// The square of pixels `sample` was read from, when `reader` gave one; outlined in the Viewer
+        /// and kept with a picked colour.
+        var square: SampleSquare?
+
+        /// The colour as a click keeps it.
+        var picked: PickedColor? {
+            guard var color = sample.map({ PickedColor($0, x: x, y: y) }) else { return nil }
+            color.sampleSide = square?.side
+            return color
+        }
     }
+
+    /// A square of pixels around the one pointed at, that a reading came from.
+    struct SampleSquare: Equatable {
+        /// Its side in pixels.
+        var side: Int
+        /// The pixels it covers: Capture Area pixels in a probe, the frame's in a `reader`'s result.
+        var rect: PixelRect
+    }
+
+    /// When set, gives the colour at `x`, `y`, a pixel of the frame, with the square of pixels it
+    /// came from, in place of reading that pixel; `nil` from it, or no reader, reads the pixel.
+    var reader: ((_ pixels: FramePixels, _ x: Int, _ y: Int) -> (sample: ColorSample, square: SampleSquare)?)?
 
     private(set) var probe: Probe?
     /// Recent, the favourites and the contrast pair, with the focus and the target.
@@ -61,12 +83,17 @@ final class PixelInspector {
         update()
     }
 
+    /// Reads the pixel pointed at again, as after a new frame.
+    func readAgain() {
+        update()
+    }
+
     private func update(focusChanged: Bool = false) {
         let next: Probe?
         if let pixel = viewerPixel {
-            next = Probe(source: .viewer, x: pixel.x, y: pixel.y, sample: sample(atAreaPixel: pixel))
+            next = probe(.viewer, atAreaPixel: pixel)
         } else if let pixel = areaPixel {
-            next = Probe(source: .captureArea, x: pixel.x, y: pixel.y, sample: sample(atAreaPixel: pixel))
+            next = probe(.captureArea, atAreaPixel: pixel)
         } else {
             next = nil
         }
@@ -76,24 +103,34 @@ final class PixelInspector {
     }
 
     /// The colour of a Capture Area pixel in the frame the Viewer shows.
-    private func sample(atAreaPixel pixel: (x: Int, y: Int)) -> ColorSample? {
-        guard let frame = frameStore.shownFrame else { return nil }
-        let x = pixel.x - Int(frame.layout.imageOrigin.x)
-        let y = pixel.y - Int(frame.layout.imageOrigin.y)
+    private func probe(_ source: Source, atAreaPixel pixel: (x: Int, y: Int)) -> Probe {
+        var probe = Probe(source: source, x: pixel.x, y: pixel.y)
+        guard let frame = frameStore.shownFrame else { return probe }
+        let origin = (x: Int(frame.layout.imageOrigin.x), y: Int(frame.layout.imageOrigin.y))
+        let x = pixel.x - origin.x
+        let y = pixel.y - origin.y
         let size = frame.pixelSize
-        guard x >= 0, y >= 0, x < size.width, y < size.height else { return nil }
+        guard x >= 0, y >= 0, x < size.width, y < size.height else { return probe }
 
         let buffer = frame.pixelBuffer
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
-        let bytes = base.advanced(by: y * CVPixelBufferGetBytesPerRow(buffer) + x * 4)
-            .assumingMemoryBound(to: UInt8.self)
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return probe }
         // 32BGRA, in the frame's colour space: its display's, or the one kept with it; an opened
         // image's straight alpha is its own too.
-        return ColorSample(
-            red: bytes[2], green: bytes[1], blue: bytes[0], alpha: frame.hasAlpha ? bytes[3] : 255,
-            colorSpace: frame.colorSpace, spaceName: frame.colorSpaceName)
+        let pixels = FramePixels(
+            width: size.width, height: size.height, colorSpace: frame.colorSpace, spaceName: frame.colorSpaceName,
+            hasAlpha: frame.hasAlpha, base: UnsafeRawPointer(base), bytesPerRow: CVPixelBufferGetBytesPerRow(buffer))
+        if let reading = reader?(pixels, x, y) {
+            probe.sample = reading.sample
+            var square = reading.square
+            square.rect.x += origin.x
+            square.rect.y += origin.y
+            probe.square = square
+        } else {
+            probe.sample = pixels.sample(x: x, y: y)
+        }
+        return probe
     }
 
     // MARK: Kept colours
@@ -102,8 +139,7 @@ final class PixelInspector {
     /// nothing to pick.
     @discardableResult
     func pickProbe() -> PickedColor? {
-        guard let probe, let sample = probe.sample else { return nil }
-        let color = PickedColor(sample, x: probe.x, y: probe.y)
+        guard let color = probe?.picked else { return nil }
         changeColors { $0.pick(color) }
         return color
     }
@@ -118,5 +154,31 @@ final class PixelInspector {
         }
         onChange?()
         return result
+    }
+}
+
+/// A frame's pixels while the inspector reads them: 32-bit BGRA with straight alpha, in the frame's
+/// colour space. Valid only during the call it is passed to.
+struct FramePixels {
+    let width: Int
+    let height: Int
+    let colorSpace: CGColorSpace
+    /// The name the Color Meter shows for `colorSpace`, if it has one of its own.
+    let spaceName: String?
+    let hasAlpha: Bool
+    fileprivate let base: UnsafeRawPointer
+    fileprivate let bytesPerRow: Int
+
+    /// The components of a pixel inside the frame; alpha is 255 in a frame without one.
+    func rgba(x: Int, y: Int) -> (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) {
+        let bytes = base.advanced(by: y * bytesPerRow + x * 4).assumingMemoryBound(to: UInt8.self)
+        return (bytes[2], bytes[1], bytes[0], hasAlpha ? bytes[3] : 255)
+    }
+
+    /// The colour of one pixel inside the frame.
+    func sample(x: Int, y: Int) -> ColorSample {
+        let c = rgba(x: x, y: y)
+        return ColorSample(
+            red: c.red, green: c.green, blue: c.blue, alpha: c.alpha, colorSpace: colorSpace, spaceName: spaceName)
     }
 }

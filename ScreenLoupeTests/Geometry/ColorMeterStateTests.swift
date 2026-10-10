@@ -65,6 +65,19 @@ struct ColorMeterStateTests {
         }
     }
 
+    @Test func aPickedColourKeepsItsExtendedSRGBValues() throws {
+        let red = ColorSample(red: 255, green: 0, blue: 0, colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
+        let kept = try JSONDecoder().decode(PickedColor.self, from: JSONEncoder().encode(PickedColor(red, x: 1, y: 1)))
+        #expect(kept.sample.extendedSRGB == red.extendedSRGB)
+        #expect(kept.sample == red)
+        // Saved before they were kept: the clamped sRGB values stand in.
+        let older =
+            ##"{"hex":"#FF0000","nativeValues":"1.000 0.000 0.000","nativeSpaceName":"Display P3","x":0,"y":0,"native":[1,0,0],"srgb":[1,0,0],"alpha":1}"##
+        let color = try JSONDecoder().decode(PickedColor.self, from: Data(older.utf8))
+        #expect(color.extendedSRGB == nil)
+        #expect(color.sample.extendedSRGB == (1, 0, 0))
+    }
+
     @Test func aColourSavedWithItsHexOnlyComesBackFromIt() throws {
         let old =
             ##"{"hex":"#FF000080","nativeValues":"1.000 0.000 0.000","nativeSpaceName":"Display P3","x":5,"y":6}"##
@@ -84,6 +97,22 @@ struct ColorMeterStateTests {
         #expect(color.native == nil)
         #expect(color.srgb == [0.1, 0.2])
         #expect(color.sample == ColorSample(srgbHex: "#0A6FE0"))
+    }
+
+    @Test func theSquareAColourWasReadFromIsKeptAndOptional() throws {
+        var picked = PickedColor(ColorSample(srgbHex: "#3A7BD5"), x: 1, y: 2)
+        #expect(picked.sampleSide == nil)
+        // One pixel writes nothing new, so what is saved reads as before.
+        #expect(!String(decoding: try JSONEncoder().encode(picked), as: UTF8.self).contains("sampleSide"))
+        picked.sampleSide = 5
+        let kept = try JSONDecoder().decode(PickedColor.self, from: JSONEncoder().encode(picked))
+        #expect(kept == picked)
+        #expect(kept.sampleSide == 5)
+        let unreadable =
+            ##"{"hex":"#0A6FE0","nativeValues":"0 0 0","nativeSpaceName":"sRGB","x":0,"y":0,"sampleSide":"5"}"##
+        let color = try JSONDecoder().decode(PickedColor.self, from: Data(unreadable.utf8))
+        #expect(color.sampleSide == nil)
+        #expect(color.hex == "#0A6FE0")
     }
 
     @Test func todaysSavedRecentListStillDecodes() throws {
