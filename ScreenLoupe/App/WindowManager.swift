@@ -274,6 +274,15 @@ final class WindowManager {
         }
     }
 
+    /// Image files to inspect, as a drop on the Viewer for inspection: each the newest recent
+    /// capture, the last one shown, only as many as the list keeps; the Viewer opens for them, and
+    /// says so when none could be read. Called by an edition (`Edition.open`); the core has no
+    /// caller.
+    func inspect(_ urls: [URL]) {
+        showViewer()
+        viewer.inspect(urls)
+    }
+
     /// Edit › Paste as Reference or Paste for Inspection: the clipboard's image goes to `destination`
     /// in the Viewer, which opens for it. Nothing to paste beeps and opens nothing.
     func pasteImage(as destination: ImageDestination) {

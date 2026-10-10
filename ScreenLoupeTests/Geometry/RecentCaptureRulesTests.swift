@@ -41,6 +41,28 @@ struct SnapshotViewTests {
     }
 }
 
+struct OpeningImagesTests {
+    @Test func fewerThanTheLimitAllOpen() {
+        #expect(RecentCaptureRules.opening([1, 2, 3]) == [1, 2, 3])
+    }
+
+    @Test func exactlyTheLimitAllOpen() {
+        #expect(RecentCaptureRules.opening(Array(1...8)) == Array(1...8))
+    }
+
+    @Test func pastTheLimitTheLastOnesOpenInOrder() {
+        #expect(RecentCaptureRules.opening(Array(1...11)) == Array(4...11))
+    }
+
+    @Test func noneOpensNone() {
+        #expect(RecentCaptureRules.opening([Int]()) == [])
+    }
+
+    @Test func aSmallerLimitKeepsTheLastOnes() {
+        #expect(RecentCaptureRules.opening([1, 2, 3], limit: 2) == [2, 3])
+    }
+}
+
 struct RecentCaptureListTests {
     private func adding(_ item: Int, to items: [Int], shown: Int? = nil) -> [Int] {
         RecentCaptureRules.adding(item, to: items) { $0 == shown }

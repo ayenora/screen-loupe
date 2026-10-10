@@ -52,6 +52,12 @@ enum RecentCaptureRules {
         isFile ? origin : CGPoint(x: origin.x - shift.x, y: origin.y - shift.y)
     }
 
+    /// Of several images opened at once, in order, the ones the list keeps: the last `limit`, since
+    /// each later one would push an earlier one out.
+    static func opening<Item>(_ items: [Item], limit: Int = limit) -> [Item] {
+        Array(items.suffix(limit))
+    }
+
     /// `items`, newest first, with `item` on top; past `limit` the oldest goes. The shown one is never
     /// pushed out from under the Viewer: the oldest other one goes instead.
     static func adding<Item>(_ item: Item, to items: [Item], limit: Int = limit, isShown: (Item) -> Bool) -> [Item] {

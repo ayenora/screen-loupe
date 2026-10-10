@@ -21,6 +21,9 @@ final class ViewerContentView: NSStackView {
     var freezeLive: ((Bool) -> Void)?
     /// Whether the live view has a frame to freeze.
     var canFreezeLive: (() -> Bool)?
+    /// The window an alert goes on while this view isn't in one: the Viewer's, while it shows the
+    /// Screen Recording explanation.
+    var alertWindow: (() -> NSWindow?)?
 
     private let settings: SettingsStore
     private let frameStore: FrameStore
@@ -453,7 +456,7 @@ final class ViewerContentView: NSStackView {
     /// capture, in order, the last one shown, as Open Image does; only as many as the list keeps.
     /// The rows are added once all are read, so the Viewer shows the last one only, not each in
     /// turn. When none could be read, says so.
-    private func inspect(_ input: ImageInput) {
+    func inspect(_ input: ImageInput) {
         let files: [URL]
         switch input {
         case .files(let urls):
@@ -461,7 +464,7 @@ final class ViewerContentView: NSStackView {
         case .data(let data, _):
             return inspectPasted(data)
         }
-        let urls = Array(files.suffix(RecentCaptures.limit))
+        let urls = RecentCaptureRules.opening(files)
         let request = newImageRequest()
         Task {
             var failed: [URL] = []
@@ -500,7 +503,11 @@ final class ViewerContentView: NSStackView {
         let alert = NSAlert()
         alert.messageText = names.count == 1 ? "The image couldn't be \(verb)." : "The images couldn't be \(verb)."
         alert.informativeText = names.joined(separator: ", ")
-        if let window { alert.beginSheetModal(for: window) }
+        if let window = window ?? alertWindow?(), window.isVisible {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     /// A new request for an image file to show, which overtakes the ones before.

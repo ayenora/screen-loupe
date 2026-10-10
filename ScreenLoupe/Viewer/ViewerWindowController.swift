@@ -94,6 +94,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         }
 
         content.statusView.onRetry = { [weak self] in self?.onRetry?() }
+        content.alertWindow = { [weak self] in self?.window }
         content.onShowCapture = { [weak self] in
             guard let self else { return }
             toolbar.setShowingCapture(isShowingCapture)
@@ -297,6 +298,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
     func showImage(_ frame: ViewerFrame, thumbnail: CGImage?, name: String) {
         if showsPermissionView == true { showContent(true) }
         content.showImage(frame, thumbnail: thumbnail, name: name)
+    }
+
+    /// Keeps image files as recent captures, the last one shown, as a drop for inspection does
+    /// (`ViewerContentView.inspect`).
+    func inspect(_ urls: [URL]) {
+        content.inspect(.files(urls))
     }
 
     // MARK: Paste

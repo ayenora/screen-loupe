@@ -41,16 +41,31 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var acknowledgementsWindow: AcknowledgementsWindowController?
     private var statusItem: StatusItemController?
     private var observers: [NSObjectProtocol] = []
+    /// Files the system asks the app to open, held until launching has finished.
+    private var openQueue = OpenQueue()
+    /// This copy found another running and hands over to it: it takes no request until it quits.
+    private var isHandingOver = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // One copy at a time: two would fight over the global shortcuts and the settings. A second
         // launch — another build of the app, `open -n` — hands over to the running one and quits.
-        // Opening the running app's bundle reopens it, which brings its Viewer forward.
+        // Opening the running app's bundle reopens it, which brings its Viewer forward; files this
+        // launch was asked to open go to it.
         if let running = NSRunningApplication.runningApplications(
             withBundleIdentifier: Bundle.main.bundleIdentifier ?? ""
         ).first(where: { $0 != .current }), let url = running.bundleURL {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
+            isHandingOver = true
+            let files = openQueue.finishLaunching()
+            let quit: @Sendable (NSRunningApplication?, (any Error)?) -> Void = { _, _ in
                 DispatchQueue.main.async { NSApp.terminate(nil) }
+            }
+            if files.isEmpty {
+                NSWorkspace.shared.openApplication(
+                    at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: quit)
+            } else {
+                NSWorkspace.shared.open(
+                    files, withApplicationAt: url, configuration: NSWorkspace.OpenConfiguration(),
+                    completionHandler: quit)
             }
             return
         }
@@ -84,6 +99,19 @@ final class AppController: NSObject, NSApplicationDelegate {
                 [weak self] _ in
                 MainActor.assumeIsolated { self?.builtWindows?.viewer.refreshContent() }
             })
+        open(openQueue.finishLaunching())
+    }
+
+    /// Files the system asks the app to open; a build from these sources registers for none. A
+    /// request that launches the app comes before launching has finished, and waits for it.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard !isHandingOver else { return }
+        open(openQueue.receive(urls))
+    }
+
+    private func open(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        Edition.open(urls, in: windows)
     }
 
     /// Quitting waits until Recent Captures are on disk: a capture just taken is still being written,
@@ -111,6 +139,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !isHandingOver else { return false }
         windows.showViewer()
         return true
     }
