@@ -12,7 +12,7 @@ final class WindowManager {
     private let capture = ScreenCaptureManager()
     private let zoomPan = ZoomPanController()
     private let project = ProjectStore()
-    private let settings: SettingsStore
+    let settings: SettingsStore
     private let inspector: PixelInspector
     /// Tracked here: during `windowWillClose` the window still reports itself visible.
     private var isViewerOpen = false
