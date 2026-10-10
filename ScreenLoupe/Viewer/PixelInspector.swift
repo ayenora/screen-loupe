@@ -144,6 +144,15 @@ final class PixelInspector {
         return color
     }
 
+    /// Picks the colour of a Capture Area pixel in the frame the Viewer shows, read as the inspected
+    /// one is and kept as a click keeps it (`ColorMeterState.pick`); returns it, or `nil` when the
+    /// pixel isn't in the frame.
+    func pick(atAreaPixel pixel: (x: Int, y: Int)) -> PickedColor? {
+        guard let color = probe(.captureArea, atAreaPixel: pixel).picked else { return nil }
+        changeColors { $0.pick(color) }
+        return color
+    }
+
     /// Changes the kept colours, saves them and tells the panel.
     @discardableResult
     func changeColors<Result>(_ change: (inout ColorMeterState) -> Result) -> Result {

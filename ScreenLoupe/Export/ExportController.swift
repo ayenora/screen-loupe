@@ -18,15 +18,29 @@ final class ExportController {
     /// Whether there is a frame to copy or save.
     var canExport: Bool { viewer.showsCapture && frameStore.shownFrame != nil }
 
-    func copyView() {
+    /// Copies what the Viewer shows (`viewImage`); returns the image copied, or `nil` after a beep
+    /// when there was nothing to copy.
+    @discardableResult
+    func copyView() -> CGImage? {
         let what = viewer.hasSelection ? "Selection" : "View"
-        guard let image = viewImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
+        guard let image = viewImage(), ScreenshotExporter.copy(image) else {
+            NSSound.beep()
+            return nil
+        }
         viewer.showToast("\(what) copied")
+        return image
     }
 
-    func copySource() {
-        guard let image = sourceImage(), ScreenshotExporter.copy(image) else { return NSSound.beep() }
+    /// Copies the source at its native pixels (`sourceImage`); returns the image copied, or `nil`
+    /// after a beep when there was nothing to copy.
+    @discardableResult
+    func copySource() -> CGImage? {
+        guard let image = sourceImage(), ScreenshotExporter.copy(image) else {
+            NSSound.beep()
+            return nil
+        }
         viewer.showToast("Source copied")
+        return image
     }
 
     func saveView() {

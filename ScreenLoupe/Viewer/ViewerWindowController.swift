@@ -132,6 +132,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.showToast(text)
     }
 
+    /// The confirmation a click on the image gives for a picked colour
+    /// (`ViewerContentView.showPicked`).
+    func showPicked(_ color: PickedColor) {
+        content.showPicked(color)
+    }
+
     // MARK: First launch
 
     /// Puts a Viewer that has no saved frame beside the Capture Area rather than over it: right of it, else left, else

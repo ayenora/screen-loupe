@@ -14,8 +14,9 @@ final class WindowManager {
     private let project = ProjectStore()
     let settings: SettingsStore
     private let inspector: PixelInspector
-    /// Tracked here: during `windowWillClose` the window still reports itself visible.
-    private var isViewerOpen = false
+    /// Whether the Viewer is open. Tracked here: during `windowWillClose` the window still reports
+    /// itself visible.
+    private(set) var isViewerOpen = false
 
     init(settings: SettingsStore, permissions: PermissionsManager) {
         self.settings = settings
@@ -137,19 +138,38 @@ final class WindowManager {
     /// reports mouse moves while it is shown; without it there is nothing to point at. `pointerMoved`:
     /// called for such a move, which brings the live pixel back into the Color Meter's focus.
     private func trackCursor(pointerMoved: Bool = false) {
-        // The real cursor points at a pixel of the live view or a frozen frame; at nothing in a
-        // picture of its own, such as a recent capture.
-        let still = capture.frameStore.still
-        guard isViewerOpen, viewer.isInspecting, captureArea.isVisible, still == nil || still?.geometry != nil,
-            let scale = captureArea.captureGeometry?.display.scale
-        else {
+        guard isViewerOpen, viewer.isInspecting, showsAreaPixels else {
             inspector.setAreaPixel(nil)
             return
         }
-        inspector.setAreaPixel(
-            DisplayCoordinateConverter.areaPixel(
-                at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale),
-            pointerMoved: pointerMoved)
+        inspector.setAreaPixel(areaPixelUnderPointer, pointerMoved: pointerMoved)
+    }
+
+    /// Whether the real cursor can point at a pixel of the picture in the Viewer: the live view or a
+    /// frozen frame, not a picture of its own, such as a recent capture.
+    private var showsAreaPixels: Bool {
+        let still = capture.frameStore.still
+        return still == nil || still?.geometry != nil
+    }
+
+    /// The Capture Area pixel under the real cursor; `nil` when the area isn't shown or the cursor
+    /// isn't over it.
+    var areaPixelUnderPointer: (x: Int, y: Int)? {
+        guard captureArea.isVisible, let scale = captureArea.captureGeometry?.display.scale else { return nil }
+        return DisplayCoordinateConverter.areaPixel(
+            at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale)
+    }
+
+    /// Picks the colour of the pixel under the real cursor inside the Capture Area, read, kept and
+    /// confirmed in the Viewer as a click on the image picks the inspected one
+    /// (`PixelInspector.pick(atAreaPixel:)`, `ViewerWindowController.showPicked`); `nil` when the
+    /// cursor points at no pixel of the picture. Called by an edition; the core has no caller.
+    func pickColorUnderPointer() -> PickedColor? {
+        guard isViewerOpen, showsAreaPixels, let pixel = areaPixelUnderPointer,
+            let color = inspector.pick(atAreaPixel: pixel)
+        else { return nil }
+        viewer.showPicked(color)
+        return color
     }
 
     // MARK: The part the Viewer shows
@@ -458,6 +478,12 @@ final class WindowManager {
 
     func zoom(toPreset index: Int) {
         zoomPan.zoom(toPreset: index)
+    }
+
+    /// A typed zoom, as the zoom field's (`ZoomPanController.setZoom`), kept within
+    /// `ZoomPanState.zoomRange`. Called by an edition; the core has no caller.
+    func zoom(to zoom: CGFloat) {
+        zoomPan.setZoom(zoom)
     }
 
     /// The preset the Viewer's zoom matches, as `ZoomPanState.preset`.

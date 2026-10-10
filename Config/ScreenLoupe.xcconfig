@@ -11,6 +11,8 @@ LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
 SWIFT_EMIT_LOC_STRINGS = YES
 
 GENERATE_INFOPLIST_FILE = YES
+// The name Finder, Spotlight, Shortcuts and Siri show; the bundle and module stay ScreenLoupe.
+INFOPLIST_KEY_CFBundleDisplayName = Screen Loupe
 INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO
 INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.developer-tools
 INFOPLIST_KEY_NSHumanReadableCopyright = Copyright © 2026 Ayenora. MIT License.

@@ -717,6 +717,11 @@ final class ViewerContentView: NSStackView {
 
     private func pickColor() {
         guard let color = inspector.pickProbe() else { return }
+        showPicked(color)
+    }
+
+    /// The confirmation of a picked colour: "Picked #3A7BD5".
+    func showPicked(_ color: PickedColor) {
         showToast("Picked \(color.hex)")
     }
 
