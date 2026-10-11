@@ -27,6 +27,10 @@ enum CopyText {
         "Text · \(picture ?? "Frozen") · Esc clears, then leaves"
     }
 
+    /// The toast when a picture can't be read: Live Text isn't supported on this Mac, or reading the
+    /// picture failed. Without it the mode would show nothing and say nothing.
+    static let unreadable = "Text can't be read here"
+
     /// The longest the copied text shows in the toast, in characters, the ellipsis included.
     static let toastLength = 32
 

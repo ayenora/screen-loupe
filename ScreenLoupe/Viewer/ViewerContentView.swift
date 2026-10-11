@@ -178,6 +178,7 @@ final class ViewerContentView: NSStackView {
             run(steps)
             return true
         }
+        copyTextTool.onUnreadable = { [weak self] text in self?.showToast(text) }
         viewerView.onSpaceInText = { [weak self] in
             guard let self,
                 let steps = copyTextTool.mode.space(showsFrozenLive: frameStore.isFrozen && !isShowingCapture)

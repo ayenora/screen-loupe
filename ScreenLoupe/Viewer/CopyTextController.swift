@@ -23,6 +23,10 @@ final class CopyTextController: NSObject, ImageAnalysisOverlayViewDelegate {
 
     var isOn: Bool { mode.isOn }
 
+    /// Called with `CopyText.unreadable` when a picture can't be read: Live Text isn't supported on
+    /// this Mac, or reading it failed. Once a picture, since a picture read before isn't read again.
+    var onUnreadable: ((String) -> Void)?
+
     init(viewerView: ViewerView) {
         host = CopyTextHost(viewerView: viewerView)
         super.init()
@@ -50,6 +54,10 @@ final class CopyTextController: NSObject, ImageAnalysisOverlayViewDelegate {
         guard frame.pixelBuffer !== readBuffer?.buffer || frame.bufferRect != readBuffer?.rect else { return }
         clear()
         readBuffer = (frame.pixelBuffer, frame.bufferRect)
+        guard ImageAnalyzer.isSupported else {
+            onUnreadable?(CopyText.unreadable)
+            return
+        }
         let colorSpace = frame.colorSpace
         let analyzer = analyzer
         analysis = Task { [weak self] in
@@ -57,9 +65,16 @@ final class CopyTextController: NSObject, ImageAnalysisOverlayViewDelegate {
                 ScreenshotExporter.frameImage(frame, colorSpace: colorSpace)
             }.value
             guard let image, !Task.isCancelled else { return }
-            let read = try? await analyzer.analyze(
-                image, orientation: .up, configuration: ImageAnalyzer.Configuration(.text))
-            guard let self, let read, !Task.isCancelled else { return }
+            let read: ImageAnalysis
+            do {
+                read = try await analyzer.analyze(
+                    image, orientation: .up, configuration: ImageAnalyzer.Configuration(.text))
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                onUnreadable?(CopyText.unreadable)
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
             overlay.analysis = read
         }
     }

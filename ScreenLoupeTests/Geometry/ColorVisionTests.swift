@@ -20,7 +20,7 @@ struct ColorVisionTests {
     private static func byte(_ v: Double) -> UInt8 { UInt8((min(max(v, 0), 1) * 255).rounded()) }
 
     private func transform(_ mode: ColorVisionMode, _ space: CGColorSpace) throws -> ColorVisionTransform {
-        try #require(ColorVisionTransform(mode: mode, space: space))
+        try #require(ColorVisionTransform(matrix: mode.linearSRGBMatrix, space: space))
     }
 
     private func expectClose(_ a: Matrix3, _ b: Matrix3, within tolerance: Double) {
@@ -98,7 +98,7 @@ struct ColorVisionTests {
     @Test func aSpaceThatIsNotRGBHasNoSimulation() {
         let grey = CGColorSpace(name: CGColorSpace.linearGray)!
         #expect(ColorVisionTransform.toLinearSRGB(grey) == nil)
-        #expect(ColorVisionTransform(mode: .deuteranopia, space: grey) == nil)
+        #expect(ColorVisionTransform(matrix: ColorVisionMode.deuteranopia.linearSRGBMatrix, space: grey) == nil)
     }
 
     @Test func inSRGBTheMatrixIsThePublishedOne() throws {
@@ -107,18 +107,13 @@ struct ColorVisionTests {
         }
     }
 
-    @Test func aMatrixGivenIsSimulatedAsAModesIs() throws {
+    @Test func aMatrixGivenIsTakenThroughTheSpacesPrimaries() throws {
         let given = Matrix3([0.5, 0.5, 0], [0.25, 0.75, 0], [0, 0, 1])
         for space in Self.spaces {
             let byMatrix = try #require(ColorVisionTransform(matrix: given, space: space))
             let toSRGB = try #require(ColorVisionTransform.toLinearSRGB(space))
             expectClose(byMatrix.matrix, try #require(toSRGB.inverse) * given * toSRGB, within: 1e-9)
         }
-        let byMode = try transform(.protanomaly, Self.displayP3)
-        let byItsMatrix = try #require(
-            ColorVisionTransform(matrix: ColorVisionMode.protanomaly.linearSRGBMatrix, space: Self.displayP3))
-        #expect(byItsMatrix.matrix == byMode.matrix)
-        #expect(byItsMatrix.apply([200, 60, 50]) == byMode.apply([200, 60, 50]))
     }
 
     // MARK: Curves

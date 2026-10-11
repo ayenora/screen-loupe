@@ -210,11 +210,6 @@ struct ColorVisionTransform: Sendable {
 
     static let encodeCount = 1024
 
-    /// `nil` for a space that is not RGB and matrix-based.
-    init?(mode: ColorVisionMode, space: CGColorSpace) {
-        self.init(matrix: mode.linearSRGBMatrix, space: space)
-    }
-
     /// The simulation `simulation`, a matrix in linear sRGB, for pixels in `space`; `nil` for a space
     /// that is not RGB and matrix-based.
     init?(matrix simulation: Matrix3, space: CGColorSpace) {
