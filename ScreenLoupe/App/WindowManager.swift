@@ -50,6 +50,7 @@ final class WindowManager {
             }
             trackCursor()
             updateViewedPart()
+            updateCentering()
         }
         // The frame outlines the part the Viewer shows, for a moment after the image pans or zooms,
         // and follows a zoom glide.
@@ -94,7 +95,8 @@ final class WindowManager {
             updateViewedPart()
         }
         captureArea.onChange = { [weak self] in
-            guard let self else { return }
+            // An area supplied in its place is what is captured meanwhile.
+            guard let self, suppliedArea == nil else { return }
             if captureArea.isFollowingWindow {
                 magnetMovedArea()
             } else {
@@ -153,11 +155,24 @@ final class WindowManager {
     }
 
     /// The Capture Area pixel under the real cursor; `nil` when the area isn't shown or the cursor
-    /// isn't over it.
+    /// isn't over it. Counted in the picture the Viewer shows (`SuppliedArea.pointerPlace`): a
+    /// frozen frame's own place, a supplied area, or the Capture Area.
     var areaPixelUnderPointer: (x: Int, y: Int)? {
-        guard captureArea.isVisible, let scale = captureArea.captureGeometry?.display.scale else { return nil }
-        return DisplayCoordinateConverter.areaPixel(
-            at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale)
+        let frozen = capture.frameStore.still?.geometry
+        switch SuppliedArea.pointerPlace(frozen: frozen, supplied: suppliedArea, areaShown: captureArea.isVisible) {
+        case .geometry(let geometry):
+            let whole = CGRect(x: 0, y: 0, width: geometry.areaSize.width, height: geometry.areaSize.height)
+            return DisplayCoordinateConverter.areaPixel(
+                at: NSEvent.mouseLocation,
+                inArea: DisplayCoordinateConverter.globalRect(ofAreaPixels: whole, in: geometry).rect,
+                scale: geometry.display.scale)
+        case .captureArea:
+            guard let scale = captureArea.captureGeometry?.display.scale else { return nil }
+            return DisplayCoordinateConverter.areaPixel(
+                at: NSEvent.mouseLocation, inArea: captureArea.captureRect, scale: scale)
+        case .none:
+            return nil
+        }
     }
 
     /// Picks the colour of the pixel under the real cursor inside the Capture Area, read, kept and
@@ -180,7 +195,8 @@ final class WindowManager {
     /// area, on the area where it is (`MagnetHold.viewedPartGeometry`). Only of the live view
     /// (`showsLiveView`).
     private func updateViewedPart() {
-        guard showsLiveView, let geometry = viewedPartGeometry else {
+        // A supplied area has no frame on screen to outline a part of.
+        guard suppliedArea == nil, showsLiveView, let geometry = viewedPartGeometry else {
             captureArea.viewedPart = nil
             return
         }
@@ -249,6 +265,7 @@ final class WindowManager {
 
     /// Makes the Capture Area a window the user picks; a closed Viewer opens to show it.
     func pickWindow() {
+        willPlaceCaptureArea?()
         captureArea.pickWindow { [weak self] in
             guard let self, !isViewerOpen else { return }
             showViewer()
@@ -257,6 +274,7 @@ final class WindowManager {
 
     /// Window › Reset Capture Area; a closed Viewer opens to show it, as for Fit to Window.
     func resetCaptureArea() {
+        willPlaceCaptureArea?()
         captureArea.reset()
         if !isViewerOpen { showViewer() }
         trackCursor()
@@ -322,7 +340,9 @@ final class WindowManager {
         }
     }
 
+    /// Does nothing while an area is supplied in the Capture Area's place.
     func toggleCaptureArea() {
+        guard suppliedArea == nil else { return }
         captureArea.toggle()
         trackCursor()
     }
@@ -399,6 +419,9 @@ final class WindowManager {
             inspector.frameArrived()
         }
         updateViewedPart()
+        if changed { freezeObservers.forEach { $0() } }
+        updateCentering()
+        trackCursor()
         viewer.refreshSnapshot()
     }
 
@@ -487,7 +510,7 @@ final class WindowManager {
     }
 
     /// The preset the Viewer's zoom matches, as `ZoomPanState.preset`.
-    var zoomPreset: Int? { zoomPan.state.preset }
+    var zoomPreset: Int? { zoomPan.preset }
 
     /// The zoom is kept between launches; the Viewer's frame is kept by AppKit.
     /// Writes the project now, before the app quits.
@@ -506,6 +529,82 @@ final class WindowManager {
         }
     #endif
 
+    // MARK: An area supplied in place of the Capture Area
+
+    /// What the Viewer shows in place of the Capture Area, supplied by an edition; `nil`, the
+    /// default, shows the Capture Area. The stream captures the whole display the area is on
+    /// (`CaptureGeometry.wholeDisplay`) and the live view is just the area (`FrameStore.livePart`),
+    /// so the area moves within its display without a new configuration of the stream, and to
+    /// another display as the Capture Area does. Meanwhile the Capture Area's changes aren't
+    /// followed, Show/Hide Capture Area does nothing, the real pointer is placed in this area, and
+    /// no part of it is outlined on screen. The edition hides and shows the frame itself.
+    var suppliedArea: CaptureGeometry? {
+        didSet {
+            guard suppliedArea != oldValue else { return }
+            if let suppliedArea {
+                magnetHoldEvent(
+                    .areaChanged(
+                        to: DisplayCoordinateConverter.globalRect(
+                            ofAreaPixels: CGRect(
+                                x: 0, y: 0, width: suppliedArea.areaSize.width, height: suppliedArea.areaSize.height),
+                            in: suppliedArea
+                        ).rect))
+            }
+            capture.frameStore.livePart = suppliedArea
+            updateCapture()
+            if capture.frameStore.still == nil {
+                viewer.frameArrived()
+                inspector.frameArrived()
+            }
+            trackCursor(pointerMoved: true)
+            updateViewedPart()
+        }
+    }
+
+    private var freezeObservers: [() -> Void] = []
+
+    /// Calls `observer` after the Viewer freezes or resumes.
+    func observeFreeze(_ observer: @escaping () -> Void) {
+        freezeObservers.append(observer)
+    }
+
+    /// The real pointer moved while the Capture Area's frame, which reports its moves, is hidden for
+    /// a supplied area: the crosshair and the Color Meter follow it.
+    func pointerMoved() {
+        trackCursor(pointerMoved: true)
+    }
+
+    /// Called before a command places the Capture Area — Fit Capture Area to Window, Reset Capture
+    /// Area — so an edition that supplies an area in its place can give it back first. `nil` by
+    /// default.
+    var willPlaceCaptureArea: (() -> Void)?
+
+    /// While set, the Viewer shows the live view centred, and panning it does nothing
+    /// (`ZoomPanController.keepsContentCentered`); a still picture — frozen, a recent capture, an
+    /// opened image — pans as always (`SuppliedArea.keepsCentered`). For a supplied area sized to the
+    /// Viewer. `false` by default.
+    /// Meanwhile Fit is never the preset shown on: the area is sized to fit (`ZoomPanController.fitIsAPreset`).
+    var centersLiveView = false {
+        didSet {
+            zoomPan.fitIsAPreset = !centersLiveView
+            updateCentering()
+        }
+    }
+
+    private func updateCentering() {
+        zoomPan.keepsContentCentered = SuppliedArea.keepsCentered(
+            centersLiveView: centersLiveView, showsStill: capture.frameStore.still != nil)
+    }
+
+    /// The Viewer's view: its viewport and zoom, in drawable pixels, and the picture's size.
+    var viewerZoomPan: ZoomPanState { zoomPan.state }
+
+    /// Calls `observer` after every change of the Viewer's view: a zoom, a pan, a resize, another
+    /// picture.
+    func observeViewerZoomPan(_ observer: @escaping () -> Void) {
+        zoomPan.observe(observer)
+    }
+
     func displaysChanged() {
         magnetHoldEvent(.displaysChanged)
         captureArea.screenParametersChanged()
@@ -518,7 +617,8 @@ final class WindowManager {
     /// screen-recording indicator goes away together with the Viewer.
     private func updateCapture() {
         let active = isViewerOpen && viewer.canCapture
-        capture.capture(active ? captureArea.captureGeometry : nil)
+        let geometry = suppliedArea.map { CaptureGeometry.wholeDisplay($0.display) } ?? captureArea.captureGeometry
+        capture.capture(active ? geometry : nil)
         viewer.refreshSnapshot()
     }
 }

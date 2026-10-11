@@ -22,6 +22,34 @@ final class ZoomPanController {
     /// Called when a glide starts, to drive redraws until `animationFrame()` says it is over.
     var onAnimationStart: (() -> Void)?
 
+    /// While set, the picture is always centred in the viewport (`ZoomPanState.centered`) and
+    /// panning does nothing; a zoom keeps it centred. For a picture sized to the viewport that is
+    /// moved by other means. `false` by default.
+    var keepsContentCentered = false {
+        didSet {
+            guard keepsContentCentered != oldValue, keepsContentCentered else { return }
+            animation = nil
+            let centered = state.centered()
+            guard centered != state else { return }
+            state = centered
+            changed()
+        }
+    }
+
+    /// Whether Fit counts as the preset the zoom matches (`ZoomPanState.preset(includingFit:)`).
+    /// `true` by default; `false` for a picture sized to the viewport by the zoom, which always fits.
+    var fitIsAPreset = true {
+        didSet { if fitIsAPreset != oldValue { changed() } }
+    }
+
+    /// The preset the zoom panel and View › Zoom show on.
+    var preset: Int? { state.preset(includingFit: fitIsAPreset) }
+
+    /// `next` as the model takes it: centred while `keepsContentCentered`.
+    private func centeredIfKept(_ next: ZoomPanState) -> ZoomPanState {
+        keepsContentCentered ? next.centered() : next
+    }
+
     /// Calls `observer` after every change of the zoom or the pan.
     func observe(_ observer: @escaping () -> Void) {
         observers.append(observer)
@@ -59,7 +87,7 @@ final class ZoomPanController {
     func settle() {
         guard let animation else { return }
         self.animation = nil
-        let shown = animation.state(at: Self.now()).clamped()
+        let shown = centeredIfKept(animation.state(at: Self.now()).clamped())
         guard shown != state else { return }
         state = shown
         changed()
@@ -76,6 +104,7 @@ final class ZoomPanController {
     /// now, unless Reduce Motion is on or there is nothing shown yet. `throughFill`: a zoom about the
     /// image (`ZoomAnimation.throughFill`).
     private func command(_ target: ZoomPanState, throughFill: Bool = false) {
+        let target = centeredIfKept(target)
         let from = presented
         state = target
         let glides =
@@ -103,7 +132,7 @@ final class ZoomPanController {
         endGlide()
         let first = state.viewportSize == .zero
         state.viewportSize = size
-        state = first && hasContent ? initialState() : state.clamped()
+        state = centeredIfKept(first && hasContent ? initialState() : state.clamped())
         if first {
             fitsFirstViewport = false
             keptForFirstViewport = nil
@@ -117,10 +146,10 @@ final class ZoomPanController {
         guard size != state.contentSize else { return }
         endGlide()
         if hasContent {
-            state = state.resizingContent(to: size, originShift: originShift)
+            state = centeredIfKept(state.resizingContent(to: size, originShift: originShift))
         } else {
             state.contentSize = size
-            state = initialState()
+            state = centeredIfKept(initialState())
         }
         changed()
     }
@@ -178,7 +207,7 @@ final class ZoomPanController {
         fitsFirstViewport = state.viewportSize == .zero
         keptForFirstViewport = nil
         animation = nil
-        state = state.fitted()
+        state = centeredIfKept(state.fitted())
         changed()
     }
 
@@ -203,7 +232,7 @@ final class ZoomPanController {
     /// Continuous zoom (wheel, pinch) by `factor` around `anchor`, at once, from the view as shown.
     func zoom(by factor: CGFloat, around anchor: CGPoint) {
         settle()
-        state = state.zoomed(to: state.zoom * factor, around: anchor)
+        state = centeredIfKept(state.zoomed(to: state.zoom * factor, around: anchor))
         changed()
     }
 
@@ -217,11 +246,12 @@ final class ZoomPanController {
         var next = state
         next.zoom = zoom
         next.offset = offset
-        state = next.clamped()
+        state = centeredIfKept(next.clamped())
         changed()
     }
 
     func pan(by delta: CGPoint) {
+        guard !keepsContentCentered else { return }
         settle()
         let next = state.panned(by: delta)
         guard next != state else { return }

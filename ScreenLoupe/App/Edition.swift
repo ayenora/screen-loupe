@@ -23,4 +23,12 @@ enum Edition {
     /// with them. `windows` builds the windows if they aren't yet; this edition opens nothing and
     /// leaves them unbuilt.
     @MainActor static func open(_ urls: [URL], in windows: @autoclosure () -> WindowManager) {}
+
+    /// Called once at launch, when the global shortcuts are set up: the shortcuts the edition adds
+    /// (`GlobalShortcuts.add`). This edition adds none.
+    @MainActor static func install(in shortcuts: GlobalShortcuts) {}
+
+    /// Items the edition adds to the Window menu, after the Capture Area's; built once at launch.
+    /// This edition adds none.
+    @MainActor static func windowMenuItems() -> [NSMenuItem] { [] }
 }

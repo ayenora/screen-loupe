@@ -347,6 +347,20 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
         content.useFrozenFrameAsReference()
     }
 
+    // MARK: What an edition adds
+
+    /// Adds `item` to the toolbar, before the loupe (`ViewerToolbar.addLeadingItem`): an edition's.
+    func addToolbarItem(_ item: NSToolbarItem) {
+        toolbar.addLeadingItem(item)
+    }
+
+    /// A hint an edition shows at the top of the image, under the indicators' pills, in the bottom
+    /// hints' dark pill (`ViewerOverlayView.suppliedHint`); `nil`, the default, shows none.
+    var suppliedHint: String? {
+        get { content.suppliedHint }
+        set { content.suppliedHint = newValue }
+    }
+
     // MARK: Size to area
 
     /// Whether Size Window to Area can act: the capture is shown and the window isn't full screen.

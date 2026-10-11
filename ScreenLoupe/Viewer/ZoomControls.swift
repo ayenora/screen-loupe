@@ -120,7 +120,7 @@ final class ZoomControls: NSView, NSTextFieldDelegate {
         if zoomField.currentEditor() == nil {
             zoomField.stringValue = "\(Int((state.zoom * 100).rounded()))%"
         }
-        let preset = state.preset
+        let preset = zoomPan.preset
         for (index, button) in presetButtons.enumerated() {
             button.state = index == preset ? .on : .off
         }

@@ -197,13 +197,11 @@ final class RecentCaptureStore {
     private nonisolated static func writePixels(
         of frame: ViewerFrame, space: UncheckedSendable<CGColorSpace>, to url: URL, in folder: URL
     ) async -> Bool {
-        let buffer = frame.pixelBuffer
-        CVPixelBufferLockBaseAddress(buffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer),
-            let data = Archive.pngData(
-                bgra: base, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer),
-                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: space.value)
+        guard
+            let data = frame.withPixels({ base, bytesPerRow, size in
+                Archive.pngData(
+                    bgra: base, width: size.width, height: size.height, bytesPerRow: bytesPerRow, space: space.value)
+            })
         else { return false }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

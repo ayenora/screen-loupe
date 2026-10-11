@@ -15,9 +15,7 @@ enum ScreenshotExporter {
     /// the area straddles two displays, the part on the other display stays transparent. Past
     /// `ImageBudget` only the area's top-left part.
     static func sourceImage(from frame: ViewerFrame, colorSpace: CGColorSpace) -> CGImage? {
-        guard let image = frameImage(frame.pixelBuffer, colorSpace: colorSpace, hasAlpha: frame.hasAlpha) else {
-            return nil
-        }
+        guard let image = frameImage(frame, colorSpace: colorSpace) else { return nil }
         let layout = frame.layout
         let area = layout.size
         let kept = ImageBudget.fitted(width: area.width, height: area.height)
@@ -33,25 +31,25 @@ enum ScreenshotExporter {
         return context.makeImage()
     }
 
-    /// The frame's BGRA bytes as a `CGImage`, copied so the capture buffer can be reused. With
-    /// `hasAlpha` (an opened image) its straight alpha is kept; a frame of the screen is opaque.
-    static func frameImage(_ buffer: CVPixelBuffer, colorSpace: CGColorSpace, hasAlpha: Bool) -> CGImage? {
-        CVPixelBufferLockBaseAddress(buffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
-        let width = CVPixelBufferGetWidth(buffer)
-        let height = CVPixelBufferGetHeight(buffer)
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-        guard let provider = CGDataProvider(data: Data(bytes: base, count: bytesPerRow * height) as CFData) else {
-            return nil
+    /// The frame's picture (`ViewerFrame.bufferRect`), its BGRA bytes as a `CGImage`, copied so the
+    /// capture buffer can be reused. An opened image's straight alpha is kept (`hasAlpha`); a frame
+    /// of the screen is opaque.
+    static func frameImage(_ frame: ViewerFrame, colorSpace: CGColorSpace) -> CGImage? {
+        frame.withPixels { base, bytesPerRow, size in
+            // Just the picture's bytes: the buffer may hold more around it.
+            guard size.width > 0, size.height > 0,
+                let provider = CGDataProvider(
+                    data: PictureRows.packed(base, width: size.width, height: size.height, bytesPerRow: bytesPerRow)
+                        as CFData)
+            else { return nil }
+            // 32BGRA: little-endian 32-bit words with the alpha first.
+            let alpha = frame.hasAlpha ? CGImageAlphaInfo.first : .noneSkipFirst
+            let info = CGBitmapInfo(rawValue: alpha.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+            return CGImage(
+                width: size.width, height: size.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: size.width * 4, space: colorSpace, bitmapInfo: info, provider: provider, decode: nil,
+                shouldInterpolate: false, intent: .defaultIntent)
         }
-        // 32BGRA: little-endian 32-bit words with the alpha first.
-        let alpha = hasAlpha ? CGImageAlphaInfo.first : .noneSkipFirst
-        let info = CGBitmapInfo(rawValue: alpha.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-        return CGImage(
-            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
-            space: colorSpace, bitmapInfo: info, provider: provider, decode: nil, shouldInterpolate: false,
-            intent: .defaultIntent)
     }
 
     private static func bitmapContext(width: Int, height: Int, colorSpace: CGColorSpace) -> CGContext? {

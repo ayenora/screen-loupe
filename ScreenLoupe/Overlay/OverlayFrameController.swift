@@ -263,14 +263,16 @@ final class OverlayFrameController {
         startMonitoringMouse()
     }
 
-    /// A hidden area doesn't follow a window: the magnet turns off quietly, as at launch.
-    func hide() {
+    /// A hidden area doesn't follow a window: the magnet turns off quietly, as at launch. With
+    /// `keepingMagnet` it stays on, so `show` brings the area back exactly as it was, still following
+    /// its window: for a frame set aside while something else is shown in its place.
+    func hide(keepingMagnet: Bool = false) {
         buttonName.end()
         pointedButton = nil
         window.orderOut(nil)
         outline?.orderOut(nil)
         stopMonitoringMouse()
-        if magnet != nil { settings.update { $0.captureAreaLocked = false } }
+        if magnet != nil, !keepingMagnet { settings.update { $0.captureAreaLocked = false } }
     }
 
     func toggle() {

@@ -34,6 +34,21 @@ final class ViewerOverlayView: NSView {
     /// The freeze's hint at the bottom while it shows (`FrozenIndicatorView.shownHint`): the
     /// Selection Ruler's hint goes above it (`ViewerHints`).
     var freezeHint: () -> String? = { nil }
+    /// A hint an edition shows at the top, centred, in the bottom hints' dark pill; `nil`, the
+    /// default, shows none.
+    var suppliedHint: String? {
+        didSet { if suppliedHint != oldValue { needsDisplay = true } }
+    }
+    /// The supplied hint's top: under the indicators' pills that show.
+    var suppliedHintTop: () -> CGFloat = { ViewerIndicators.top }
+
+    /// Where the supplied hint is drawn, while there is one.
+    var suppliedHintRect: CGRect? {
+        guard let suppliedHint else { return nil }
+        let size = FrozenIndicatorView.hintSize(suppliedHint)
+        return CGRect(
+            x: (bounds.midX - size.width / 2).rounded(), y: suppliedHintTop(), width: size.width, height: size.height)
+    }
     /// The Viewer's drawable pixels per point (`MTKView.drawableScale`): zoom and pan are in drawable
     /// pixels, this view draws in points.
     var drawableScale: () -> CGFloat = { 1 }
@@ -65,6 +80,12 @@ final class ViewerOverlayView: NSView {
         drawRuler(drawableScale: drawableScale)
         drawSelection(drawableScale: drawableScale)
         drawSelectionRuler(drawableScale: drawableScale)
+        drawSuppliedHint()
+    }
+
+    private func drawSuppliedHint() {
+        guard let suppliedHint, let rect = suppliedHintRect else { return }
+        FrozenIndicatorView.drawHint(suppliedHint, in: rect)
     }
 
     private func drawCrosshair(drawableScale: CGFloat) {

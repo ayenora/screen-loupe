@@ -157,6 +157,32 @@ struct CaptureReferencePixelTests {
         (0..<width * height * 4).map { $0 % 4 == 3 ? 255 : UInt8(truncatingIfNeeded: $0 &* 131 &+ 7) }
     }
 
+    /// A part of a larger buffer — its bottom-right corner — read where it ends: the last row only as
+    /// long as the part.
+    @Test func aPartOfALargerBufferIsKept() throws {
+        let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let (bufferWidth, bufferHeight) = (9, 6)
+        let bytesPerRow = bufferWidth * 4
+        let bytes = opaque(width: bufferWidth, height: bufferHeight)
+        let (x, y, width, height) = (5, 2, 4, 4)
+        let part = Array(bytes[(y * bytesPerRow + x * 4)...])
+        let tiff = try #require(
+            part.withUnsafeBytes {
+                CaptureReference.tiffData(
+                    bgra: $0.baseAddress!, width: width, height: height, bytesPerRow: bytesPerRow, space: space,
+                    hasAlpha: false)
+            })
+        let source = try #require(CGImageSourceCreateWithData(tiff as CFData, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        var out = [UInt8](repeating: 0, count: width * 4 * height)
+        let copied = out.withUnsafeMutableBytes {
+            RecentCaptureArchive.copyPixels(of: image, into: $0.baseAddress!, bytesPerRow: width * 4)
+        }
+        #expect(copied)
+        let expected = (0..<height).flatMap { part[$0 * bytesPerRow..<$0 * bytesPerRow + width * 4] }
+        #expect(out == expected)
+    }
+
     /// A display's own profile, without a name: the TIFF keeps it byte for byte, so the layer is
     /// drawn into the display's space without a conversion and unchanged pixels match exactly.
     @Test func aDisplaysProfileIsKeptExactly() throws {

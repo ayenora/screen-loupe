@@ -145,6 +145,31 @@ enum ShortcutAction: CaseIterable, Sendable {
     }
 }
 
+/// A global shortcut an edition adds to the app's own (`GlobalShortcuts.add`): its row in
+/// Settings › Shortcuts, after theirs, and what it does. The edition keeps its keys: `shortcut` is
+/// what it read, and `onChange` is called with every change made in Settings.
+@MainActor
+@Observable
+final class AddedShortcut {
+    let title: String
+    /// Under the row in Settings, as the app's own shortcuts have one.
+    let note: String?
+    fileprivate(set) var shortcut: Shortcut?
+    @ObservationIgnored let onChange: (Shortcut?) -> Void
+    @ObservationIgnored let perform: () -> Void
+
+    init(
+        title: String, note: String? = nil, shortcut: Shortcut?, onChange: @escaping (Shortcut?) -> Void,
+        perform: @escaping () -> Void
+    ) {
+        self.title = title
+        self.note = note
+        self.shortcut = shortcut
+        self.onChange = onChange
+        self.perform = perform
+    }
+}
+
 /// Registers the shortcuts with Carbon's `RegisterEventHotKey`, which works from any app and needs
 /// no Accessibility permission.
 @MainActor
@@ -153,6 +178,10 @@ final class GlobalShortcuts {
     @ObservationIgnored var onAction: ((ShortcutAction) -> Void)?
     /// Shortcuts macOS refused: taken by the system or another app, or not allowed.
     private(set) var failed: Set<ShortcutAction> = []
+    /// The shortcuts an edition added, in the order added; none by default.
+    private(set) var added: [AddedShortcut] = []
+    /// The added shortcuts macOS refused, by their index in `added`.
+    private(set) var failedAdded: Set<Int> = []
 
     @ObservationIgnored private var shortcuts = Shortcuts()
     @ObservationIgnored private var registered: [EventHotKeyRef] = []
@@ -189,6 +218,25 @@ final class GlobalShortcuts {
         registerAll()
     }
 
+    /// The app's own shortcuts as last registered: an added one starts without keys they have
+    /// (`ShortcutRules.newDefault`).
+    var appShortcuts: Shortcuts { shortcuts }
+
+    /// Adds an edition's shortcut and registers it.
+    func add(_ shortcut: AddedShortcut) {
+        added.append(shortcut)
+        registerAll()
+    }
+
+    /// Settings › Shortcuts changed the added shortcut at `index`: kept by its edition, and
+    /// registered.
+    func setAdded(_ shortcut: Shortcut?, at index: Int) {
+        guard added.indices.contains(index) else { return }
+        added[index].shortcut = shortcut
+        added[index].onChange(shortcut)
+        registerAll()
+    }
+
     private func registerAll() {
         registered.forEach { UnregisterEventHotKey($0) }
         registered.removeAll()
@@ -196,23 +244,38 @@ final class GlobalShortcuts {
         var failed: Set<ShortcutAction> = []
         for (index, action) in ShortcutAction.allCases.enumerated() {
             guard let shortcut = shortcuts[keyPath: action.keyPath] else { continue }
-            var ref: EventHotKeyRef?
-            let id = EventHotKeyID(signature: Self.signature, id: UInt32(index))
-            if RegisterEventHotKey(
-                shortcut.keyCode, shortcut.carbonModifiers, id, GetApplicationEventTarget(), 0, &ref) == noErr,
-                let ref
-            {
-                registered.append(ref)
-            } else {
-                failed.insert(action)
-            }
+            if !register(shortcut, id: index) { failed.insert(action) }
         }
         self.failed = failed
+        var failedAdded: Set<Int> = []
+        for (index, added) in added.enumerated() {
+            guard let shortcut = added.shortcut else { continue }
+            if !register(shortcut, id: ShortcutRules.id(ofAdded: index)) { failedAdded.insert(index) }
+        }
+        self.failedAdded = failedAdded
+    }
+
+    /// Whether macOS took `shortcut` for `id`.
+    private func register(_ shortcut: Shortcut, id: Int) -> Bool {
+        var ref: EventHotKeyRef?
+        let hotKey = EventHotKeyID(signature: Self.signature, id: UInt32(id))
+        guard
+            RegisterEventHotKey(
+                shortcut.keyCode, shortcut.carbonModifiers, hotKey, GetApplicationEventTarget(), 0, &ref) == noErr,
+            let ref
+        else { return false }
+        registered.append(ref)
+        return true
     }
 
     private func fire(_ id: EventHotKeyID) {
         let actions = ShortcutAction.allCases
-        guard id.signature == Self.signature, Int(id.id) < actions.count else { return }
-        onAction?(actions[Int(id.id)])
+        guard id.signature == Self.signature,
+            let target = ShortcutRules.target(ofID: Int(id.id), actions: actions.count, added: added.count)
+        else { return }
+        switch target {
+        case .action(let index): onAction?(actions[index])
+        case .added(let index): added[index].perform()
+        }
     }
 }

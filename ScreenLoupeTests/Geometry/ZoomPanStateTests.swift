@@ -730,6 +730,33 @@ struct ZoomPanStateTests {
         #expect(state.preset == 0)
     }
 
+    /// A picture sized to the viewport by the zoom always fits: without Fit, the zoom's own preset
+    /// shows on, or none between presets.
+    @Test(arguments: [(CGFloat(1), 1), (2, 2), (4, 3), (8, 4)])
+    func withoutFitAPictureSizedToTheViewportShowsItsZoomsPreset(zoom: CGFloat, preset: Int) {
+        let viewport = CGSize(width: 1600, height: 1000)
+        let state = ZoomPanState(
+            zoom: zoom, offset: .zero,
+            contentSize: CGSize(width: viewport.width / zoom, height: viewport.height / zoom),
+            viewportSize: viewport)
+        #expect(state.preset == 0)
+        #expect(state.preset(includingFit: false) == preset)
+    }
+
+    @Test func withoutFitAZoomBetweenPresetsMatchesNone() {
+        let viewport = CGSize(width: 1310, height: 1310)
+        let state = ZoomPanState(
+            zoom: 1.31, offset: .zero, contentSize: CGSize(width: 1000, height: 1000), viewportSize: viewport)
+        #expect(state.preset == 0)
+        #expect(state.preset(includingFit: false) == nil)
+        #expect(self.state(zoom: 3).preset(includingFit: false) == nil)
+    }
+
+    @Test func withFitItIsThePresetAsAlways() {
+        #expect(state(zoom: 1.5).preset(includingFit: true) == 0)
+        #expect(state(zoom: 4).preset(includingFit: true) == 3)
+    }
+
     @Test func aZoomBetweenPresetsMatchesNone() {
         #expect(state(zoom: 3).preset == nil)
         #expect(state(zoom: 0.5).preset == nil)

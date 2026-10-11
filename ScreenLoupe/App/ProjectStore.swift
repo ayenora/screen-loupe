@@ -137,13 +137,12 @@ final class ProjectStore {
     private nonisolated static func writeTIFF(
         of frame: ViewerFrame, space: UncheckedSendable<CGColorSpace>, to url: URL, in folder: URL
     ) async -> Bool {
-        let buffer = frame.pixelBuffer
-        CVPixelBufferLockBaseAddress(buffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer),
-            let data = CaptureReference.tiffData(
-                bgra: base, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer),
-                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: space.value, hasAlpha: frame.hasAlpha)
+        guard
+            let data = frame.withPixels({ base, bytesPerRow, size in
+                CaptureReference.tiffData(
+                    bgra: base, width: size.width, height: size.height, bytesPerRow: bytesPerRow, space: space.value,
+                    hasAlpha: frame.hasAlpha)
+            })
         else { return false }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

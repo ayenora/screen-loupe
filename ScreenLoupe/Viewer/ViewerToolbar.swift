@@ -99,6 +99,9 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
     /// The ▾ beside Save: Save View… or Save Source….
     private let saveMenuButton = NSButton()
 
+    /// Items an edition adds before the loupe, in the order added (`addLeadingItem`).
+    private var addedItems: [NSToolbarItem] = []
+
     /// The overflow-menu forms.
     private let onTopMenuItem = NSMenuItem(title: "Keep on Top", action: nil, keyEquivalent: "")
 
@@ -537,11 +540,21 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         menu.popUp(positioning: nil, at: below, in: sender)
     }
 
+    /// Adds `item` before the loupe, after the items added before it: an item an edition adds,
+    /// with its menu form for the overflow (») menu.
+    func addLeadingItem(_ item: NSToolbarItem) {
+        addedItems.append(item)
+        // A toolbar that has made its items already takes it now; one that hasn't takes it with them.
+        if let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == Self.zoomID }) {
+            toolbar.insertItem(withItemIdentifier: item.itemIdentifier, at: index)
+        }
+    }
+
     // MARK: NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [
-            .flexibleSpace, Self.zoomID, Self.freezeID, Self.selectID, Self.copyTextID, Self.rulerID, Self.gridID,
+        [.flexibleSpace] + addedItems.map(\.itemIdentifier) + [
+            Self.zoomID, Self.freezeID, Self.selectID, Self.copyTextID, Self.rulerID, Self.gridID,
             Self.crosshairID, Self.visionID, Self.panelsID, .space, Self.copyID, Self.saveID, Self.onTopID,
         ]
     }
@@ -554,6 +567,7 @@ final class ViewerToolbar: NSObject, NSToolbarDelegate {
         _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
+        if let added = addedItems.first(where: { $0.itemIdentifier == identifier }) { return added }
         let item = NSToolbarItem(itemIdentifier: identifier)
         switch identifier {
         case Self.zoomID:

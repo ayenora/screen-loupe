@@ -364,7 +364,127 @@ struct AreaResizeTrackerTests {
         #expect(try shift(from: start, to: CGRect(x: -500, y: 100, width: 150, height: 100)) == .zero)
     }
 
+    /// An area supplied in place of the Capture Area: turned on, moved, resized by a zoom and turned
+    /// off, nothing placed in the area moves with its origin.
+    @Test func aPartOfALargerCaptureNeverShiftsTheOrigin() throws {
+        var tracker = AreaResizeTracker()
+        func geometry(_ rect: CGRect) throws -> CaptureGeometry {
+            try #require(converter.captureGeometry(for: GlobalRect(rect: rect)))
+        }
+        // The Capture Area, then the supplied area in its place.
+        #expect(tracker.originShift(for: try geometry(start)) == .zero)
+        #expect(tracker.originShift(for: try geometry(start), isPart: false) == .zero)
+        var shifts: [CGPoint] = []
+        for rect in [
+            CGRect(x: 400, y: 300, width: 200, height: 125), CGRect(x: 410, y: 290, width: 200, height: 125),
+            CGRect(x: 460, y: 321, width: 100, height: 62.5), CGRect(x: 10, y: 10, width: 800, height: 500),
+        ] {
+            shifts.append(tracker.originShift(for: try geometry(rect), isPart: true))
+        }
+        // Off: the Capture Area's frames again, where it was.
+        shifts.append(tracker.originShift(for: try geometry(start)))
+        shifts.append(tracker.originShift(for: try geometry(start)))
+        #expect(shifts.allSatisfy { $0 == .zero })
+        // And it tracks the Capture Area's edges again.
+        #expect(
+            tracker.originShift(for: try geometry(CGRect(x: 90, y: 100, width: 210, height: 100)))
+                == CGPoint(x: -20, y: 0))
+    }
+
     @Test func afterForgettingAResizeKeepsTheFraming() throws {
         #expect(try shift(from: start, to: CGRect(x: 90, y: 100, width: 210, height: 100), forgetting: true) == .zero)
+    }
+}
+
+struct CaptureGeometryPartTests {
+    let converter = Fixture.converter
+
+    private func geometry(_ rect: CGRect) throws -> CaptureGeometry {
+        try #require(converter.captureGeometry(for: GlobalRect(rect: rect)))
+    }
+
+    @Test(arguments: [
+        (Fixture.primary, PixelSize(width: 2880, height: 1800)),
+        (Fixture.right, PixelSize(width: 1920, height: 1080)),
+        (Fixture.left, PixelSize(width: 2560, height: 1440)),
+        (Fixture.above, PixelSize(width: 3024, height: 1964)),
+    ])
+    func theWholeDisplayIsCapturedAtItsNativePixels(display: DisplayInfo, pixels: PixelSize) {
+        let whole = CaptureGeometry.wholeDisplay(display)
+        #expect(whole.display == display)
+        #expect(
+            whole.sourceRect
+                == DisplayLocalRect(displayID: display.id, rect: CGRect(origin: .zero, size: display.globalFrame.size)))
+        #expect(whole.outputSize == pixels)
+        #expect(whole.areaSize == pixels)
+        #expect(whole.imageOrigin == .zero)
+        #expect(whole.areaOrigin == .zero)
+    }
+
+    @Test func theWholeDisplayIsWhatTheConverterCapturesForTheDisplaysFrame() throws {
+        for display in [Fixture.primary, Fixture.right, Fixture.left, Fixture.above] {
+            #expect(try geometry(display.globalFrame) == CaptureGeometry.wholeDisplay(display))
+        }
+    }
+
+    @Test func aPartOfARetinaDisplayLiesAtItsPixelsFromTheTopLeft() throws {
+        // 100 pt from the left, 900 - 300 = 600 pt from the top, at 2×.
+        let part = try geometry(CGRect(x: 100, y: 200, width: 150, height: 100))
+        #expect(
+            CaptureGeometry.wholeDisplay(Fixture.primary).pixelRect(of: part)
+                == PixelRect(x: 200, y: 1200, width: 300, height: 200))
+    }
+
+    @Test func aPartOfADisplayWithNegativeCoordinatesLiesAtItsPixels() throws {
+        // The left display's top is at global y 1440: 1440 - 1100 = 340 pt down; 1×.
+        let part = try geometry(CGRect(x: -2500, y: 1000, width: 64, height: 100))
+        #expect(
+            CaptureGeometry.wholeDisplay(Fixture.left).pixelRect(of: part)
+                == PixelRect(x: 60, y: 340, width: 64, height: 100))
+    }
+
+    @Test func aPartAtTheDisplaysBottomRightCornerFitsExactly() throws {
+        let part = try geometry(CGRect(x: 1340, y: 0, width: 100, height: 50))
+        #expect(
+            CaptureGeometry.wholeDisplay(Fixture.primary).pixelRect(of: part)
+                == PixelRect(x: 2680, y: 1700, width: 200, height: 100))
+    }
+
+    @Test func theWholeDisplayIsAllOfItself() {
+        let whole = CaptureGeometry.wholeDisplay(Fixture.right)
+        #expect(whole.pixelRect(of: whole) == PixelRect(x: 0, y: 0, width: 1920, height: 1080))
+    }
+
+    @Test func aPartIsCountedFromTheCapturesOwnTopLeft() throws {
+        let capture = try geometry(CGRect(x: 100, y: 100, width: 400, height: 300))
+        let part = try geometry(CGRect(x: 150, y: 150, width: 100, height: 100))
+        // 50 pt right and 400 - 250 = 150 pt down from the capture's top-left, at 2×.
+        #expect(capture.pixelRect(of: part) == PixelRect(x: 100, y: 300, width: 200, height: 200))
+    }
+
+    @Test func aPartOnAnotherDisplayIsNotInside() throws {
+        let part = try geometry(CGRect(x: 1500, y: 0, width: 100, height: 100))
+        #expect(CaptureGeometry.wholeDisplay(Fixture.primary).pixelRect(of: part) == nil)
+    }
+
+    @Test func aPartReachingOutOfTheCaptureIsNotInside() throws {
+        let capture = try geometry(CGRect(x: 100, y: 100, width: 400, height: 300))
+        #expect(capture.pixelRect(of: try geometry(CGRect(x: 450, y: 150, width: 100, height: 100))) == nil)
+        #expect(capture.pixelRect(of: try geometry(CGRect(x: 50, y: 150, width: 100, height: 100))) == nil)
+        #expect(capture.pixelRect(of: try geometry(CGRect(x: 150, y: 350, width: 100, height: 100))) == nil)
+        #expect(capture.pixelRect(of: try geometry(CGRect(x: 150, y: 50, width: 100, height: 100))) == nil)
+    }
+
+    @Test func aDisplayThatChangedIsAnotherDisplay() throws {
+        var moved = Fixture.primary
+        moved.scale = 1
+        let part = try geometry(CGRect(x: 100, y: 200, width: 150, height: 100))
+        #expect(CaptureGeometry.wholeDisplay(moved).pixelRect(of: part) == nil)
+    }
+
+    @Test func aPartThatCapturesNothingIsNotInside() throws {
+        var part = try geometry(CGRect(x: 100, y: 200, width: 150, height: 100))
+        part.outputSize = PixelSize(width: 0, height: 200)
+        #expect(CaptureGeometry.wholeDisplay(Fixture.primary).pixelRect(of: part) == nil)
     }
 }

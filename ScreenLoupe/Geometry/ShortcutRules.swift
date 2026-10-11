@@ -27,4 +27,25 @@ enum ShortcutRules {
         }
         return fallback
     }
+
+    /// What a registered hot key's id stands for: one of the app's actions, by its index, or a
+    /// shortcut an edition added, by its index among those (`GlobalShortcuts.add`).
+    enum Target: Equatable, Sendable {
+        case action(Int)
+        case added(Int)
+    }
+
+    /// Where the added shortcuts' ids start, well after the app's own actions'.
+    static let firstAddedID = 1000
+
+    /// The id the added shortcut at `index` is registered with.
+    static func id(ofAdded index: Int) -> Int { firstAddedID + index }
+
+    /// What `id` stands for among `actions` app actions and `added` added shortcuts; `nil` for an id
+    /// that is neither.
+    static func target(ofID id: Int, actions: Int, added: Int) -> Target? {
+        if (0..<actions).contains(id) { return .action(id) }
+        let index = id - firstAddedID
+        return (0..<added).contains(index) ? .added(index) : nil
+    }
 }

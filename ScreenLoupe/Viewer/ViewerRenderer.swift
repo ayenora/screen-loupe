@@ -99,6 +99,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         blending.destinationAlphaBlendFactor = .oneMinusSourceAlpha
         let referenceDescriptor = descriptor.copy() as! MTLRenderPipelineDescriptor
         referenceDescriptor.fragmentFunction = library.makeFunction(name: "referenceFragment")
+        // The frame samples the part of its texture that is the picture (`ViewerFrame.bufferRect`).
+        descriptor.vertexFunction = library.makeFunction(name: "frameVertex")
         // The simulation replaces every pixel of the target: no blending.
         let visionDescriptor = checkerDescriptor.copy() as! MTLRenderPipelineDescriptor
         visionDescriptor.fragmentFunction = library.makeFunction(name: "visionFragment")
@@ -325,16 +327,23 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             if let texture, let metalTexture = CVMetalTextureGetTexture(texture) {
                 frameTexture = metalTexture
                 let size = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
+                let texture = CGSize(width: metalTexture.width, height: metalTexture.height)
                 var quad = Self.ndc(
                     scene.state.imageRect(origin: frame.layout.imageOrigin, size: size), in: scene.size)
+                let part = PictureRows.uvRect(
+                    of: frame.bufferRect, in: PixelSize(width: metalTexture.width, height: metalTexture.height))
+                var textureRect = SIMD4<Float>(
+                    Float(part.minX), Float(part.minY), Float(part.width), Float(part.height))
                 let zoom = scene.state.zoom
                 var fragment = (
                     SIMD4<Float>(
-                        Float(size.width), Float(size.height), Float(zoom), Self.gridMode(scene.style, zoom: zoom)),
+                        Float(texture.width), Float(texture.height), Float(zoom), Self.gridMode(scene.style, zoom: zoom)
+                    ),
                     SIMD4<Float>(frame.hasAlpha ? 1 : 0, 0, 0, 0)
                 )
                 encoder.setRenderPipelineState(pipeline)
                 encoder.setVertexBytes(&quad, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                encoder.setVertexBytes(&textureRect, length: MemoryLayout<SIMD4<Float>>.stride, index: 1)
                 encoder.setFragmentBytes(&fragment, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 0)
                 encoder.setFragmentTexture(metalTexture, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
@@ -354,24 +363,33 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             var quad = Self.ndc(scene.state.imageRect(origin: rect.origin, size: rect.size), in: scene.size)
             // The layer's corners in the frame's UV: the frame covers its pixel size from its origin.
             var frameUV = SIMD4<Float>(0, 0, 0, 0)
+            var frameBounds = SIMD4<Float>(0, 0, 1, 1)
             let difference = layer.blend == .difference && frameTexture != nil
             // In Split, the layer at full opacity left of the line.
             let splitX = layer.blend == .split && scene.split?.kind == .reference ? scene.split?.x : nil
-            if difference, let frame = scene.frame {
-                let pixels = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
-                let origin = frame.layout.imageOrigin
+            if difference, let frame = scene.frame, let frameTexture {
+                // The texture holds the picture at `bufferRect`.
+                let pixels = CGSize(width: frameTexture.width, height: frameTexture.height)
+                let origin = CGPoint(
+                    x: frame.layout.imageOrigin.x - CGFloat(frame.bufferRect.x),
+                    y: frame.layout.imageOrigin.y - CGFloat(frame.bufferRect.y))
                 frameUV = SIMD4(
                     Float((rect.minX - origin.x) / pixels.width), Float((rect.minY - origin.y) / pixels.height),
                     Float(rect.width / pixels.width), Float(rect.height / pixels.height))
+                let picture = PictureRows.uvRect(
+                    of: frame.bufferRect, in: PixelSize(width: frameTexture.width, height: frameTexture.height))
+                frameBounds = SIMD4(
+                    Float(picture.minX), Float(picture.minY), Float(picture.maxX), Float(picture.maxY))
             }
             var uniforms = (
                 frameUV,
                 SIMD4<Float>(
                     splitX == nil ? Float(layer.opacity) : 1, difference ? 1 : 0, splitX == nil ? 0 : 1,
-                    Float(splitX ?? 0))
+                    Float(splitX ?? 0)),
+                frameBounds
             )
             encoder.setVertexBytes(&quad, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
-            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 0)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * 3, index: 0)
             encoder.setFragmentTexture(texture, index: 0)
             encoder.setFragmentTexture(frameTexture ?? texture, index: 1)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)

@@ -104,7 +104,7 @@ final class PixelInspector {
 
     /// The colour of a Capture Area pixel in the frame the Viewer shows.
     private func probe(_ source: Source, atAreaPixel pixel: (x: Int, y: Int)) -> Probe {
-        var probe = Probe(source: source, x: pixel.x, y: pixel.y)
+        let probe = Probe(source: source, x: pixel.x, y: pixel.y)
         guard let frame = frameStore.shownFrame else { return probe }
         let origin = (x: Int(frame.layout.imageOrigin.x), y: Int(frame.layout.imageOrigin.y))
         let x = pixel.x - origin.x
@@ -112,25 +112,27 @@ final class PixelInspector {
         let size = frame.pixelSize
         guard x >= 0, y >= 0, x < size.width, y < size.height else { return probe }
 
-        let buffer = frame.pixelBuffer
-        CVPixelBufferLockBaseAddress(buffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return probe }
-        // 32BGRA, in the frame's colour space: its display's, or the one kept with it; an opened
-        // image's straight alpha is its own too.
-        let pixels = FramePixels(
-            width: size.width, height: size.height, colorSpace: frame.colorSpace, spaceName: frame.colorSpaceName,
-            hasAlpha: frame.hasAlpha, base: UnsafeRawPointer(base), bytesPerRow: CVPixelBufferGetBytesPerRow(buffer))
-        if let reading = reader?(pixels, x, y) {
-            probe.sample = reading.sample
-            var square = reading.square
-            square.rect.x += origin.x
-            square.rect.y += origin.y
-            probe.square = square
-        } else {
-            probe.sample = pixels.sample(x: x, y: y)
+        let colorSpace = frame.colorSpace
+        let spaceName = frame.colorSpaceName
+        let read: Probe? = frame.withPixels { base, bytesPerRow, _ in
+            var probe = probe
+            // 32BGRA, in the frame's colour space: its display's, or the one kept with it; an opened
+            // image's straight alpha is its own too.
+            let pixels = FramePixels(
+                width: size.width, height: size.height, colorSpace: colorSpace, spaceName: spaceName,
+                hasAlpha: frame.hasAlpha, base: base, bytesPerRow: bytesPerRow)
+            if let reading = reader?(pixels, x, y) {
+                probe.sample = reading.sample
+                var square = reading.square
+                square.rect.x += origin.x
+                square.rect.y += origin.y
+                probe.square = square
+            } else {
+                probe.sample = pixels.sample(x: x, y: y)
+            }
+            return probe
         }
-        return probe
+        return read ?? probe
     }
 
     // MARK: Kept colours

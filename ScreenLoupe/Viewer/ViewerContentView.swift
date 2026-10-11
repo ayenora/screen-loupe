@@ -154,7 +154,12 @@ final class ViewerContentView: NSStackView {
             self?.viewerView.requestDraw()
             self?.overlay.needsDisplay = true
         }
-        overlay.splitLabelsTop = { [weak self] in SplitLine.labelsTop(below: self?.lowestPillBottom) }
+        // A supplied hint sits under the indicators' pills, and the split's labels under both.
+        overlay.suppliedHintTop = { [weak self] in ViewerIndicators.simulationTop(below: self?.lowestPillBottom) }
+        overlay.splitLabelsTop = { [weak self] in
+            guard let self else { return SplitLine.labelTop }
+            return SplitLine.labelsTop(below: overlay.suppliedHintRect?.maxY ?? lowestPillBottom)
+        }
         selection.observe { [weak self] in
             guard let self else { return }
             // Select and Copy Text are never on together.
@@ -265,6 +270,12 @@ final class ViewerContentView: NSStackView {
 
     /// The size of the image area, without the side column.
     var imageAreaSize: CGSize { imageArea.frame.size }
+
+    /// A hint at the top of the image (`ViewerOverlayView.suppliedHint`).
+    var suppliedHint: String? {
+        get { overlay.suppliedHint }
+        set { overlay.suppliedHint = newValue }
+    }
 
     /// A short confirmation at the bottom of the image, such as "View copied".
     func showToast(_ text: String) {

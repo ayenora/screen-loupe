@@ -101,8 +101,13 @@ struct ZoomPanState: Equatable, Sendable {
 
     /// The preset the zoom matches, as an index into `presetNames`: 0 for Fit, then one for each of
     /// `presets`; `nil` between them. Fit wins when the fitting zoom is also a preset's.
-    var preset: Int? {
-        if isFit { return 0 }
+    var preset: Int? { preset(includingFit: true) }
+
+    /// The preset the zoom matches, as `preset`; without `includingFit`, never Fit: for a picture
+    /// sized to the viewport by the zoom, which always fits and so says nothing by fitting, the
+    /// zoom's own preset, or none between them.
+    func preset(includingFit: Bool) -> Int? {
+        if includingFit, isFit { return 0 }
         return Self.presets.firstIndex { abs($0 - zoom) < Self.sameZoom }.map { $0 + 1 }
     }
 

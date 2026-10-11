@@ -19,19 +19,31 @@ enum ViewerShaders {
             float2 uv;
         };
 
-        vertex QuadVertex quadVertex(uint vertexID [[vertex_id]], constant QuadUniforms &uniforms [[buffer(0)]]) {
+        static QuadVertex placedQuad(uint vertexID, float4 rect) {
             // Triangle strip: top-left, top-right, bottom-left, bottom-right.
             const float2 corners[4] = { float2(0, 0), float2(1, 0), float2(0, 1), float2(1, 1) };
             float2 corner = corners[vertexID];
             QuadVertex out;
-            out.position = float4(mix(uniforms.rect.x, uniforms.rect.z, corner.x),
-                                  mix(uniforms.rect.y, uniforms.rect.w, corner.y), 0, 1);
+            out.position = float4(mix(rect.x, rect.z, corner.x), mix(rect.y, rect.w, corner.y), 0, 1);
             out.uv = corner;
             return out;
         }
 
+        vertex QuadVertex quadVertex(uint vertexID [[vertex_id]], constant QuadUniforms &uniforms [[buffer(0)]]) {
+            return placedQuad(vertexID, uniforms.rect);
+        }
+
+        // The captured frame's quad, as quadVertex places it, sampling just `textureRect` of its
+        // texture: offset (xy) and size (zw) in UV, all of it for a frame that is its whole buffer.
+        vertex QuadVertex frameVertex(uint vertexID [[vertex_id]], constant QuadUniforms &uniforms [[buffer(0)]],
+                                      constant float4 &textureRect [[buffer(1)]]) {
+            QuadVertex out = placedQuad(vertexID, uniforms.rect);
+            out.uv = textureRect.xy + out.uv * textureRect.zw;
+            return out;
+        }
+
         struct FragmentUniforms {
-            // The captured image in source pixels.
+            // The frame's texture in source pixels.
             float2 imageSize;
             // Drawable pixels per source pixel.
             float zoom;
@@ -78,6 +90,9 @@ enum ViewerShaders {
             // 1: the layer only left of the split line, at `splitX` in the target's pixels; 0: all of it.
             float split;
             float splitX;
+            // The picture in the frame texture: from xy to zw in its UV. Outside it is outside the
+            // frame, also where the texture holds more of the screen.
+            float4 frameBounds;
         };
 
         // A reference layer over the frame. Its texture is premultiplied, in the Viewer's colour
@@ -93,7 +108,7 @@ enum ViewerShaders {
             float4 color = reference.sample(pixels, in.uv);
             if (uniforms.difference > 0.5) {
                 float2 uv = uniforms.frameUV.xy + in.uv * uniforms.frameUV.zw;
-                bool inside = all(uv >= 0.0) && all(uv <= 1.0);
+                bool inside = all(uv >= uniforms.frameBounds.xy) && all(uv <= uniforms.frameBounds.zw);
                 float3 live = inside ? frame.sample(pixels, uv).rgb : float3(0.0);
                 float3 straight = color.a > 0.0 ? color.rgb / color.a : float3(0.0);
                 color = float4(abs(straight - live) * color.a, color.a);

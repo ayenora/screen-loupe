@@ -23,6 +23,34 @@ extension CaptureGeometry {
             x: (sourceRect.rect.minX * scale).rounded() - imageOrigin.x,
             y: (sourceRect.rect.minY * scale).rounded() - imageOrigin.y)
     }
+
+    /// The whole of `display` at its native pixels: a capture any part of the display can be cut
+    /// from (`pixelRect(of:)`), so the part can move within the display without a new configuration
+    /// of the stream.
+    static func wholeDisplay(_ display: DisplayInfo) -> CaptureGeometry {
+        let frame = display.globalFrame
+        let size = PixelSize(
+            width: Int((frame.width * display.scale).rounded()), height: Int((frame.height * display.scale).rounded()))
+        return CaptureGeometry(
+            display: display,
+            sourceRect: DisplayLocalRect(displayID: display.id, rect: CGRect(origin: .zero, size: frame.size)),
+            outputSize: size, areaSize: size, imageOrigin: .zero)
+    }
+
+    /// Where the pixels `part` captures lie in the pixels this geometry captures: `part`'s output
+    /// at the pixel its source rect starts on, counted from this one's. `nil` when `part` is on
+    /// another display, or not wholly inside, or captures nothing.
+    func pixelRect(of part: CaptureGeometry) -> PixelRect? {
+        guard part.display == display, part.outputSize.width > 0, part.outputSize.height > 0 else { return nil }
+        let scale = display.scale
+        let x = Int((part.sourceRect.rect.minX * scale).rounded() - (sourceRect.rect.minX * scale).rounded())
+        let y = Int((part.sourceRect.rect.minY * scale).rounded() - (sourceRect.rect.minY * scale).rounded())
+        let rect = PixelRect(x: x, y: y, width: part.outputSize.width, height: part.outputSize.height)
+        guard x >= 0, y >= 0, x + rect.width <= outputSize.width, y + rect.height <= outputSize.height else {
+            return nil
+        }
+        return rect
+    }
 }
 
 /// What `SCScreenshotManager.captureImage(in:)` is asked for to take a `CaptureGeometry`'s pixels,
@@ -52,8 +80,15 @@ struct AreaResizeTracker {
 
     /// How far the area's top-left corner moved, in source pixels, if it was resized: non-zero when
     /// the left or top edge was dragged. Zero for a move (the Viewer keeps its framing and shows the
-    /// new place) and across displays.
-    mutating func originShift(for geometry: CaptureGeometry) -> CGPoint {
+    /// new place) and across displays. A frame that `isPart` of a larger capture — an area supplied in
+    /// place of the Capture Area — moves and takes another size as a whole, never by an edge: zero,
+    /// and the Capture Area's next frame keeps the framing too, so what is placed in the area — the
+    /// selection, the rulers, the references — stays where it is in it.
+    mutating func originShift(for geometry: CaptureGeometry, isPart: Bool = false) -> CGPoint {
+        guard !isPart else {
+            last = nil
+            return .zero
+        }
         let origin = geometry.areaOrigin
         defer { last = (geometry.display.id, origin, geometry.areaSize) }
         guard let last, last.display == geometry.display.id, last.size != geometry.areaSize else { return .zero }

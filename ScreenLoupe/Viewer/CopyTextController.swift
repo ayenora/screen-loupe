@@ -14,7 +14,7 @@ final class CopyTextController: NSObject, ImageAnalysisOverlayViewDelegate {
     private let analyzer = ImageAnalyzer()
     private var analysis: Task<Void, Never>?
     /// The pixels read last, so the same picture isn't read twice.
-    private var readBuffer: CVPixelBuffer?
+    private var readBuffer: (buffer: CVPixelBuffer, rect: PixelRect)?
     private var observers: [() -> Void] = []
 
     var mode = CopyTextMode() {
@@ -47,14 +47,14 @@ final class CopyTextController: NSObject, ImageAnalysisOverlayViewDelegate {
         guard isOn else { return }
         host.isHidden = false
         guard let frame else { return clear() }
-        guard frame.pixelBuffer !== readBuffer else { return }
+        guard frame.pixelBuffer !== readBuffer?.buffer || frame.bufferRect != readBuffer?.rect else { return }
         clear()
-        readBuffer = frame.pixelBuffer
+        readBuffer = (frame.pixelBuffer, frame.bufferRect)
         let colorSpace = frame.colorSpace
         let analyzer = analyzer
         analysis = Task { [weak self] in
             let image = await Task.detached(priority: .userInitiated) {
-                ScreenshotExporter.frameImage(frame.pixelBuffer, colorSpace: colorSpace, hasAlpha: frame.hasAlpha)
+                ScreenshotExporter.frameImage(frame, colorSpace: colorSpace)
             }.value
             guard let image, !Task.isCancelled else { return }
             let read = try? await analyzer.analyze(

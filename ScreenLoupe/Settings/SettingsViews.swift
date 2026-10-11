@@ -208,6 +208,15 @@ struct ShortcutSettingsView: View {
                     ) { shortcuts.isSuspended = $0 }
                 }
             }
+            // An edition's, after the app's own.
+            ForEach(shortcuts.added.indices, id: \.self) { index in
+                let added = shortcuts.added[index]
+                SettingsRow(added.title, note: addedNote(at: index)) {
+                    ShortcutRecorder(shortcut: addedBinding(at: index), allowsLoneFunctionKey: false) {
+                        shortcuts.isSuspended = $0
+                    }
+                }
+            }
             Text("Click a shortcut and press new keys to change it. Delete clears it.")
                 .font(.callout).foregroundStyle(.secondary)
         }
@@ -225,11 +234,19 @@ struct ShortcutSettingsView: View {
         }
     }
 
+    private func addedNote(at index: Int) -> String? {
+        if shortcuts.failedAdded.contains(index) {
+            return "macOS didn't accept this shortcut; it may be taken by another app. Try another."
+        }
+        return shortcuts.added[index].note
+    }
+
     /// Taking a combination another action has clears it there, so no two actions share one.
     private func binding(for action: ShortcutAction) -> Binding<Shortcut?> {
         Binding(
             get: { store.settings.shortcuts[keyPath: action.keyPath] },
             set: { shortcut in
+                if let shortcut { clearAdded(shortcut, except: nil) }
                 store.update { settings in
                     if let shortcut {
                         for other in ShortcutAction.allCases
@@ -240,6 +257,32 @@ struct ShortcutSettingsView: View {
                     settings.shortcuts[keyPath: action.keyPath] = shortcut
                 }
             })
+    }
+
+    /// An added shortcut's, which clears its combination from the app's and the other added ones.
+    private func addedBinding(at index: Int) -> Binding<Shortcut?> {
+        Binding(
+            get: { shortcuts.added.indices.contains(index) ? shortcuts.added[index].shortcut : nil },
+            set: { shortcut in
+                if let shortcut {
+                    clearAdded(shortcut, except: index)
+                    store.update { settings in
+                        for action in ShortcutAction.allCases
+                        where settings.shortcuts[keyPath: action.keyPath]?.hasSameKeys(as: shortcut) == true {
+                            settings.shortcuts[keyPath: action.keyPath] = nil
+                        }
+                    }
+                }
+                shortcuts.setAdded(shortcut, at: index)
+            })
+    }
+
+    /// Clears `shortcut`'s keys from the added shortcuts but the one at `except`.
+    private func clearAdded(_ shortcut: Shortcut, except: Int?) {
+        for (index, added) in shortcuts.added.enumerated()
+        where index != except && added.shortcut?.hasSameKeys(as: shortcut) == true {
+            shortcuts.setAdded(nil, at: index)
+        }
     }
 }
 

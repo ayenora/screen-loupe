@@ -143,7 +143,7 @@ final class ViewerView: MTKView {
             // screen pixels as the image does. Only a frame of the live area has a corner that moves.
             var shift = CGPoint.zero
             if let geometry = frame.geometry {
-                shift = resizeTracker.originShift(for: geometry)
+                shift = resizeTracker.originShift(for: geometry, isPart: frame.isPart)
             } else {
                 resizeTracker.forget()
             }

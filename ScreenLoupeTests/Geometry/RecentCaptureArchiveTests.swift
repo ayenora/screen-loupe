@@ -46,6 +46,22 @@ struct RecentCaptureArchivePixelTests {
                 == rows(bytes, width: width, height: height, bytesPerRow: bytesPerRow))
     }
 
+    /// A part of a larger buffer — its bottom-right corner — read where it ends: the last row only as
+    /// long as the part.
+    @Test func aPartOfALargerBufferComesBack() throws {
+        let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let (bufferWidth, bufferHeight, bytesPerRow) = (9, 6, 9 * 4)
+        let bytes = pixels(width: bufferWidth, height: bufferHeight, bytesPerRow: bytesPerRow)
+        let (x, y, width, height) = (5, 2, 4, 4)
+        let start = y * bytesPerRow + x * 4
+        let part = Array(bytes[start...])
+        let back = try #require(
+            roundTrip(part, width: width, height: height, bytesPerRow: bytesPerRow, space: space, outRow: width * 4))
+        #expect(
+            rows(back, width: width, height: height, bytesPerRow: width * 4)
+                == rows(part, width: width, height: height, bytesPerRow: bytesPerRow))
+    }
+
     /// A display's own profile, which the PNG's tag may stand in for: the bytes still aren't converted.
     @Test func everyByteComesBackInASpaceWithoutAName() throws {
         let calibrated = try #require(

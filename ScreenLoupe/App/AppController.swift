@@ -76,6 +76,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(target: self)
         shortcuts.onAction = { [weak self] action in self?.perform(action) }
         settings.observe(\.shortcuts) { [weak self] in self?.shortcuts.register($0) }
+        Edition.install(in: shortcuts)
         settings.observe(\.viewerAlwaysOnTop) { [weak self] _ in
             guard let self else { return }
             settingsWindow?.window?.level = settingsLevel
@@ -505,7 +506,8 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleCaptureArea(_:)):
             let isVisible = builtWindows?.captureArea.isVisible == true
             menuItem.title = isVisible ? "Hide Capture Area" : "Show Capture Area"
-            return true
+            // An area supplied in its place is shown meanwhile.
+            return builtWindows?.suppliedArea == nil
         case #selector(toggleViewportHandle(_:)):
             menuItem.state = settings.settings.showsViewportHandle ? .on : .off
             return true

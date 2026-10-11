@@ -406,6 +406,9 @@ enum MainMenu {
         let resetArea = menu.addItem(
             withTitle: "Reset Capture Area", action: #selector(AppController.resetCaptureArea(_:)), keyEquivalent: "")
         resetArea.target = target
+        for item in Edition.windowMenuItems() {
+            menu.addItem(item)
+        }
         let onTop = menu.addItem(
             withTitle: "Keep Viewer on Top", action: #selector(AppController.toggleViewerAlwaysOnTop(_:)),
             keyEquivalent: "")

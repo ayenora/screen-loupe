@@ -172,13 +172,13 @@ enum RecentCaptureArchive {
     static func pngData(
         bgra base: UnsafeRawPointer, width: Int, height: Int, bytesPerRow: Int, space: CGColorSpace
     ) -> Data? {
-        guard let provider = CGDataProvider(data: Data(bytes: base, count: bytesPerRow * height) as CFData) else {
-            return nil
-        }
+        // Just the picture's bytes: its rows may be a part of a larger buffer's.
+        let packed = PictureRows.packed(base, width: width, height: height, bytesPerRow: bytesPerRow)
+        guard let provider = CGDataProvider(data: packed as CFData) else { return nil }
         let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.first.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
         guard
             let image = CGImage(
-                width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+                width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
                 space: space, bitmapInfo: info, provider: provider, decode: nil, shouldInterpolate: false,
                 intent: .defaultIntent)
         else { return nil }

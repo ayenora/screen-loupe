@@ -31,6 +31,15 @@ struct ViewerFrame: @unchecked Sendable {
     /// placed in the area, and shown over the picture through it (`PictureInArea`).
     var areaOrigin: CGPoint
 
+    /// Where the picture lies in `pixelBuffer`, in its pixels: all of it, or for a part of a larger
+    /// capture (`part(_:)`) just that part. Everything that reads the pixels reads them here.
+    let bufferRect: PixelRect
+
+    /// Whether the frame is a part of a larger capture (`part(_:)`), as a copy of it keeps
+    /// (`keepingOnlyItsPart`): the picture of an area that moves as a whole, never by an edge
+    /// (`AreaResizeTracker`).
+    let isPart: Bool
+
     init(
         pixelBuffer: CVPixelBuffer, layout: FrameLayout, displayID: CGDirectDisplayID?,
         imageColorSpace: CGColorSpace? = nil, hasAlpha: Bool = false, areaOrigin: CGPoint = .zero
@@ -42,10 +51,17 @@ struct ViewerFrame: @unchecked Sendable {
         self.hasAlpha = hasAlpha
         self.areaOrigin = areaOrigin
         geometry = nil
+        bufferRect = Self.wholeRect(of: pixelBuffer)
+        isPart = false
     }
 
     /// A frame of the stream.
     init(pixelBuffer: CVPixelBuffer, geometry: CaptureGeometry) {
+        self.init(
+            pixelBuffer: pixelBuffer, geometry: geometry, bufferRect: Self.wholeRect(of: pixelBuffer), isPart: false)
+    }
+
+    private init(pixelBuffer: CVPixelBuffer, geometry: CaptureGeometry, bufferRect: PixelRect, isPart: Bool) {
         self.pixelBuffer = pixelBuffer
         layout = geometry.layout
         displayID = geometry.display.id
@@ -53,10 +69,39 @@ struct ViewerFrame: @unchecked Sendable {
         hasAlpha = false
         areaOrigin = .zero
         self.geometry = geometry
+        self.bufferRect = bufferRect
+        self.isPart = isPart
     }
 
-    var pixelSize: PixelSize {
-        PixelSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
+    private static func wholeRect(of buffer: CVPixelBuffer) -> PixelRect {
+        PixelRect(x: 0, y: 0, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
+    }
+
+    /// The picture's size in pixels: `bufferRect`'s.
+    var pixelSize: PixelSize { bufferRect.size }
+
+    /// This frame of the stream as just `part` of what it captured, a frame of `part`'s geometry
+    /// read from the same buffer (`CaptureGeometry.pixelRect(of:)`); `nil` when `part` isn't inside
+    /// it.
+    func part(_ part: CaptureGeometry) -> ViewerFrame? {
+        guard let geometry, let rect = geometry.pixelRect(of: part) else { return nil }
+        return ViewerFrame(
+            pixelBuffer: pixelBuffer, geometry: part,
+            bufferRect: PixelRect(
+                x: bufferRect.x + rect.x, y: bufferRect.y + rect.y, width: rect.width, height: rect.height),
+            isPart: true)
+    }
+
+    /// Calls `body` with the picture's pixels, 32-bit BGRA: the address of its top-left pixel, the
+    /// bytes from one row to the next, and its size. `nil` when the buffer can't be read. The
+    /// pixels are valid only during the call.
+    func withPixels<Result>(_ body: (UnsafeRawPointer, Int, PixelSize) -> Result?) -> Result? {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let start = base.advanced(by: bufferRect.y * bytesPerRow + bufferRect.x * 4)
+        return body(UnsafeRawPointer(start), bytesPerRow, pixelSize)
     }
 
     /// The frame copied into a buffer of its own, cut to `area` (whole pixels of the picture: what a
@@ -69,26 +114,45 @@ struct ViewerFrame: @unchecked Sendable {
         let width = kept.imageSize.width
         let height = kept.imageSize.height
         guard let copy = Self.makeBuffer(width: width, height: height) else { return nil }
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         CVPixelBufferLockBaseAddress(copy, [])
-        defer {
-            CVPixelBufferUnlockBaseAddress(copy, [])
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
-        }
-        guard let from = CVPixelBufferGetBaseAddress(pixelBuffer), let to = CVPixelBufferGetBaseAddress(copy) else {
-            return nil
-        }
-        let fromRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        defer { CVPixelBufferUnlockBaseAddress(copy, []) }
+        guard let to = CVPixelBufferGetBaseAddress(copy) else { return nil }
         let toRow = CVPixelBufferGetBytesPerRow(copy)
-        // The kept image starts at `offset` in the captured one.
-        let start = from.advanced(by: offset.height * fromRow + offset.width * 4)
-        for row in 0..<height {
-            memcpy(to.advanced(by: row * toRow), start.advanced(by: row * fromRow), width * 4)
+        let copied: Bool? = withPixels { from, fromRow, _ in
+            // The kept image starts at `offset` in the captured one.
+            PictureRows.copy(
+                from.advanced(by: offset.height * fromRow + offset.width * 4), sourceRow: fromRow, to: to,
+                destinationRow: toRow, width: width, height: height)
+            return true
         }
+        guard copied == true else { return nil }
         return ViewerFrame(
             pixelBuffer: copy, layout: kept, displayID: nil, imageColorSpace: colorSpace,
             areaOrigin: PictureInArea.areaPoint(
                 RecentCaptureRules.snapshotOrigin(area: area), pictureOrigin: areaOrigin))
+    }
+
+    /// A frame that is a part of a larger buffer (`part(_:)`) copied into a buffer of its own, with
+    /// its geometry: what is kept of it, such as a frozen frame, holds just the part, not the
+    /// stream's buffer of the whole capture. A frame that is its whole buffer, or one that can't be
+    /// copied, as it is.
+    func keepingOnlyItsPart() -> ViewerFrame {
+        let size = pixelSize
+        guard let geometry, bufferRect != Self.wholeRect(of: pixelBuffer),
+            let copy = Self.makeBuffer(width: size.width, height: size.height)
+        else { return self }
+        CVPixelBufferLockBaseAddress(copy, [])
+        defer { CVPixelBufferUnlockBaseAddress(copy, []) }
+        guard let to = CVPixelBufferGetBaseAddress(copy) else { return self }
+        let toRow = CVPixelBufferGetBytesPerRow(copy)
+        let copied: Bool? = withPixels { from, fromRow, size in
+            PictureRows.copy(
+                from, sourceRow: fromRow, to: to, destinationRow: toRow, width: size.width, height: size.height)
+            return true
+        }
+        guard copied == true else { return self }
+        return ViewerFrame(
+            pixelBuffer: copy, geometry: geometry, bufferRect: Self.wholeRect(of: copy), isPart: true)
     }
 
     /// An IOSurface-backed, Metal-compatible BGRA buffer, drawn like a live frame.
@@ -124,6 +188,50 @@ final class FrameStore: @unchecked Sendable {
     private var configuredAt: UInt64?
     /// Whether `frame` was captured after that (`MagnetHold.isCaptured`).
     private var frameIsCurrent = false
+    private var part: CaptureGeometry?
+    /// The live frame last shown while the latest frame can't give one — the part isn't inside it
+    /// (a frame of another display), or none came since the part was cleared — so the Viewer keeps
+    /// showing it until a frame that can arrives, as it keeps its picture while the Capture Area
+    /// moves.
+    private var lastLive: ViewerFrame?
+
+    /// A part of what the stream captures that the live view shows in place of all of it: every
+    /// live frame is then just this part of the latest captured one (`ViewerFrame.part`), so the
+    /// Viewer, Freeze, Take Snapshot and every reader of the shown frame see only it, and none
+    /// the last one shown while it isn't inside that frame. `nil`, the default, shows all the stream
+    /// captures. Clearing it drops the latest frame, which is of more than the live view shows from
+    /// now on; the last part shown stays until the next frame.
+    var livePart: CaptureGeometry? {
+        get { lock.withLock { part } }
+        set {
+            lock.withLock {
+                if newValue == nil, let part {
+                    lastLive = frame?.part(part) ?? lastLive
+                    frame = nil
+                } else if newValue != nil, part == nil {
+                    lastLive = frame
+                }
+                part = newValue
+            }
+        }
+    }
+
+    /// The live frame: the latest one, or the part of it `livePart` asks for; else the last one
+    /// shown (`lastLive`). Called under the lock.
+    private var live: ViewerFrame? {
+        if let part {
+            if let shown = frame?.part(part) {
+                lastLive = shown
+                return shown
+            }
+            return lastLive
+        }
+        if let frame {
+            lastLive = nil
+            return frame
+        }
+        return lastLive
+    }
 
     /// Freezing keeps the live frame as a still, so the Viewer, the Color Meter and Copy/Save all
     /// keep the frame that was showing. Setting it while frozen
@@ -134,7 +242,8 @@ final class FrameStore: @unchecked Sendable {
         set {
             lock.withLock {
                 let wasFrozen = frozen != nil
-                frozen = newValue ? frozen ?? held ?? frame : nil
+                // A part of a capture is kept as a copy of just the part.
+                frozen = newValue ? frozen ?? held ?? live?.keepingOnlyItsPart() : nil
                 if newValue { held = nil }
                 if !wasFrozen, frozen != nil { frozenAt = Date() }
             }
@@ -154,7 +263,7 @@ final class FrameStore: @unchecked Sendable {
     /// Holds the live frame the Viewer shows: `shownFrame` keeps it while live frames go on being
     /// stored. Nothing to hold under a still picture or without a live frame.
     func hold() {
-        lock.withLock { if capture == nil, frozen == nil, held == nil { held = frame } }
+        lock.withLock { if capture == nil, frozen == nil, held == nil { held = live } }
     }
 
     func releaseHold() {
@@ -164,7 +273,7 @@ final class FrameStore: @unchecked Sendable {
     /// Whether the latest live frame shows `area`, the area where it is now (`MagnetHold.frameShows`).
     func latestFrameShows(_ area: CaptureGeometry?) -> Bool {
         lock.withLock {
-            MagnetHold.frameShows(area, frameGeometry: frame?.geometry, capturedAfterConfiguring: frameIsCurrent)
+            MagnetHold.frameShows(area, frameGeometry: live?.geometry, capturedAfterConfiguring: frameIsCurrent)
         }
     }
 
@@ -185,12 +294,12 @@ final class FrameStore: @unchecked Sendable {
     /// The frame Take Snapshot keeps (`RecentCaptureRules.snapshotFrame`): the one the live view shows,
     /// whatever shows in its place.
     var snapshotFrame: ViewerFrame? {
-        lock.withLock { RecentCaptureRules.snapshotFrame(frozen: frozen, held: held, live: frame) }
+        lock.withLock { RecentCaptureRules.snapshotFrame(frozen: frozen, held: held, live: live) }
     }
 
     /// The frame the Viewer shows: the still one, or else the held one, or else the latest live frame.
     var shownFrame: ViewerFrame? {
-        lock.withLock { capture ?? frozen ?? held ?? frame }
+        lock.withLock { capture ?? frozen ?? held ?? live }
     }
 
     /// The geometry the stream is currently configured with. Frames arriving from now on carry it.
@@ -200,7 +309,11 @@ final class FrameStore: @unchecked Sendable {
         lock.withLock {
             self.geometry = geometry
             self.configuredAt = configuredAt
-            if geometry == nil { frame = nil }
+            if geometry == nil {
+                frame = nil
+                // Without a part the stream stops for good; with one it moves to another display.
+                if part == nil { lastLive = nil }
+            }
         }
     }
 
