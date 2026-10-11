@@ -6,9 +6,9 @@ title: Screen Loupe
 
 **A zoomed monitor exactly where you need it.** Pin a frame over any part of the screen, keep working there with your normal mouse and keyboard, and watch that spot magnified — live, pixel-true and perfectly still — in a window next to it.
 
-[Download for macOS](https://github.com/ayenora/screen-loupe/releases/latest) · [Guide](guide) · [Support](support) · [Source on GitHub](https://github.com/ayenora/screen-loupe)
+[Download for macOS](https://github.com/ayenora/screen-loupe/releases/latest) · [Mac App Store](https://apps.apple.com/app/id6816393008) · [Guide](guide) · [Support](support) · [Source on GitHub](https://github.com/ayenora/screen-loupe)
 
-Free and open source (MIT). macOS 15.2 Sequoia or later. No account, no telemetry: the app collects no data.
+Free. The core is open source (MIT); official builds add free closed-source features. macOS 15.2 Sequoia or later. No account, no telemetry: the app collects no data.
 
 ## Who it is for
 
@@ -21,11 +21,12 @@ Free and open source (MIT). macOS 15.2 Sequoia or later. No account, no telemetr
 - **Work in place.** Clicks inside the frame go to the app underneath, so hover states stay live while the Viewer shows them big — on the same display or another one.
 - **Pixel-true.** At 800% every screen pixel is a crisp 8×8 square, never a blur, on Retina and non-Retina displays alike.
 - **Nothing moves on its own.** The Viewer keeps its zoom and framing while you move or resize the frame; zoom presets glide smoothly to what you were looking at.
-- **Copy exactly what you see:** the zoomed view, a selection snapped to pixels, or the source at native resolution.
+- **Copy exactly what you see:** the zoomed view, a selection snapped to pixels, or the source at native resolution — and the text in it with Copy Text, as Live Text works in Preview, also from an app that doesn't let you select it, such as the Simulator.
 - **Inspect:** a Color Meter with HEX, CSS, SwiftUI and AppKit values, recent and favourite colours and a WCAG contrast check; a corner ruler and a selection ruler; a pixel grid; reference layers with a Difference blend to check the screen against a design export. Open, drop or paste an image file to inspect it with the same tools.
 - **See it as others do:** simulate six kinds of colour vision — protanopia, deuteranopia, tritanopia, two weaker forms and grayscale — live, over any app, and copy the simulated view into a bug report.
 - **Catch transient states:** freeze the view from any app with F13, or after a countdown, while the mouse is held down; take snapshots, kept across launches, to inspect later.
 - **Before and after:** lay a snapshot or the frozen frame over the live screen in Difference, change the code, and whatever moved glows.
+- **Split view:** a reference beside the live image, or normal vision beside a simulated one, on either side of a line you drag — a change shown to someone who doesn't read a Difference image, and copied with the line and its labels.
 - **Place the frame fast:** snap it to window edges with ⌘, fit it to a window in one click, or attach it to a window with the magnet so it follows as the window moves — fitted to the window, it follows its size too, with margins to leave out the window's toolbars.
 - **Screenshot studio:** exact, clean pictures for the App Store, the web, docs and bug reports — pixel sizes, a timer, a backdrop seen on screen, one window alone with or without its shadow, PNG, JPEG or HEIC with no personal metadata.
 

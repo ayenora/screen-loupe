@@ -2,9 +2,13 @@
 
 What comes after the current version. Every item is measured against the app's principles: work in place, nothing moves on its own, pixel-true, out of the way. Nothing here is committed until it ships.
 
-## Next
+## Next: recording inside the lens
 
-- **The Mac App Store,** with 1.4, besides the signed, notarized download on GitHub Releases.
+To study motion up close — an animation, a transition, a hover appearing — in the Viewer. Not a screen recorder: what is recorded is the Capture Area at its native pixels, as a snapshot keeps it.
+
+- **Record** the view's area, from the toolbar or with a global shortcut, so recording can start while the mouse is held in another app.
+- **Play it back,** pause it and drag through it: paused, a frame is a picture like any other in the Viewer, so zoom, pan, the ruler, the Color Meter and references work on it.
+- **Save it** as recorded, at its native pixels.
 
 ## The version after: colour
 
@@ -29,10 +33,6 @@ Ordered by how much each strengthens the core experience.
 ### The designer's daily loop
 
 - **Several Capture Areas**, each with its own Viewer, for comparing two places.
-
-### Each needs its own decision
-
-- **Record the zoomed view** as a short video or GIF of an interaction. Close to the screenshot-library line in "Not planned". It uses Original Cursor in the Capture, so a recorded animation shows the pointer that drives it.
 
 ### Only if a need shows up
 

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes go into the latest release only. Update to it from [Releases](https://github.com/ayenora/screen-loupe/releases/latest) or with `brew upgrade --cask screen-loupe`.
+Security fixes go into the latest release only. Update to it from [Releases](https://github.com/ayenora/screen-loupe/releases/latest), with `brew upgrade --cask screen-loupe`, or through the Mac App Store.
 
 ## Reporting a vulnerability
 
@@ -12,4 +12,4 @@ You'll get an answer within a week. Once a fix is released, the advisory is publ
 
 ## What the app can reach
 
-Screen Loupe runs in the App Sandbox with no network access and reads only the files you pick, drop or paste. It is signed with a Developer ID and notarized by Apple. The [privacy policy](https://ayenora.github.io/screen-loupe/privacy) lists what it keeps on your Mac.
+Screen Loupe runs in the App Sandbox with no network access and reads only the files you pick, drop or paste. The DMG and the Homebrew copy are signed with a Developer ID and notarized by Apple; the Mac App Store copy is signed by Apple. The [privacy policy](https://ayenora.github.io/screen-loupe/privacy) lists what it keeps on your Mac.
