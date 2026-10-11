@@ -138,7 +138,11 @@ private struct LayerProperties: View {
                     .font(.system(size: 11 * s).monospacedDigit())
                     .frame(width: 32 * s, alignment: .trailing)
             }
-            BlendSwitch(selection: binding(\.blend), scale: s)
+            // In Split the layer is drawn at full opacity, so the setting has nothing to do.
+            .disabled(layer.blend == .split)
+            .opacity(layer.blend == .split ? 0.4 : 1)
+            BlendSwitch(
+                selection: Binding(get: { layer.blend }, set: { references.setBlend($0, of: layer.id) }), scale: s)
             Grid(alignment: .leading, horizontalSpacing: 8 * s, verticalSpacing: 8 * s) {
                 GridRow {
                     ScrubField(title: "X", value: pointBinding(\.x), step: 1, unit: "px", scale: s)
@@ -297,7 +301,7 @@ private struct ScaledSlider: View {
     }
 }
 
-/// Normal or Difference, drawn to scale like a segmented control.
+/// Normal, Difference or Split, drawn to scale like a segmented control.
 private struct BlendSwitch: View {
     @Binding var selection: ReferenceBlend
     let scale: CGFloat
@@ -306,6 +310,7 @@ private struct BlendSwitch: View {
         HStack(spacing: 1 * scale) {
             segment(.normal, "Normal")
             segment(.difference, "Difference")
+            segment(.split, "Split")
         }
         .padding(2 * scale)
         .background(RoundedRectangle(cornerRadius: 6 * scale).fill(Color.primary.opacity(0.08)))
@@ -344,6 +349,7 @@ private struct ScrubLabel: View {
     /// The ↔ cursor is pushed while the pointer is over the caption, and popped when it leaves or
     /// the caption goes away under it (another layer selected, this one deleted).
     @State private var pushedCursor = false
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Text(title)
@@ -356,8 +362,9 @@ private struct ScrubLabel: View {
             }
             .padding(.vertical, 2 * scale)
             .contentShape(Rectangle())
-            .onHover { inside in setCursorPushed(inside) }
+            .onHover { inside in setCursorPushed(inside && isEnabled) }
             .onDisappear { setCursorPushed(false) }
+            .onChange(of: isEnabled) { _, enabled in if !enabled { setCursorPushed(false) } }
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { drag in

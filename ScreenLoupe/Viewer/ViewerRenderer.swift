@@ -14,6 +14,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
     var colorVision: ColorVisionSimulation?
     /// The visible reference layers, bottom first.
     var references: () -> [(layer: ReferenceLayer, image: CGImage)] = { [] }
+    /// The split shown and its line's place as a fraction of the width (`SplitLine`), or `nil`.
+    var split: () -> (kind: SplitKind, position: Double)? = { nil }
     /// Called when a reference texture made off the main thread is ready to draw.
     var onTextureReady: (() -> Void)?
 
@@ -32,6 +34,9 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         var colorSpace: CGColorSpace
         /// The colour vision simulated over everything else, or `nil`.
         var colorVision: ColorVisionSimulation?
+        /// The split shown and its line's x in the target's pixels, or `nil`: a reference layer in
+        /// Split shows only left of it, and the colour vision split leaves the scene as it is there.
+        var split: (kind: SplitKind, x: CGFloat)?
     }
 
     private let queue: MTLCommandQueue
@@ -155,7 +160,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         Scene(
             size: view.drawableSize, drawableScale: view.drawableScale, state: state,
             frame: frameStore.shownFrame, style: style, references: references(),
-            colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!, colorVision: colorVision)
+            colorSpace: view.colorspace ?? CGColorSpace(name: CGColorSpace.sRGB)!, colorVision: colorVision,
+            split: split().map { ($0.kind, SplitLine.x(position: $0.position, width: view.drawableSize.width)) })
     }
 
     /// `scene` rendered offscreen by the same pipelines as the screen, for Copy View: what it shows is the Viewer, at
@@ -240,7 +246,12 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
         let texture = encodeLayers(scene, into: layers)
         layers.endEncoding()
         guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return texture }
-        var uniforms = vision.matrix + [SIMD4<Float>(Float(ColorVisionTransform.encodeCount - 1), 0, 0, 0)]
+        let splitX = scene.split.flatMap { if case .vision = $0.kind { $0.x } else { nil } }
+        var uniforms =
+            vision.matrix + [
+                SIMD4<Float>(
+                    Float(ColorVisionTransform.encodeCount - 1), splitX == nil ? 0 : 1, Float(splitX ?? 0), 0)
+            ]
         var viewport = SIMD4<Float>(-1, 1, 1, -1)
         encoder.setRenderPipelineState(visionPipeline)
         encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
@@ -344,6 +355,8 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
             // The layer's corners in the frame's UV: the frame covers its pixel size from its origin.
             var frameUV = SIMD4<Float>(0, 0, 0, 0)
             let difference = layer.blend == .difference && frameTexture != nil
+            // In Split, the layer at full opacity left of the line.
+            let splitX = layer.blend == .split && scene.split?.kind == .reference ? scene.split?.x : nil
             if difference, let frame = scene.frame {
                 let pixels = CGSize(width: frame.pixelSize.width, height: frame.pixelSize.height)
                 let origin = frame.layout.imageOrigin
@@ -351,7 +364,12 @@ final class ViewerRenderer: NSObject, MTKViewDelegate {
                     Float((rect.minX - origin.x) / pixels.width), Float((rect.minY - origin.y) / pixels.height),
                     Float(rect.width / pixels.width), Float(rect.height / pixels.height))
             }
-            var uniforms = (frameUV, SIMD4<Float>(Float(layer.opacity), difference ? 1 : 0, 0, 0))
+            var uniforms = (
+                frameUV,
+                SIMD4<Float>(
+                    splitX == nil ? Float(layer.opacity) : 1, difference ? 1 : 0, splitX == nil ? 0 : 1,
+                    Float(splitX ?? 0))
+            )
             encoder.setVertexBytes(&quad, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 0)
             encoder.setFragmentTexture(texture, index: 0)

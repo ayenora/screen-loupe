@@ -6,6 +6,9 @@ enum ReferenceBlend: String, Codable, CaseIterable, Sendable {
     case normal
     /// The absolute difference from the live capture: matching pixels turn black.
     case difference
+    /// Left of the split line the layer at full opacity, right of it what shows under the layer
+    /// (`SplitLine`). One layer at a time (`ReferenceStack.setBlend`).
+    case split
 }
 
 /// A design image laid over the live pixels. Its place and size are
@@ -123,6 +126,7 @@ struct ReferenceStack: Codable, Equatable, Sendable {
         // An unreadable layer is dropped; the others stay.
         layers = c.value(.layers, or: [Lenient<ReferenceLayer>]()).compactMap(\.value)
         selectedID = c.value(.selectedID, or: nil)
+        keepOneSplit()
     }
 
     var canAdd: Bool { layers.count < Self.limit }
@@ -154,6 +158,38 @@ struct ReferenceStack: Codable, Equatable, Sendable {
     mutating func update(_ id: UUID, _ change: (inout ReferenceLayer) -> Void) {
         guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
         change(&layers[index])
+    }
+
+    /// Draws layer `id` as `blend`. Split is for one layer at a time: choosing it puts a layer that
+    /// had it back to Normal, and shows a hidden layer, so the split shows.
+    mutating func setBlend(_ blend: ReferenceBlend, of id: UUID) {
+        guard layers.contains(where: { $0.id == id }) else { return }
+        if blend == .split { endSplit() }
+        update(id) {
+            $0.blend = blend
+            if blend == .split { $0.isVisible = true }
+        }
+    }
+
+    /// One layer in Split, as `setBlend` keeps it: of several (a project edited by hand), the
+    /// topmost keeps it and the others go back to Normal.
+    mutating func keepOneSplit() {
+        guard let top = layers.firstIndex(where: { $0.blend == .split }) else { return }
+        for index in layers.indices where index != top && layers[index].blend == .split {
+            layers[index].blend = .normal
+        }
+    }
+
+    /// Puts a layer in Split back to Normal: the colour vision split turned on.
+    mutating func endSplit() {
+        for index in layers.indices where layers[index].blend == .split {
+            layers[index].blend = .normal
+        }
+    }
+
+    /// Whether a layer in Split shows: visible, in Split.
+    var showsSplit: Bool {
+        layers.contains { $0.isVisible && $0.blend == .split }
     }
 
     /// The Capture Area's top-left corner moved by `shift` source pixels (its left or top edge was

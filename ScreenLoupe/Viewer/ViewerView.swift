@@ -162,12 +162,14 @@ final class ViewerView: MTKView {
     /// is going to. Tagged with the colour space the Viewer shows it in.
     /// Just `region` (viewport pixels) when given; else just the Select tool's selection while there
     /// is one, at the current zoom, even where it reaches beyond the viewport. Past `ImageBudget`
-    /// only the top-left part. `nil` without a frame or without Metal.
+    /// only the top-left part. The split line and its side labels are drawn in, without the knob,
+    /// when the line falls inside the copy. `nil` without a frame or without Metal.
     func renderViewImage(showsGrid: Bool, region: CGRect? = nil) -> CGImage? {
         guard let renderer else { return nil }
         var style = renderer.style
         style.showsGrid = style.showsGrid && showsGrid
         var scene = renderer.scene(for: self, style: style, state: zoomPan.state)
+        let viewOffset = scene.state.offset.x
         if let region {
             scene.state.offset = CGPoint(x: scene.state.offset.x - region.minX, y: scene.state.offset.y - region.minY)
             scene.state.viewportSize = region.size
@@ -176,7 +178,11 @@ final class ViewerView: MTKView {
             scene.state = scene.state.cropped(to: rect)
             scene.size = scene.state.viewportSize
         }
-        return renderer.renderImage(scene)
+        // The line stays on the picture's column it is over in the view.
+        scene.split?.x += scene.state.offset.x - viewOffset
+        guard let image = renderer.renderImage(scene) else { return nil }
+        guard let split = scene.split else { return image }
+        return SplitController.drawn(on: image, kind: split.kind, x: split.x, scale: drawableScale)
     }
 
     private var resizeTracker = AreaResizeTracker()
@@ -272,10 +278,15 @@ final class ViewerView: MTKView {
 
     // MARK: Tools
 
-    /// The corner ruler takes presses on its parts before the reference layers, and they before
-    /// panning. An Option-drag comes before all of them,
+    /// The corner ruler takes presses on its parts before the split line, it before the reference
+    /// layers, and they before panning. An Option-drag comes before all of them,
     /// and the Select tool, while on, before the reference layers.
     var ruler: RulerController?
+    var split: SplitController? {
+        didSet {
+            renderer?.split = { [weak split] in split?.shown }
+        }
+    }
     var references: ReferencesController? {
         didSet {
             renderer?.references = { [weak references] in references?.drawable ?? [] }
@@ -297,7 +308,7 @@ final class ViewerView: MTKView {
     /// Space while Copy Text is on leaves it and goes back to live (`CopyTextMode.space`).
     var onSpaceInText: (() -> Void)?
 
-    private enum Press { case ruler, reference, selection }
+    private enum Press { case ruler, split, reference, selection }
     /// Who the current press belongs to; `nil` for panning or picking.
     private var toolPress: Press?
 
@@ -312,6 +323,7 @@ final class ViewerView: MTKView {
         {
             return cursor.set()
         }
+        if let split, split.isDragging || split.hits(point, scale: scale) { return SplitController.cursor.set() }
         if let selection, selection.isToolOn {
             return SelectionController.cursor(for: selection.part(at: point, scale: scale)).set()
         }
@@ -358,6 +370,9 @@ final class ViewerView: MTKView {
             toolPress = .ruler
             updateCursor(at: point, modifiers: event.modifierFlags)
             return
+        } else if let split, split.press(at: point, scale: scale) {
+            toolPress = .split
+            return
         } else if let selection, selection.press(at: point, scale: scale) {
             zoomPan.settle()
             toolPress = .selection
@@ -375,6 +390,7 @@ final class ViewerView: MTKView {
     override func mouseDragged(with event: NSEvent) {
         switch toolPress {
         case .ruler?: return ruler?.drag(to: drawablePoint(event), scale: drawableScale) ?? ()
+        case .split?: return split?.drag(to: drawablePoint(event)) ?? ()
         case .reference?: return references?.drag(to: drawablePoint(event)) ?? ()
         case .selection?: return selection?.drag(to: drawablePoint(event), scale: drawableScale) ?? ()
         case nil: break
@@ -402,6 +418,7 @@ final class ViewerView: MTKView {
             toolPress = nil
             switch press {
             case .ruler: ruler?.endDrag()
+            case .split: split?.endDrag()
             case .reference: references?.endDrag()
             case .selection: if let region = selection?.endDrag() { onCopyRegion?(region) }
             }

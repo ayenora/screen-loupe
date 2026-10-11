@@ -312,6 +312,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         windows.viewer.turnOnColorVision(ColorVisionMode.allCases[tag])
     }
 
+    /// View › Color Vision › Split with Normal Vision (⌥⌘Y), also in the eye button's ▾: normal
+    /// vision left of the split line, the simulation right of it.
+    @objc func toggleColorVisionSplit(_ sender: Any?) {
+        windows.viewer.toggleColorVisionSplit()
+    }
+
     @objc func toggleFreeze(_ sender: Any?) {
         windows.toggleFreeze()
     }
@@ -592,6 +598,10 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleColorVision(_:)):
             let viewer = builtWindows?.viewer
             menuItem.state = viewer?.colorVision.isOn == true ? .on : .off
+            return viewer?.showsCapture == true
+        case #selector(toggleColorVisionSplit(_:)):
+            let viewer = builtWindows?.viewer
+            menuItem.state = viewer?.colorVision.isSplit == true ? .on : .off
             return viewer?.showsCapture == true
         case #selector(chooseColorVision(_:)):
             // Checked on the chosen mode, whether it is on or not.

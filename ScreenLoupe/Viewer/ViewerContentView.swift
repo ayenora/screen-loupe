@@ -13,6 +13,7 @@ final class ViewerContentView: NSStackView {
     let ruler: RulerController
     let selection: SelectionController
     let colorVision: ColorVisionController
+    let split: SplitController
     let captures = RecentCaptures()
     let copyTextTool: CopyTextController
     /// Called when a recent capture starts or stops showing in place of the live view.
@@ -64,6 +65,7 @@ final class ViewerContentView: NSStackView {
         references = ReferencesController(project: project, zoomPan: zoomPan)
         selection = SelectionController(zoomPan: zoomPan)
         colorVision = ColorVisionController(settings: settings)
+        split = SplitController(settings: settings, zoomPan: zoomPan)
         copyTextTool = CopyTextController(viewerView: viewerView)
         // A selection is drawn with the Select tool: the Selection Ruler turns it on.
         ruler.onMeasureSelection = { [selection] in if !selection.isToolOn { selection.toggleTool() } }
@@ -73,6 +75,8 @@ final class ViewerContentView: NSStackView {
         overlay.selection = selection
         viewerView.references = references
         overlay.references = references
+        viewerView.split = split
+        overlay.split = split
         let referencesPanel = NSHostingView(rootView: ReferencesPanel(references: references))
         // The side panel column sizes it, not its content.
         referencesPanel.sizingOptions = []
@@ -139,7 +143,18 @@ final class ViewerContentView: NSStackView {
             guard let self else { return }
             viewerView.colorVision = colorVision.simulation
             showVisionIndicator()
+            // The last split turned on wins: the vision split showing — Split with Normal Vision,
+            // or the simulation turned on with it remembered — puts a layer in Split back to Normal.
+            let showsVisionSplit = colorVision.showsSplit
+            if showsVisionSplit, !showedVisionSplit { references.update { $0.endSplit() } }
+            showedVisionSplit = showsVisionSplit
+            showSplit()
         }
+        split.observe { [weak self] in
+            self?.viewerView.requestDraw()
+            self?.overlay.needsDisplay = true
+        }
+        overlay.splitLabelsTop = { [weak self] in SplitLine.labelsTop(below: self?.lowestPillBottom) }
         selection.observe { [weak self] in
             guard let self else { return }
             // Select and Copy Text are never on together.
@@ -195,7 +210,10 @@ final class ViewerContentView: NSStackView {
         references.onChange = { [weak self] in
             self?.viewerView.requestDraw()
             self?.overlay.needsDisplay = true
+            self?.showSplit()
         }
+        // The last split turned on wins: a layer in Split ends the colour vision split.
+        references.onSplitChosen = { [colorVision] in colorVision.endSplit() }
         references.onPaste = { [weak self] in self?.paste(as: .references) }
         references.pictureOrigin = { [frameStore] in frameStore.shownFrame?.areaOrigin ?? .zero }
         viewerView.onPick = { [weak self] in self?.pickColor() }
@@ -236,6 +254,7 @@ final class ViewerContentView: NSStackView {
         meterPanel.isPicking = viewerView.isPicking
         overlay.showsSampleSquare = sidePanelLayout?.isMeterExpanded == true
         references.takesMouse = !isSelecting && !viewerView.isPicking
+        split.takesMouse = references.takesMouse
         window?.invalidateCursorRects(for: viewerView)
     }
 
@@ -274,7 +293,35 @@ final class ViewerContentView: NSStackView {
             ViewerIndicators.simulationTop(below: otherBottom),
             ViewerIndicators.simulationBorderInset(otherShows: otherBottom != nil)
         )
-        visionIndicator.state = colorVision.simulation.map { .simulation(label: $0.label) } ?? .hidden
+        visionIndicator.state =
+            colorVision.simulation.map { .simulation(label: $0.indicatorLabel(split: colorVision.showsSplit)) }
+            ?? .hidden
+        // The split line's labels go under the pills.
+        overlay.needsDisplay = true
+    }
+
+    /// The bottom of the lowest pill at the image's top, `nil` while none shows.
+    private var lowestPillBottom: CGFloat? {
+        [frozenIndicator.chipBottom, captureIndicator.chipBottom, visionIndicator.chipBottom].compactMap { $0 }.max()
+    }
+
+    // MARK: Split view
+
+    /// The split shown (`SplitKind.shown`): the colour vision split, or a visible layer in Split
+    /// while the References panel is open, as the layers show only then.
+    private func showSplit() {
+        split.kind = SplitKind.shown(
+            visionSplit: colorVision.showsSplit ? colorVision.active?.title : nil,
+            referenceSplit: references.isActive && references.stack.showsSplit)
+    }
+
+    /// Whether the vision split showed at the last change of the simulation.
+    private var showedVisionSplit = false
+
+    /// View › Color Vision › Split with Normal Vision: on, with the simulation if it was off, and a
+    /// layer in Split back to Normal, as the last split turned on wins; or off.
+    func toggleVisionSplit() {
+        colorVision.toggleSplit()
     }
 
     /// An Option-drag's region, straight to the clipboard.

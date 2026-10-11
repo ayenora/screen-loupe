@@ -52,6 +52,7 @@
 				Geometry/ShortcutRules.swift,
 				Geometry/SidePanelEdge.swift,
 				Geometry/SizeText.swift,
+				Geometry/SplitLine.swift,
 				Geometry/SquareOutline.swift,
 				Geometry/StudioBackdrop.swift,
 				Geometry/StudioBackground.swift,

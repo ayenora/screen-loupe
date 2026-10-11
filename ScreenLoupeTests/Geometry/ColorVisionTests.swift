@@ -240,14 +240,23 @@ struct ColorVisionTests {
         #expect(ColorVisionMode.allCases.allSatisfy { !$0.detail.isEmpty })
     }
 
-    @Test func theIndicatorNamesTheMode() {
-        #expect(ColorVisionMode.deuteranopia.indicatorLabel == "Deuteranopia · simulated")
+    @Test func theIndicatorNamesTheModeAndTheSplit() {
+        let simulation = ColorVisionSimulation(mode: .deuteranopia)
+        #expect(simulation.indicatorLabel(split: false) == "Deuteranopia · simulated")
+        #expect(simulation.indicatorLabel(split: true) == "Deuteranopia · split · simulated")
     }
 
-    @Test func aModesOwnSimulationIsItsMatrixAndLabel() {
+    @Test func aSuppliedNameGoesIntoTheIndicator() {
+        let simulation = ColorVisionSimulation(
+            matrix: ColorVisionMode.deuteranomaly.linearSRGBMatrix, name: "Weak 60 %")
+        #expect(simulation.indicatorLabel(split: false) == "Weak 60 % · simulated")
+        #expect(simulation.indicatorLabel(split: true) == "Weak 60 % · split · simulated")
+    }
+
+    @Test func aModesOwnSimulationIsItsMatrixAndName() {
         let simulation = ColorVisionSimulation(mode: .protanomaly)
         #expect(simulation.matrix == ColorVisionMode.protanomaly.linearSRGBMatrix)
-        #expect(simulation.label == "Protanomaly · simulated")
+        #expect(simulation.name == "Protanomaly")
         #expect(simulation != ColorVisionSimulation(mode: .protanopia))
     }
 
@@ -276,5 +285,69 @@ struct ColorVisionChoiceTests {
     @Test func nothingIsSimulatedWhileOff() {
         #expect(ColorVisionChoice(mode: .deuteranopia, isOn: false).active == nil)
         #expect(ColorVisionChoice(mode: .deuteranopia, isOn: true).active == .deuteranopia)
+    }
+
+    @Test func itStartsWhole() {
+        #expect(!ColorVisionChoice(mode: .deuteranopia, isOn: true).isSplit)
+    }
+
+    @Test func theSplitShowsOnlyWhileOn() {
+        #expect(!ColorVisionChoice(mode: .deuteranopia, isOn: false, isSplit: true).showsSplit)
+        #expect(ColorVisionChoice(mode: .deuteranopia, isOn: true, isSplit: true).showsSplit)
+        #expect(!ColorVisionChoice(mode: .deuteranopia, isOn: true).showsSplit)
+    }
+
+    @Test func splittingWhileOffTurnsTheSimulationOnSplit() {
+        let off = ColorVisionChoice(mode: .tritanopia, isOn: false)
+        #expect(off.splitToggled() == ColorVisionChoice(mode: .tritanopia, isOn: true, isSplit: true))
+        // Remembered while off: choosing it turns the simulation on, still split, as a mode does.
+        let remembered = ColorVisionChoice(mode: .tritanopia, isOn: false, isSplit: true)
+        #expect(remembered.splitToggled() == ColorVisionChoice(mode: .tritanopia, isOn: true, isSplit: true))
+    }
+
+    @Test func splittingWhileOnKeepsTheMode() {
+        let on = ColorVisionChoice(mode: .greyscale, isOn: true)
+        #expect(on.splitToggled() == ColorVisionChoice(mode: .greyscale, isOn: true, isSplit: true))
+    }
+
+    @Test func endingTheSplitKeepsTheSimulationOn() {
+        let split = ColorVisionChoice(mode: .protanopia, isOn: true, isSplit: true)
+        #expect(split.splitToggled() == ColorVisionChoice(mode: .protanopia, isOn: true))
+        #expect(split.withoutSplit() == ColorVisionChoice(mode: .protanopia, isOn: true))
+    }
+
+    @Test func aLayerInSplitEndsARememberedSplitToo() {
+        let remembered = ColorVisionChoice(mode: .protanopia, isOn: false, isSplit: true)
+        #expect(remembered.withoutSplit() == ColorVisionChoice(mode: .protanopia, isOn: false))
+    }
+
+    @Test func withoutSplitChangesNothingElse() {
+        let off = ColorVisionChoice(mode: .protanopia, isOn: false)
+        #expect(off.withoutSplit() == off)
+        let on = ColorVisionChoice(mode: .protanomaly, isOn: true)
+        #expect(on.withoutSplit() == on)
+    }
+
+    @Test func theSimulationOffAndOnKeepsTheSplit() {
+        let split = ColorVisionChoice(mode: .deuteranopia, isOn: true, isSplit: true)
+        let off = split.toggled()
+        #expect(off == ColorVisionChoice(mode: .deuteranopia, isOn: false, isSplit: true))
+        #expect(!off.showsSplit)
+        #expect(off.toggled() == split)
+        #expect(off.toggled().showsSplit)
+    }
+
+    @Test func theSimulationOffAndOnKeepsItWhole() {
+        let whole = ColorVisionChoice(mode: .deuteranopia, isOn: true)
+        #expect(whole.toggled().toggled() == whole)
+    }
+
+    @Test func anotherModeKeepsTheSplit() {
+        let split = ColorVisionChoice(mode: .deuteranopia, isOn: true, isSplit: true)
+        #expect(split.turnedOn(.tritanopia) == ColorVisionChoice(mode: .tritanopia, isOn: true, isSplit: true))
+        let remembered = ColorVisionChoice(mode: .deuteranopia, isOn: false, isSplit: true)
+        #expect(remembered.turnedOn(.tritanopia).showsSplit)
+        let whole = ColorVisionChoice(mode: .deuteranopia, isOn: true)
+        #expect(!whole.turnedOn(.tritanopia).isSplit)
     }
 }

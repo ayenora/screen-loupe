@@ -91,6 +91,16 @@ final class ReferencesController {
         update { $0.update(id, change) }
     }
 
+    /// Called when a layer chose Split: the colour vision split ends.
+    @ObservationIgnored var onSplitChosen: (() -> Void)?
+
+    /// The panel's Normal, Difference and Split, one layer in Split at a time
+    /// (`ReferenceStack.setBlend`).
+    func setBlend(_ blend: ReferenceBlend, of id: UUID) {
+        update { $0.setBlend(blend, of: id) }
+        if blend == .split { onSplitChosen?() }
+    }
+
     /// The Capture Area's top-left corner moved by `shift` source pixels: the layers stay on their
     /// pixels (`ReferenceStack.followAreaOrigin`).
     func areaOriginMoved(by shift: CGPoint) {

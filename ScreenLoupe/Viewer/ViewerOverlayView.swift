@@ -9,7 +9,8 @@ import AppKit
 /// (orange by default) reads on any content. With the original cursor in the capture nothing is
 /// drawn: the capture has it. A probe's square (`PixelInspector.Probe.square`) is outlined in place
 /// of the pixel's box, under the mouse in the Viewer too, with the pixel in a thin line inside it
-/// while a pixel is large enough to show one (`SquareOutline`). Never takes the mouse. Everything
+/// while a pixel is large enough to show one (`SquareOutline`). The split view's line, its knob and
+/// its side labels go under everything else (`SplitController`). Never takes the mouse. Everything
 /// here is placed over the presented view (`ZoomPanController.presented`), as the image is drawn
 /// during a zoom glide.
 final class ViewerOverlayView: NSView {
@@ -26,6 +27,10 @@ final class ViewerOverlayView: NSView {
     var references: ReferencesController?
     /// The Select tool's selection and an Option-drag's region.
     var selection: SelectionController?
+    /// The split view's line, under everything else drawn here.
+    var split: SplitController?
+    /// The split line's labels' top: under the indicators' pills at the top (`SplitLine.labelsTop`).
+    var splitLabelsTop: () -> CGFloat = { SplitLine.labelTop }
     /// The freeze's hint at the bottom while it shows (`FrozenIndicatorView.shownHint`): the
     /// Selection Ruler's hint goes above it (`ViewerHints`).
     var freezeHint: () -> String? = { nil }
@@ -50,6 +55,11 @@ final class ViewerOverlayView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let drawableScale = drawableScale()
+        if let split, let shown = split.shown {
+            SplitController.draw(
+                shown.kind, x: SplitLine.x(position: shown.position, width: bounds.width), in: bounds,
+                labelsTop: splitLabelsTop(), knob: true)
+        }
         drawSelectedReference(drawableScale: drawableScale)
         drawCrosshair(drawableScale: drawableScale)
         drawRuler(drawableScale: drawableScale)
@@ -463,7 +473,7 @@ final class FrozenIndicatorView: NSView {
         case .countdown: return 10 + CountdownPill.freeze.ring + 2 * CountdownPill.freeze.inset
         case .capture(let label): return ViewerIndicators.top + Self.chipHeight((chipText ?? label) as NSString)
         case .simulation(let label):
-            return ViewerIndicators.top + Self.chipHeight(label as NSString)
+            return stacking.top + Self.chipHeight(label as NSString)
         }
     }
 

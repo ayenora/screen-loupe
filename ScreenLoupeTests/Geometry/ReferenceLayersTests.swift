@@ -128,6 +128,15 @@ struct ReferenceLayersCodingTests {
         #expect(stack.selected?.name == "a.png")
     }
 
+    @Test func splitIsSavedByItsNameAndReadBack() throws {
+        var stack = ReferenceStack()
+        stack.add(ReferenceLayer(name: "a", fileName: "a.png", imageSize: CGSize(width: 10, height: 10)))
+        stack.setBlend(.split, of: stack.layers[0].id)
+        let data = try JSONEncoder().encode(stack)
+        #expect(String(data: data, encoding: .utf8)?.contains("\"blend\":\"split\"") == true)
+        #expect(try JSONDecoder().decode(ReferenceStack.self, from: data) == stack)
+    }
+
     @Test func aStackRoundTrips() throws {
         var stack = ReferenceStack()
         stack.add(ReferenceLayer(name: "a", fileName: "a.png", imageSize: CGSize(width: 10, height: 10)))
@@ -239,5 +248,140 @@ struct ReferenceStrayFilesTests {
         #expect(
             ReferenceStack.strayFiles(["project.json"], layers: [layer("gone.png")], projectFile: "project.json")
                 .isEmpty)
+    }
+}
+
+struct ReferenceSplitTests {
+    private func stack(_ count: Int) -> ReferenceStack {
+        var stack = ReferenceStack()
+        for index in 0..<count {
+            stack.add(
+                ReferenceLayer(name: "\(index)", fileName: "\(index).png", imageSize: CGSize(width: 10, height: 10)))
+        }
+        return stack
+    }
+
+    @Test func aLayerTakesTheBlendChosen() {
+        var stack = stack(1)
+        let id = stack.layers[0].id
+        for blend in ReferenceBlend.allCases {
+            stack.setBlend(blend, of: id)
+            #expect(stack.layers[0].blend == blend)
+        }
+    }
+
+    @Test func splitIsForOneLayerAtATime() {
+        var stack = stack(3)
+        let ids = stack.layers.map(\.id)
+        stack.setBlend(.split, of: ids[0])
+        stack.setBlend(.split, of: ids[2])
+        #expect(stack.layers.map(\.blend) == [.normal, .normal, .split])
+    }
+
+    @Test func splitLeavesTheOtherBlendsAlone() {
+        var stack = stack(3)
+        let ids = stack.layers.map(\.id)
+        stack.setBlend(.difference, of: ids[0])
+        stack.setBlend(.split, of: ids[1])
+        stack.setBlend(.split, of: ids[2])
+        #expect(stack.layers.map(\.blend) == [.difference, .normal, .split])
+    }
+
+    @Test func choosingSplitAgainOnTheSameLayerKeepsIt() {
+        var stack = stack(2)
+        let id = stack.layers[1].id
+        stack.setBlend(.split, of: id)
+        stack.setBlend(.split, of: id)
+        #expect(stack.layers.map(\.blend) == [.normal, .split])
+    }
+
+    @Test func anotherBlendOnAnotherLayerKeepsTheSplit() {
+        var stack = stack(2)
+        let ids = stack.layers.map(\.id)
+        stack.setBlend(.split, of: ids[0])
+        stack.setBlend(.difference, of: ids[1])
+        #expect(stack.layers.map(\.blend) == [.split, .difference])
+    }
+
+    @Test func anUnknownLayerChangesNothing() {
+        var stack = stack(2)
+        stack.setBlend(.split, of: stack.layers[0].id)
+        let before = stack
+        stack.setBlend(.split, of: UUID())
+        #expect(stack == before)
+    }
+
+    @Test func endingTheSplitPutsTheLayerBackToNormal() {
+        var stack = stack(3)
+        let ids = stack.layers.map(\.id)
+        stack.setBlend(.difference, of: ids[0])
+        stack.setBlend(.split, of: ids[1])
+        stack.endSplit()
+        #expect(stack.layers.map(\.blend) == [.difference, .normal, .normal])
+        let ended = stack
+        stack.endSplit()
+        #expect(stack == ended)
+    }
+
+    @Test func choosingSplitShowsAHiddenLayer() {
+        var stack = stack(2)
+        let id = stack.layers[1].id
+        stack.update(id) { $0.isVisible = false }
+        stack.setBlend(.split, of: id)
+        #expect(stack.layers[1].isVisible)
+        #expect(stack.showsSplit)
+    }
+
+    @Test func anotherBlendLeavesAHiddenLayerHidden() {
+        var stack = stack(1)
+        let id = stack.layers[0].id
+        stack.update(id) { $0.isVisible = false }
+        stack.setBlend(.difference, of: id)
+        stack.setBlend(.normal, of: id)
+        #expect(!stack.layers[0].isVisible)
+    }
+
+    @Test func ofSeveralLayersInSplitTheTopmostKeepsIt() {
+        var stack = stack(4)
+        for index in [1, 3] { stack.update(stack.layers[index].id) { $0.blend = .split } }
+        stack.update(stack.layers[2].id) { $0.blend = .difference }
+        stack.keepOneSplit()
+        #expect(stack.layers.map(\.blend) == [.normal, .split, .difference, .normal])
+        let kept = stack
+        stack.keepOneSplit()
+        #expect(stack == kept)
+    }
+
+    @Test func keepingOneSplitWithoutAnyChangesNothing() {
+        var stack = stack(2)
+        stack.update(stack.layers[0].id) { $0.blend = .difference }
+        let before = stack
+        stack.keepOneSplit()
+        #expect(stack == before)
+    }
+
+    @Test func readingAProjectKeepsOneLayerInSplit() throws {
+        let json = """
+            {"layers":[
+              {"id":"8C1F5C4E-8A57-4E61-9F2E-1B2B3C4D5E6F","name":"a","fileName":"a.png","imageSize":[10,10],
+               "blend":"difference"},
+              {"id":"9C1F5C4E-8A57-4E61-9F2E-1B2B3C4D5E6F","name":"b","fileName":"b.png","imageSize":[10,10],
+               "blend":"split"},
+              {"id":"AC1F5C4E-8A57-4E61-9F2E-1B2B3C4D5E6F","name":"c","fileName":"c.png","imageSize":[10,10],
+               "blend":"split"}
+            ]}
+            """
+        let stack = try JSONDecoder().decode(ReferenceStack.self, from: Data(json.utf8))
+        #expect(stack.layers.map(\.blend) == [.difference, .split, .normal])
+    }
+
+    @Test func aSplitShowsOnlyOnAVisibleLayer() {
+        var stack = stack(2)
+        #expect(!stack.showsSplit)
+        let id = stack.layers[1].id
+        stack.setBlend(.split, of: id)
+        #expect(stack.showsSplit)
+        stack.update(id) { $0.isVisible = false }
+        #expect(!stack.showsSplit)
     }
 }

@@ -37,9 +37,6 @@ enum ColorVisionMode: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// The indicator over the Viewer: "Deuteranopia · simulated".
-    var indicatorLabel: String { "\(title) · simulated" }
-
     /// The simulation in linear sRGB. The dichromacies and the anomalies are Machado, Oliveira and
     /// Fernandes (2009), "A Physiologically-based Model for Simulation of Color Vision Deficiency":
     /// the -opias at severity 1.0, the -omalies at 0.6, from the paper's table. Greyscale is the
@@ -80,40 +77,66 @@ enum ColorVisionMode: String, Codable, CaseIterable, Sendable {
     static let luminance: [Double] = [0.2126, 0.7152, 0.0722]
 }
 
-/// The simulation button and its ▾: which mode is chosen, and whether it is on. The chosen mode is
-/// kept between launches; whether it is on isn't, so the app never starts with the colours changed.
+/// The simulation button and its ▾: which mode is chosen, whether it is on, and whether it is split
+/// with normal vision. The chosen mode and the split are kept between launches; whether it is on
+/// isn't, so the app never starts with the colours changed. The split is remembered while the
+/// simulation is off and shows whenever it is on (`showsSplit`): only Split with Normal Vision, or
+/// a reference layer choosing Split, ends it.
 struct ColorVisionChoice: Equatable, Sendable {
     var mode: ColorVisionMode
     var isOn: Bool
+    /// Split with Normal Vision: normal vision left of the split line, the simulation right of it.
+    var isSplit = false
 
-    /// The eye button: the chosen mode on or off.
+    /// The eye button: the chosen mode on or off, split as it was.
     func toggled() -> ColorVisionChoice {
-        ColorVisionChoice(mode: mode, isOn: !isOn)
+        ColorVisionChoice(mode: mode, isOn: !isOn, isSplit: isSplit)
     }
 
-    /// A mode chosen in the ▾ or the View menu: it is chosen and on.
+    /// A mode chosen in the ▾ or the View menu: it is chosen and on, split as it was.
     func turnedOn(_ mode: ColorVisionMode) -> ColorVisionChoice {
-        ColorVisionChoice(mode: mode, isOn: true)
+        ColorVisionChoice(mode: mode, isOn: true, isSplit: isSplit)
     }
+
+    /// Split with Normal Vision. While the simulation is off it turns it on, split, as choosing a
+    /// mode does; while on, it turns the split on or off.
+    func splitToggled() -> ColorVisionChoice {
+        ColorVisionChoice(mode: mode, isOn: true, isSplit: isOn ? !isSplit : true)
+    }
+
+    /// The split off, the simulation as it was: a reference layer chose Split.
+    func withoutSplit() -> ColorVisionChoice {
+        ColorVisionChoice(mode: mode, isOn: isOn, isSplit: false)
+    }
+
+    /// Whether the Viewer shows the split now: split and on.
+    var showsSplit: Bool { isOn && isSplit }
 
     /// The mode the Viewer simulates, or `nil` while it is off.
     var active: ColorVisionMode? { isOn ? mode : nil }
 }
 
-/// A simulation as the Viewer shows it: the matrix in linear sRGB and the indicator's label. A
-/// mode's own by default (`init(mode:)`); an edition may supply another for a mode
+/// A simulation as the Viewer shows it: the matrix in linear sRGB and the name its indicator gives.
+/// A mode's own by default (`init(mode:)`); an edition may supply another for a mode
 /// (`ColorVisionController.supplied`).
 struct ColorVisionSimulation: Equatable, Sendable {
     var matrix: Matrix3
-    var label: String
+    /// What is simulated, "Deuteranopia".
+    var name: String
 
-    init(matrix: Matrix3, label: String) {
+    init(matrix: Matrix3, name: String) {
         self.matrix = matrix
-        self.label = label
+        self.name = name
     }
 
     init(mode: ColorVisionMode) {
-        self.init(matrix: mode.linearSRGBMatrix, label: mode.indicatorLabel)
+        self.init(matrix: mode.linearSRGBMatrix, name: mode.title)
+    }
+
+    /// The indicator over the Viewer: "Deuteranopia · simulated", or "Deuteranopia · split ·
+    /// simulated" while split with normal vision.
+    func indicatorLabel(split: Bool) -> String {
+        split ? "\(name) · split · simulated" : "\(name) · simulated"
     }
 }
 

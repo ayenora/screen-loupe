@@ -75,7 +75,9 @@ enum ViewerShaders {
             float opacity;
             // 1: the absolute difference from the live frame; 0: the image as it is.
             float difference;
-            float2 unused;
+            // 1: the layer only left of the split line, at `splitX` in the target's pixels; 0: all of it.
+            float split;
+            float splitX;
         };
 
         // A reference layer over the frame. Its texture is premultiplied, in the Viewer's colour
@@ -83,6 +85,10 @@ enum ViewerShaders {
         fragment float4 referenceFragment(QuadVertex in [[stage_in]], texture2d<float> reference [[texture(0)]],
                                           texture2d<float> frame [[texture(1)]],
                                           constant ReferenceUniforms &uniforms [[buffer(0)]]) {
+            // Right of the split line, what shows under the layer.
+            if (uniforms.split > 0.5 && in.position.x >= uniforms.splitX) {
+                return float4(0.0);
+            }
             constexpr sampler pixels(mag_filter::nearest, min_filter::linear, address::clamp_to_edge);
             float4 color = reference.sample(pixels, in.uv);
             if (uniforms.difference > 0.5) {
@@ -98,23 +104,28 @@ enum ViewerShaders {
         struct VisionUniforms {
             // Linear light of the scene's colour space to simulated linear light (ColorVisionTransform).
             float3x3 matrix;
-            // x: the last entry of the encoding table.
-            float4 encodeLast;
+            // x: the last entry of the encoding table; y: 1 to leave the scene as it is left of the
+            // split line, at z in the target's pixels.
+            float4 values;
         };
 
         // The colour vision simulation over the composed scene, pixel for pixel, into the target of
         // the same size: each 8-bit value decoded to linear light through the colour space's curve,
         // the matrix, clamped, and encoded again through a table stepped in the square root of
         // linear light. No resampling: the scene's pixels, nearest-neighbour magnification included,
-        // stay where they are.
+        // stay where they are. With the colour vision split on, the scene left of the line passes
+        // through as it is.
         fragment float4 visionFragment(QuadVertex in [[stage_in]], texture2d<float> scene [[texture(0)]],
                                        constant VisionUniforms &uniforms [[buffer(0)]],
                                        constant float4 *decode [[buffer(1)]], constant float4 *encode [[buffer(2)]]) {
             float4 color = scene.read(uint2(in.position.xy));
+            if (uniforms.values.y > 0.5 && in.position.x < uniforms.values.z) {
+                return color;
+            }
             uint3 code = uint3(round(saturate(color.rgb) * 255.0));
             float3 light = float3(decode[code.r].r, decode[code.g].g, decode[code.b].b);
             light = saturate(uniforms.matrix * light);
-            float last = uniforms.encodeLast.x;
+            float last = uniforms.values.x;
             float3 at = sqrt(light) * last;
             uint3 low = uint3(floor(at));
             uint3 high = uint3(min(float3(low) + 1.0, float3(last)));

@@ -49,6 +49,11 @@ struct Settings: Codable, Equatable {
     /// The colour vision the eye button and its ▾ chose last. Whether the simulation is on isn't
     /// kept: the app never starts with the colours changed.
     var colorVisionMode = ColorVisionMode.deuteranopia
+    /// Split with Normal Vision, kept as the mode is; it shows while the simulation is on.
+    var colorVisionSplit = false
+    /// The split line's place as a fraction of the Viewer's width, shared by a reference layer's
+    /// split and the colour vision split (`SplitLine`).
+    var splitPosition = SplitLine.defaultPosition
     var meterVisible = false
     /// References and Recent Captures take turns in the side column: at most one is open.
     var referencesVisible = false
@@ -132,6 +137,8 @@ struct Settings: Codable, Equatable {
         pointerStyle = c.value(.pointerStyle, or: d.pointerStyle)
         rulerMode = c.value(.rulerMode, or: d.rulerMode)
         colorVisionMode = c.value(.colorVisionMode, or: d.colorVisionMode)
+        colorVisionSplit = c.value(.colorVisionSplit, or: d.colorVisionSplit)
+        splitPosition = SplitLine.clamped(c.value(.splitPosition, or: d.splitPosition))
         meterVisible = c.value(.meterVisible, or: d.meterVisible)
         referencesVisible = c.value(.referencesVisible, or: d.referencesVisible)
         capturesVisible = c.value(.capturesVisible, or: d.capturesVisible) && !referencesVisible

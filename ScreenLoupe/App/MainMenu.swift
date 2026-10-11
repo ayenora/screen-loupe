@@ -181,8 +181,8 @@ enum MainMenu {
     /// View › Color Vision and the eye button's overflow form, which start with Simulate Color
     /// Vision (⌘Y), and the eye button's ▾, which doesn't: the modes, each with who sees that way
     /// under it, grouped by separators, as `AppController` commands, which check the chosen one,
-    /// and what the edition adds under a mode (`Edition.colorVisionItems`). The ▾'s go up the
-    /// responder chain (`target` `nil`).
+    /// and what the edition adds under a mode (`Edition.colorVisionItems`); last, Split with Normal
+    /// Vision (⌥⌘Y where ⌘Y is). The ▾'s go up the responder chain (`target` `nil`).
     static func colorVisionMenu(withToggle: Bool, target: AppController?) -> NSMenu {
         let menu = NSMenu(title: "Color Vision")
         if withToggle {
@@ -202,6 +202,12 @@ enum MainMenu {
             item.subtitle = mode.detail
             for added in Edition.colorVisionItems(after: mode) { menu.addItem(added) }
         }
+        menu.addItem(.separator())
+        let split = menu.addItem(
+            withTitle: "Split with Normal Vision", action: #selector(AppController.toggleColorVisionSplit(_:)),
+            keyEquivalent: withToggle ? "y" : "")
+        split.keyEquivalentModifierMask = [.command, .option]
+        split.target = target
         return menu
     }
 

@@ -197,7 +197,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Color vision
 
-    /// The simulation's chosen mode and whether it is on.
+    /// The simulation's chosen mode and whether it is on and split.
     var colorVision: ColorVisionController { content.colorVision }
 
     func toggleColorVision() {
@@ -206,6 +206,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate {
 
     func turnOnColorVision(_ mode: ColorVisionMode) {
         content.colorVision.turnOn(mode)
+    }
+
+    func toggleColorVisionSplit() {
+        content.toggleVisionSplit()
     }
 
     // MARK: Select tool
